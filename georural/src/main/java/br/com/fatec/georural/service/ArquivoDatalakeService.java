@@ -7,16 +7,15 @@ import br.com.fatec.georural.dto.response.EnvioProcessamentoResponse;
 import br.com.fatec.georural.entity.ArquivoDatalake;
 import br.com.fatec.georural.entity.ArquivoDatalakeConteudo;
 import br.com.fatec.georural.entity.ArquivoDatalakeItem;
+import br.com.fatec.georural.exception.ConflitoException;
+import br.com.fatec.georural.exception.RecursoNaoEncontradoException;
 import br.com.fatec.georural.gateway.ProcessamentoGateway;
 import br.com.fatec.georural.mapper.ArquivoDatalakeMapper;
 import br.com.fatec.georural.repository.ArquivoDatalakeConteudoRepository;
 import br.com.fatec.georural.repository.ArquivoDatalakeItemRepository;
 import br.com.fatec.georural.repository.ArquivoDatalakeRepository;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.web.server.ResponseStatusException;
-
 import java.io.IOException;
 import java.util.List;
 
@@ -57,22 +56,17 @@ public class ArquivoDatalakeService {
     }
 
     public ArquivoDetalheResponse detalhe(Long id) {
-        ArquivoDatalake arquivo = repository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "Arquivo nao encontrado: " + id));
-
+        ArquivoDatalake arquivo = buscarArquivo(id);
         List<ArquivoDatalakeItem> itens = itemRepository.findByArquivo_IdOrderById(id);
         return mapper.toDetalhe(arquivo, itens);
     }
 
     public ArquivoDownload baixar(Long id) {
-        ArquivoDatalake arquivo = repository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "Arquivo nao encontrado: " + id));
+        ArquivoDatalake arquivo = buscarArquivo(id);
 
         ArquivoDatalakeConteudo conteudo = conteudoRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "Conteudo nao disponivel para o arquivo: " + id));
+                .orElseThrow(() -> new RecursoNaoEncontradoException(
+                        "Conteudo nao disponivel para o arquivo: " + id));
 
         return new ArquivoDownload(
                 arquivo.getNomeArquivo(),
@@ -81,9 +75,7 @@ public class ArquivoDatalakeService {
     }
 
     public void salvarConteudo(Long id, MultipartFile arquivo) {
-        ArquivoDatalake meta = repository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "Arquivo nao encontrado: " + id));
+        ArquivoDatalake meta = buscarArquivo(id);
         try {
             ArquivoDatalakeConteudo c = new ArquivoDatalakeConteudo();
             c.setArquivoId(meta.getId());
@@ -92,18 +84,15 @@ public class ArquivoDatalakeService {
             c.setConteudo(arquivo.getBytes());
             conteudoRepository.save(c);
         } catch (IOException e) {
-            throw new ResponseStatusException(
-                    HttpStatus.INTERNAL_SERVER_ERROR, "Falha ao ler o arquivo enviado");
+            throw new RuntimeException("Falha ao ler o arquivo enviado", e);
         }
     }
 
     public EnvioProcessamentoResponse enviarParaProcessamento(Long id) {
-        ArquivoDatalake arquivo = repository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "Arquivo nao encontrado: " + id));
+        ArquivoDatalake arquivo = buscarArquivo(id);
 
         if (!conteudoRepository.existsById(id)) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
+            throw new ConflitoException(
                     "Arquivo sem conteudo salvo; nao e possivel enviar para processamento: " + id);
         }
 
@@ -112,7 +101,7 @@ public class ArquivoDatalakeService {
                 arquivo.getNomeArquivo(),
                 arquivo.getFormato(),
                 arquivo.getSrid(),
-                "/api/arquivos/" + id + "/download",   // modo 1: HTTP
+                "/api/arquivos/" + id + "/download",
                 TABELA_CONTEUDO,
                 COLUNA_CONTEUDO,
                 COLUNA_CHAVE,
@@ -120,7 +109,12 @@ public class ArquivoDatalakeService {
                 "Arquivo pronto para processamento.");
 
         processamentoGateway.enviarParaProcessamento(entrega);
-
         return entrega;
+    }
+
+    private ArquivoDatalake buscarArquivo(Long id) {
+        return repository.findById(id)
+                .orElseThrow(() -> new RecursoNaoEncontradoException(
+                        "Arquivo nao encontrado: " + id));
     }
 }
