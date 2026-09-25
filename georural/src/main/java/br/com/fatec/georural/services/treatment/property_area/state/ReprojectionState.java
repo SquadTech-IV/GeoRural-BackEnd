@@ -5,7 +5,7 @@ import br.com.fatec.georural.services.treatment.property_area.PropertyArea;
 public class ReprojectionState implements PropertyAreaState{
 
     @Override
-    public void nextStep(PropertyArea propertyArea) {
+    public void execute(PropertyArea propertyArea) {
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'nextStep'");
     }

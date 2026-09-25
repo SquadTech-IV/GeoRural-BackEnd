@@ -4,6 +4,6 @@ import br.com.fatec.georural.services.treatment.property_area.PropertyArea;
 
 public interface PropertyAreaState {
 
-    public void nextStep(PropertyArea propertyArea);
+    public void execute(PropertyArea propertyArea);
     
 }
