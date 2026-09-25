@@ -3,11 +3,13 @@ package br.com.fatec.georural.controller;
 import br.com.fatec.georural.dto.response.ArquivoDetalheResponse;
 import br.com.fatec.georural.dto.response.ArquivoDownload;
 import br.com.fatec.georural.dto.response.ArquivoResumoResponse;
+import br.com.fatec.georural.dto.response.EnvioProcessamentoResponse;
 import br.com.fatec.georural.service.ArquivoDatalakeService;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -43,13 +45,16 @@ public class ArquivoDatalakeController {
                 .body(d.conteudo());
     }
 
-    // no ArquivoDatalakeController
-    @org.springframework.web.bind.annotation.PostMapping("/{id}/conteudo")
-    public org.springframework.http.ResponseEntity<Void> subirConteudo(
-            @org.springframework.web.bind.annotation.PathVariable Long id,
-            @org.springframework.web.bind.annotation.RequestParam("arquivo")
-            org.springframework.web.multipart.MultipartFile arquivo) {
+    @PostMapping("/{id}/conteudo")
+    public ResponseEntity<Void> subirConteudo(
+            @PathVariable Long id,
+            @RequestParam("arquivo") MultipartFile arquivo) {
         service.salvarConteudo(id, arquivo);
-        return org.springframework.http.ResponseEntity.ok().build();
+        return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/{id}/processar")
+    public EnvioProcessamentoResponse processar(@PathVariable Long id) {
+        return service.enviarParaProcessamento(id);
     }
 }
