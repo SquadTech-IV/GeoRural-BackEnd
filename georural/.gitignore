@@ -36,3 +36,4 @@ build/
 wallet/
 .env
 application-local.properties
+wallet/
