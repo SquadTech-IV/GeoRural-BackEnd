@@ -79,6 +79,13 @@
             <groupId>org.hibernate.orm</groupId>
             <artifactId>hibernate-spatial</artifactId>
         </dependency>
+		
+		<!-- Tika: identificacao de formato de arquivo -->
+		<dependency>
+			<groupId>org.apache.tika</groupId>
+			<artifactId>tika-core</artifactId>
+			<version>2.9.2</version>
+		</dependency>
 
     </dependencies>
 
