@@ -1,13 +1,14 @@
 package br.com.fatec.georural.exception;
 
-import br.com.fatec.georural.dto.response.ErroResponse;
-import jakarta.servlet.http.HttpServletRequest;
+import java.time.LocalDateTime;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-import java.time.LocalDateTime;
+import br.com.fatec.georural.dto.response.ErroResponse;
+import jakarta.servlet.http.HttpServletRequest;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -42,4 +43,10 @@ public class GlobalExceptionHandler {
                 req.getRequestURI());
         return ResponseEntity.status(status).body(corpo);
     }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ErroResponse> tratarRequisicaoInvalida(
+        IllegalArgumentException ex, HttpServletRequest req) {
+    return montar(HttpStatus.BAD_REQUEST, ex.getMessage(), req);
+}
 }

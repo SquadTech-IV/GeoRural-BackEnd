@@ -19,8 +19,8 @@ import br.com.fatec.georural.entity.ResultadoIndicador;
 @Component
 public class ImovelIaeMapper {
 
-    private static final GeometryJSON GEOMETRY_JSON = new GeometryJSON(7);
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private final GeometryJSON geometryJson = new GeometryJSON(7);
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public ImovelIaeGeoJsonResponse toGeoJson(ImovelRural imovel, ResultadoIndicador resultado) {
         ImovelIaeProperties properties = new ImovelIaeProperties(
@@ -52,8 +52,8 @@ public class ImovelIaeMapper {
             return null;
         }
         try (StringWriter writer = new StringWriter()) {
-            GEOMETRY_JSON.write(geometria, writer);
-            return OBJECT_MAPPER.readTree(writer.toString());
+            geometryJson.write(geometria, writer);
+            return objectMapper.readTree(writer.toString());
         } catch (IOException e) {
             throw new RuntimeException("Falha ao converter geometria do imovel para GeoJSON", e);
         }
