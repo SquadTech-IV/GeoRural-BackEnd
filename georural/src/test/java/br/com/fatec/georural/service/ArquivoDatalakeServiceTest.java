@@ -11,6 +11,8 @@ import br.com.fatec.georural.mapper.ArquivoDatalakeMapper;
 import br.com.fatec.georural.repository.ArquivoDatalakeConteudoRepository;
 import br.com.fatec.georural.repository.ArquivoDatalakeItemRepository;
 import br.com.fatec.georural.repository.ArquivoDatalakeRepository;
+import br.com.fatec.georural.service.ArquivoDatalakeService;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
