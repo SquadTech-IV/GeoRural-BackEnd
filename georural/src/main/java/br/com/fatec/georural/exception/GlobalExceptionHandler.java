@@ -6,6 +6,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.time.LocalDateTime;
 
@@ -22,6 +23,19 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErroResponse> tratarConflito(
             ConflitoException ex, HttpServletRequest req) {
         return montar(HttpStatus.CONFLICT, ex.getMessage(), req);
+    }
+
+    @ExceptionHandler(EstadoInconsistenteException.class)
+    public ResponseEntity<ErroResponse> tratarEstadoInconsistente(
+            EstadoInconsistenteException ex, HttpServletRequest req) {
+        return montar(HttpStatus.INTERNAL_SERVER_ERROR, ex.getMessage(), req);
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErroResponse> tratarTipoInvalido(
+            MethodArgumentTypeMismatchException ex, HttpServletRequest req) {
+        String mensagem = String.format("Parâmetro '%s' deve ser um número válido.", ex.getName());
+        return montar(HttpStatus.BAD_REQUEST, mensagem, req);
     }
 
     // rede de seguranca: qualquer erro nao previsto vira 500 padronizado
