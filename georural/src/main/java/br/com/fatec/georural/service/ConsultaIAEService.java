@@ -10,6 +10,7 @@ import br.com.fatec.georural.repository.ImovelRuralRepository;
 import br.com.fatec.georural.repository.ResultadoIndicadorRepository;
 import br.com.fatec.georural.mapper.IAEMapper;
 import br.com.fatec.georural.exception.EstadoInconsistenteException;
+import br.com.fatec.georural.exception.RecursoNaoEncontradoException;
 
 import java.util.List;
 
@@ -28,7 +29,7 @@ public class ConsultaIAEService {
 
         ResultadoIndicador resultado = resultadoIndicadorRepository
             .findTopByImovelIdAndIndicadorOrderByDataCalculoDesc(imovelId, indicador)
-            .orElseThrow(() -> new EstadoInconsistenteException(
+            .orElseThrow(() -> new RecursoNaoEncontradoException(
                 "Nenhum resultado de IAE calculado para o imóvel " + imovelId));
 
         List<Object[]> embargosRaw = imovelRuralRepository.encontrarEmbargosIntersectantes(imovelId);

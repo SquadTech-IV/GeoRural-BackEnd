@@ -20,27 +20,27 @@ public class ResultadoIndicadorResponse {
         this.dataCalculo = dataCalculo;
     }
 
-    Long getImovelId() {
+    public Long getImovelId() {
         return imovelId;
     }
 
-    String getIndicadorSigla() {
+    public String getIndicadorSigla() {
         return indicadorSigla;
     }
 
-    BigDecimal getValorPercentual() {
+    public BigDecimal getValorPercentual() {
         return valorPercentual;
     }
 
-    BigDecimal getValorHectares() {
+    public BigDecimal getValorHectares() {
         return valorHectares;
     }
 
-    BigDecimal getValorAbsoluto() {
+    public BigDecimal getValorAbsoluto() {
         return valorAbsoluto;
     }
 
-    LocalDateTime getDataCalculo() {
+    public LocalDateTime getDataCalculo() {
         return dataCalculo;
     }
 }
