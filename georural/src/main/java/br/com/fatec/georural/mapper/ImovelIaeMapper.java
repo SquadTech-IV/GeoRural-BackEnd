@@ -1,14 +1,6 @@
 package br.com.fatec.georural.mapper;
 
-import java.io.IOException;
-import java.io.StringWriter;
-
-import org.geotools.geojson.geom.GeometryJSON;
-import org.locationtech.jts.geom.Geometry;
 import org.springframework.stereotype.Component;
-
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 import br.com.fatec.georural.dto.response.IaeResultadoResponse;
 import br.com.fatec.georural.dto.response.ImovelIaeGeoJsonResponse;
@@ -19,20 +11,15 @@ import br.com.fatec.georural.entity.ResultadoIndicador;
 @Component
 public class ImovelIaeMapper {
 
-    private final GeometryJSON geometryJson = new GeometryJSON(7);
-    private final ObjectMapper objectMapper = new ObjectMapper();
-
-    public ImovelIaeGeoJsonResponse toGeoJson(ImovelRural imovel, ResultadoIndicador resultado) {
+    public ImovelIaeGeoJsonResponse toGeoJson(ImovelRural imovel, String geometriaGeoJson,
+                                              ResultadoIndicador resultado) {
         ImovelIaeProperties properties = new ImovelIaeProperties(
                 imovel.getCodigoCar(),
                 imovel.getAreaTotal(),
                 imovel.getMunicipio() != null ? imovel.getMunicipio().getNome() : null,
                 toIaeResultado(resultado));
 
-        return new ImovelIaeGeoJsonResponse(
-                "Feature",
-                geometryToJsonNode(imovel.getGeometria()),
-                properties);
+        return new ImovelIaeGeoJsonResponse("Feature", geometriaGeoJson, properties);
     }
 
     private IaeResultadoResponse toIaeResultado(ResultadoIndicador resultado) {
@@ -45,17 +32,5 @@ public class ImovelIaeMapper {
                 resultado.getValorHectares(),
                 resultado.getValorAbsoluto(),
                 resultado.getDataCalculo());
-    }
-
-    private JsonNode geometryToJsonNode(Geometry geometria) {
-        if (geometria == null) {
-            return null;
-        }
-        try (StringWriter writer = new StringWriter()) {
-            geometryJson.write(geometria, writer);
-            return objectMapper.readTree(writer.toString());
-        } catch (IOException e) {
-            throw new RuntimeException("Falha ao converter geometria do imovel para GeoJSON", e);
-        }
     }
 }

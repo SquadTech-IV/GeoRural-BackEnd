@@ -49,4 +49,10 @@ public class GlobalExceptionHandler {
         IllegalArgumentException ex, HttpServletRequest req) {
     return montar(HttpStatus.BAD_REQUEST, ex.getMessage(), req);
 }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ErroResponse> tratarArgumentoInvalido(
+            IllegalArgumentException ex, HttpServletRequest req) {
+        return montar(HttpStatus.BAD_REQUEST, ex.getMessage(), req);
+    }
 }

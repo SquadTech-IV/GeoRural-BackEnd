@@ -20,8 +20,8 @@ public class ImovelIaeService {
     private final ImovelIaeMapper mapper;
 
     public ImovelIaeService(ImovelRuralRepository imovelRepository,
-                             ResultadoIndicadorRepository resultadoIndicadorRepository,
-                             ImovelIaeMapper mapper) {
+                            ResultadoIndicadorRepository resultadoIndicadorRepository,
+                            ImovelIaeMapper mapper) {
         this.imovelRepository = imovelRepository;
         this.resultadoIndicadorRepository = resultadoIndicadorRepository;
         this.mapper = mapper;
@@ -33,12 +33,13 @@ public class ImovelIaeService {
         }
 
         ImovelRural imovel = buscarImovel(codigoCar);
+        String geometria = imovelRepository.buscarGeometriaGeoJson(codigoCar);
 
         ResultadoIndicador resultado = resultadoIndicadorRepository
                 .findFirstByImovel_IdAndIndicador_SiglaOrderByDataCalculoDesc(imovel.getId(), SIGLA_IAE)
                 .orElse(null);
 
-        return mapper.toGeoJson(imovel, resultado);
+        return mapper.toGeoJson(imovel, geometria, resultado);
     }
 
     private ImovelRural buscarImovel(String codigoCar) {
