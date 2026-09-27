@@ -5,6 +5,7 @@ import br.com.fatec.georural.dto.response.ArquivoDownload;
 import br.com.fatec.georural.dto.response.ArquivoResumoResponse;
 import br.com.fatec.georural.dto.response.EnvioProcessamentoResponse;
 import br.com.fatec.georural.service.ArquivoDatalakeService;
+
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;

@@ -30,7 +30,36 @@
 	<properties>
 		<java.version>21</java.version>
 	</properties>
-    <dependencies>
+	<repositories>
+		<repository>
+			<id>osgeo</id>
+			<url>https://repo.osgeo.org/repository/release/</url>
+		</repository>
+	</repositories>
+	<dependencies>
+
+		<dependency>
+    		<groupId>me.paulschwarz</groupId>
+    		<artifactId>spring-dotenv</artifactId>
+    		<version>5.1.0</version>
+		</dependency>
+
+		<!-- GEOTOOLS -->
+		<dependency>
+			<groupId>org.geotools</groupId>
+			<artifactId>gt-shapefile</artifactId>
+			<version>31.1</version>
+		</dependency>
+		<dependency>
+			<groupId>org.geotools</groupId>
+			<artifactId>gt-referencing</artifactId>
+			<version>31.1</version>
+		</dependency>
+		<dependency>
+			<groupId>org.geotools</groupId>
+			<artifactId>gt-epsg-hsql</artifactId>
+			<version>31.1</version>
+		</dependency>
 
         <!-- Web / API REST -->
         <dependency>
@@ -42,7 +71,7 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-jpa</artifactId>
-        </dependency>
+        </dependency> 
 
         <!-- Driver do Oracle -->
         <dependency>
