@@ -12,13 +12,20 @@ import org.springframework.web.multipart.MultipartFile;
 public class IdentificadorFormatoService {
 
     private final Tika tika = new Tika();
+    
 
     private static final Map<String, Set<String>> MIMES_POR_EXTENSAO = Map.of(
             "csv",     Set.of("text/csv", "text/plain"),
-            "geojson", Set.of("application/json", "text/plain"),
-            "shp",     Set.of("application/x-shapefile"),
-            "gpkg",    Set.of("application/octet-stream", "application/x-sqlite3"),
+            "geojson", Set.of("application/json", "text/plain", "application/geo+json"),
+            "shp",     Set.of("application/x-shapefile", "application/octet-stream"),
+            "gpkg",    Set.of("application/octet-stream", "application/x-sqlite3",  "application/geopackage+sqlite3"),
+            "json",     Set.of("application/json", "text/plain"),
+            "zip",     Set.of("application/zip", "application/x-zip-compressed", "application/octet-stream"),
             "tif",     Set.of("image/tiff")
+    );
+    
+    private static final Set<String> MIMES_GENERICOS = Set.of(
+        "application/octet-stream", "text/plain"
     );
 
     public String extrairExtensao(MultipartFile arquivo) {
@@ -26,7 +33,9 @@ public class IdentificadorFormatoService {
         if (nome == null || !nome.contains(".")) {
             return "";
         }
-        return nome.substring(nome.lastIndexOf('.') + 1).toLowerCase();
+        String ext = nome.substring(nome.lastIndexOf('.') + 1).toLowerCase();
+        return ext.equals("tiff") ? "tif" : ext;
+
     }
 
     public String detectarMimeType(MultipartFile arquivo) {
