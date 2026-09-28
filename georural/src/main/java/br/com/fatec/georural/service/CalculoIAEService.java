@@ -34,24 +34,29 @@ public class CalculoIAEService {
     public IAEResponse calcularSobreposicaoEmbargo(Long imovelId) {
         ImovelRural imovel = imovelRuralRepository.findById(imovelId)
                 .orElseThrow(() -> new RecursoNaoEncontradoException(
-                    "Imóvel não encontrado: " + imovelId));
+                        "Imóvel não encontrado: " + imovelId));
 
         Indicador indicador = indicadorRepository.findBySigla("IAE")
-            .orElseThrow(() -> new EstadoInconsistenteException("Indicador IAE não cadastrado"));
+                .orElseThrow(() -> new EstadoInconsistenteException("Indicador IAE não cadastrado"));
 
         RegraCalculo regra = regraCalculoRepository.findByIndicadorAndVigente(indicador, "S")
-            .orElseThrow(() -> new EstadoInconsistenteException("Nenhuma regra vigente para IAE"));
+                .orElseThrow(() -> new EstadoInconsistenteException("Nenhuma regra vigente para IAE"));
 
         Object[] resultadoAgregado = imovelRuralRepository.calcularAreaEmbargadaAgregada(imovelId);
 
-        BigDecimal areaEmbargada = resultadoAgregado[0] != null
-            ? new BigDecimal(resultadoAgregado[0].toString())
-            : BigDecimal.ZERO;
-        BigDecimal areaTotal = new BigDecimal(resultadoAgregado[1].toString());
+        // Query nativa com uma linha pode vir como Object[]{ Object[]{a, b} }
+        if (resultadoAgregado.length == 1 && resultadoAgregado[0] instanceof Object[] linha) {
+            resultadoAgregado = linha;
+        }
+
+        BigDecimal areaEmbargada = toBigDecimal(resultadoAgregado[0]);
+        BigDecimal areaTotal = toBigDecimal(resultadoAgregado[1]);
 
         BigDecimal percentual = areaTotal.compareTo(BigDecimal.ZERO) > 0
-            ? areaEmbargada.divide(areaTotal, 10, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(100))
-            : BigDecimal.ZERO;
+                ? areaEmbargada.divide(areaTotal, 10, RoundingMode.HALF_UP)
+                .multiply(BigDecimal.valueOf(100))
+                .setScale(4, RoundingMode.HALF_UP)
+                : BigDecimal.ZERO;
 
         ResultadoIndicador entidade = new ResultadoIndicador();
         entidade.setImovel(imovel);
@@ -67,5 +72,29 @@ public class CalculoIAEService {
 
         List<Object[]> embargosRaw = imovelRuralRepository.encontrarEmbargosIntersectantes(imovelId);
         return mapper.toResponse(salvo, embargosRaw);
+    }
+
+    private BigDecimal toBigDecimal(Object valor) {
+        if (valor == null) {
+            return BigDecimal.ZERO;
+        }
+        if (valor instanceof BigDecimal bd) {
+            return bd;
+        }
+        if (valor instanceof Number n) {
+            return BigDecimal.valueOf(n.doubleValue());
+        }
+
+        String texto = valor.toString().trim().replace(",", ".");
+        if (texto.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+
+        try {
+            return new BigDecimal(texto);
+        } catch (NumberFormatException e) {
+            throw new EstadoInconsistenteException(
+                    "Valor numérico inválido: '" + valor + "' (tipo " + valor.getClass().getName() + ")");
+        }
     }
 }

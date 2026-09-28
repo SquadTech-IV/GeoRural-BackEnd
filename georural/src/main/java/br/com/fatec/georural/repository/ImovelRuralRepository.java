@@ -7,8 +7,7 @@ import org.springframework.data.repository.query.Param;
 import java.util.List;
 
 public interface ImovelRuralRepository extends JpaRepository<ImovelRural, Long> {
-    // Retorna uma única linha com a área somada de todos os embargos que intersectam o imóvel
-    // e a área total do imóvel. Para o resultado.
+
     @Query(value = """
         SELECT
             SDO_GEOM.SDO_AREA(
