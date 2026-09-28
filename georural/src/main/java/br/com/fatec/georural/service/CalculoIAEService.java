@@ -44,7 +44,6 @@ public class CalculoIAEService {
 
         Object[] resultadoAgregado = imovelRuralRepository.calcularAreaEmbargadaAgregada(imovelId);
 
-        // Query nativa com uma linha pode vir como Object[]{ Object[]{a, b} }
         if (resultadoAgregado.length == 1 && resultadoAgregado[0] instanceof Object[] linha) {
             resultadoAgregado = linha;
         }
@@ -58,7 +57,11 @@ public class CalculoIAEService {
                 .setScale(4, RoundingMode.HALF_UP)
                 : BigDecimal.ZERO;
 
-        ResultadoIndicador entidade = new ResultadoIndicador();
+
+        ResultadoIndicador entidade = resultadoIndicadorRepository
+                .findByImovelIdAndIndicadorAndVersao(imovel.getId(), indicador, imovel.getVersao())
+                .orElseGet(ResultadoIndicador::new);
+
         entidade.setImovel(imovel);
         entidade.setIndicador(indicador);
         entidade.setVersao(imovel.getVersao());

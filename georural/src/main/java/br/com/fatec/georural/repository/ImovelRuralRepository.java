@@ -4,9 +4,18 @@ import br.com.fatec.georural.entity.ImovelRural;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+
 import java.util.List;
+import java.util.Optional;
 
 public interface ImovelRuralRepository extends JpaRepository<ImovelRural, Long> {
+
+
+    Optional<ImovelRural> findByCodigoCar(String codigoCar);
+
+    @Query(value = "SELECT SDO_UTIL.TO_GEOJSON(i.imo_geometria) FROM imovel_rural i WHERE i.imo_id = :id",
+            nativeQuery = true)
+    Object buscarGeometriaGeoJson(@Param("id") Long id);
 
     @Query(value = """
         SELECT
@@ -26,8 +35,6 @@ public interface ImovelRuralRepository extends JpaRepository<ImovelRural, Long> 
         """, nativeQuery = true)
     Object[] calcularAreaEmbargadaAgregada(@Param("imovelId") Long imovelId);
 
-    // Retorna uma lista de embargos que intersectam o imóvel, com a área de interseção e a 
-    // área total do imóvel. Para a plotagem no mapa.
     @Query(value = """
         SELECT
             i.imo_id AS imovelId,
