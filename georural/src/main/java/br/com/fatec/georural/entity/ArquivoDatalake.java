@@ -50,4 +50,7 @@ public class ArquivoDatalake {
 
     @Column(name = "recebido_em", nullable = false)
     private LocalDateTime recebidoEm;
+
+    @Column(name = "tipo_camada")
+    private String tipoCamada;
 }

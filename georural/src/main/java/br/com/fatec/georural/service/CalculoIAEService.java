@@ -40,10 +40,10 @@ public class CalculoIAEService {
             .orElseThrow(() -> new RecursoNaoEncontradoException("Imóvel não encontrado: " + imovelId));
 
         Indicador indicador = indicadorRepository.findBySigla("IAE")
-            .orElseThrow(() -> new EstadoInconsistenteException("Indicador IAE não cadastrado"));
+                .orElseThrow(() -> new EstadoInconsistenteException("Indicador IAE não cadastrado"));
 
         RegraCalculo regra = regraCalculoRepository.findByIndicadorAndVigente(indicador, "S")
-            .orElseThrow(() -> new EstadoInconsistenteException("Nenhuma regra vigente para IAE"));
+                .orElseThrow(() -> new EstadoInconsistenteException("Nenhuma regra vigente para IAE"));
 
         if (resultadoIndicadorRepository.existsByImovelIdAndIndicadorAndVersao(
                 imovelId, indicador, imovel.getVersao())) {
@@ -89,5 +89,29 @@ public class CalculoIAEService {
 
         List<Object[]> embargosRaw = imovelRuralRepository.encontrarEmbargosIntersectantes(imovelId, versaoEmbargoId);
         return mapper.toResponse(salvo, embargosRaw);
+    }
+
+    private BigDecimal toBigDecimal(Object valor) {
+        if (valor == null) {
+            return BigDecimal.ZERO;
+        }
+        if (valor instanceof BigDecimal bd) {
+            return bd;
+        }
+        if (valor instanceof Number n) {
+            return BigDecimal.valueOf(n.doubleValue());
+        }
+
+        String texto = valor.toString().trim().replace(",", ".");
+        if (texto.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+
+        try {
+            return new BigDecimal(texto);
+        } catch (NumberFormatException e) {
+            throw new EstadoInconsistenteException(
+                    "Valor numérico inválido: '" + valor + "' (tipo " + valor.getClass().getName() + ")");
+        }
     }
 }

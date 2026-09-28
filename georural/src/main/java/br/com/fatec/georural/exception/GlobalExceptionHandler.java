@@ -39,9 +39,12 @@ public class GlobalExceptionHandler {
     }
 
     // rede de seguranca: qualquer erro nao previsto vira 500 padronizado
+    // rede de seguranca: qualquer erro nao previsto vira 500 padronizado
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErroResponse> tratarGenerico(
             Exception ex, HttpServletRequest req) {
+        // imprime o erro completo no console para diagnostico
+        ex.printStackTrace();
         return montar(HttpStatus.INTERNAL_SERVER_ERROR,
                 "Erro interno no servidor.", req);
     }
@@ -56,4 +59,6 @@ public class GlobalExceptionHandler {
                 req.getRequestURI());
         return ResponseEntity.status(status).body(corpo);
     }
+
+
 }

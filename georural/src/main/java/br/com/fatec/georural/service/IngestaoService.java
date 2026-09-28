@@ -66,6 +66,7 @@ public class IngestaoService {
         meta.setNomeArquivo(arquivo.getOriginalFilename());
         meta.setFonte("UPLOAD");
         meta.setFormato(mapearFormato(extensao));
+        meta.setTipoCamada(null);
         meta.setTamanhoBytes((long) bytes.length);
         meta.setQtdArquivos(1);
         meta.setSituacao("AGUARDANDO");
