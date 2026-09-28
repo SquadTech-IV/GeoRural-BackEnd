@@ -3,8 +3,10 @@ package br.com.fatec.georural.controller;
 import br.com.fatec.georural.dto.response.indicador.IAEResponse;
 import br.com.fatec.georural.exception.GlobalExceptionHandler;
 import br.com.fatec.georural.exception.RecursoNaoEncontradoException;
+import br.com.fatec.georural.exception.ConflitoException;
 import br.com.fatec.georural.service.CalculoIAEService;
 import br.com.fatec.georural.service.ConsultaIAEService;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -47,12 +49,22 @@ class IAEControllerTest {
     }
 
     @Test
-    void recalcular_deveRetornar200EResultado() throws Exception {
-        IAEResponse resposta = new IAEResponse(1L, "IAE", null, null, null, null, List.of());
-        when(calculoService.calcularSobreposicaoEmbargo(1L)).thenReturn(resposta);
+    void calcular_deveRetornar201EResultado() throws Exception {
+        IAEResponse resposta = new IAEResponse(41L, "IAE", null, null, null, null, List.of());
+        when(calculoService.calcularSobreposicaoEmbargo(41L)).thenReturn(resposta);
 
-        mockMvc.perform(post("/api/indicadores/iae/1/recalcular"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.imovelId").value(1));
+        mockMvc.perform(post("/api/indicadores/iae/41"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.imovelId").value(41));
+    }
+
+    @Test
+    void calcular_deveRetornar409_quandoJaCalculado() throws Exception {
+        when(calculoService.calcularSobreposicaoEmbargo(41L))
+                .thenThrow(new ConflitoException("IAE já calculado para o imóvel 41"));
+
+        mockMvc.perform(post("/api/indicadores/iae/41"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.status").value(409));
     }
 }

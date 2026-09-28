@@ -22,6 +22,7 @@ public class ConsultaIAEService {
     private final IndicadorRepository indicadorRepository;
     private final ImovelRuralRepository imovelRuralRepository;
     private final IAEMapper mapper;
+    private final VersaoEmbargoService versaoEmbargoService;
 
     public IAEResponse consultarPorImovel(Long imovelId) {
         Indicador indicador = indicadorRepository.findBySigla("IAE")
@@ -32,7 +33,7 @@ public class ConsultaIAEService {
             .orElseThrow(() -> new RecursoNaoEncontradoException(
                 "Nenhum resultado de IAE calculado para o imóvel " + imovelId));
 
-        List<Object[]> embargosRaw = imovelRuralRepository.encontrarEmbargosIntersectantes(imovelId);
+        List<Object[]> embargosRaw = imovelRuralRepository.encontrarEmbargosIntersectantes(imovelId, versaoEmbargoService.resolverId());
         return mapper.toResponse(resultado, embargosRaw);
     }
 }

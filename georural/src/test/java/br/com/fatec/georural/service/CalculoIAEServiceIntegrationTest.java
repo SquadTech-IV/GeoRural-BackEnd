@@ -32,5 +32,6 @@ class CalculoIAEServiceIntegrationTest {
             .isCloseTo(areaEsperadaHa.doubleValue(), within(tolerancia.doubleValue()));
 
         assertThat(resposta.getEmbargosIntersectantes()).isNotEmpty();
+        assertThat(resposta.getValorPercentual().doubleValue()).isCloseTo(6.21, within(0.13));
     }
 }

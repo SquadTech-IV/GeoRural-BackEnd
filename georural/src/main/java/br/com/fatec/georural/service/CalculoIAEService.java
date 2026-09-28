@@ -9,6 +9,7 @@ import br.com.fatec.georural.repository.ResultadoIndicadorRepository;
 import br.com.fatec.georural.repository.IndicadorRepository;
 import br.com.fatec.georural.repository.RegraCalculoRepository;
 import br.com.fatec.georural.exception.RecursoNaoEncontradoException;
+import br.com.fatec.georural.exception.ConflitoException;
 import br.com.fatec.georural.dto.response.indicador.IAEResponse;
 import br.com.fatec.georural.mapper.IAEMapper;
 import br.com.fatec.georural.exception.EstadoInconsistenteException;
@@ -19,6 +20,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import lombok.RequiredArgsConstructor;
+
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -30,11 +33,11 @@ public class CalculoIAEService {
     private final IndicadorRepository indicadorRepository;
     private final RegraCalculoRepository regraCalculoRepository;
     private final IAEMapper mapper;
+    private final VersaoEmbargoService versaoEmbargoResolver;
 
     public IAEResponse calcularSobreposicaoEmbargo(Long imovelId) {
         ImovelRural imovel = imovelRuralRepository.findById(imovelId)
-                .orElseThrow(() -> new RecursoNaoEncontradoException(
-                    "Imóvel não encontrado: " + imovelId));
+            .orElseThrow(() -> new RecursoNaoEncontradoException("Imóvel não encontrado: " + imovelId));
 
         Indicador indicador = indicadorRepository.findBySigla("IAE")
             .orElseThrow(() -> new EstadoInconsistenteException("Indicador IAE não cadastrado"));
@@ -42,15 +45,25 @@ public class CalculoIAEService {
         RegraCalculo regra = regraCalculoRepository.findByIndicadorAndVigente(indicador, "S")
             .orElseThrow(() -> new EstadoInconsistenteException("Nenhuma regra vigente para IAE"));
 
-        Object[] resultadoAgregado = imovelRuralRepository.calcularAreaEmbargadaAgregada(imovelId);
+        if (resultadoIndicadorRepository.existsByImovelIdAndIndicadorAndVersao(
+                imovelId, indicador, imovel.getVersao())) {
+            throw new ConflitoException("IAE já calculado para o imóvel " + imovelId);
+        }
 
-        BigDecimal areaEmbargada = resultadoAgregado[0] != null
-            ? new BigDecimal(resultadoAgregado[0].toString())
+        Long versaoEmbargoId = versaoEmbargoResolver.resolverId();
+        Object[] agregado = imovelRuralRepository.calcularAreaEmbargadaAgregada(imovelId, versaoEmbargoId);
+
+        BigDecimal areaEmbargadaM2 = agregado[0] != null
+            ? new BigDecimal(agregado[0].toString())
             : BigDecimal.ZERO;
-        BigDecimal areaTotal = new BigDecimal(resultadoAgregado[1].toString());
+        BigDecimal areaTotalHa = new BigDecimal(agregado[1].toString());
 
-        BigDecimal percentual = areaTotal.compareTo(BigDecimal.ZERO) > 0
-            ? areaEmbargada.divide(areaTotal, 10, RoundingMode.HALF_UP).multiply(BigDecimal.valueOf(100))
+        BigDecimal areaEmbargadaHa = areaEmbargadaM2.divide(BigDecimal.valueOf(10000), 4, RoundingMode.HALF_UP);
+        BigDecimal percentual = areaTotalHa.compareTo(BigDecimal.ZERO) > 0
+            ? areaEmbargadaM2
+                .divide(areaTotalHa.multiply(BigDecimal.valueOf(10000)), 8, RoundingMode.HALF_UP)
+                .multiply(BigDecimal.valueOf(100))
+                .setScale(4, RoundingMode.HALF_UP)
             : BigDecimal.ZERO;
 
         ResultadoIndicador entidade = new ResultadoIndicador();
@@ -58,14 +71,23 @@ public class CalculoIAEService {
         entidade.setIndicador(indicador);
         entidade.setVersao(imovel.getVersao());
         entidade.setRegraCalculo(regra);
-        entidade.setValorAbsoluto(areaEmbargada);
+        entidade.setValorAbsoluto(areaEmbargadaM2);
         entidade.setValorPercentual(percentual);
-        entidade.setValorHectares(areaEmbargada.divide(BigDecimal.valueOf(10000), 4, RoundingMode.HALF_UP));
+        entidade.setValorHectares(areaEmbargadaHa);
         entidade.setDataCalculo(LocalDateTime.now());
 
-        ResultadoIndicador salvo = resultadoIndicadorRepository.save(entidade);
+        ResultadoIndicador salvo;
+        try {
+            salvo = resultadoIndicadorRepository.save(entidade);
+        } catch (DataIntegrityViolationException e) {
+            // Corrida entre duas chamadas: a constraint única pega o que o exists não pegou.
+            if (e.getMessage() != null && e.getMessage().toUpperCase().contains("UK_RIN_IMO_IND_VER")) {
+                throw new ConflitoException("IAE já calculado para o imóvel " + imovelId);
+            }
+            throw e;
+        }
 
-        List<Object[]> embargosRaw = imovelRuralRepository.encontrarEmbargosIntersectantes(imovelId);
+        List<Object[]> embargosRaw = imovelRuralRepository.encontrarEmbargosIntersectantes(imovelId, versaoEmbargoId);
         return mapper.toResponse(salvo, embargosRaw);
     }
 }

@@ -28,6 +28,7 @@ class ConsultaIAEServiceTest {
     @Mock IndicadorRepository indicadorRepository;
     @Mock ImovelRuralRepository imovelRuralRepository;
     @Mock IAEMapper mapper;
+    @Mock VersaoEmbargoService versaoEmbargoService;
 
     @InjectMocks ConsultaIAEService service;
 
@@ -61,7 +62,8 @@ class ConsultaIAEServiceTest {
         when(indicadorRepository.findBySigla("IAE")).thenReturn(Optional.of(ind));
         when(resultadoIndicadorRepository.findTopByImovelIdAndIndicadorOrderByDataCalculoDesc(1L, ind))
                 .thenReturn(Optional.of(salvo));
-        when(imovelRuralRepository.encontrarEmbargosIntersectantes(1L)).thenReturn(List.of());
+        when(versaoEmbargoService.resolverId()).thenReturn(61L);
+        when(imovelRuralRepository.encontrarEmbargosIntersectantes(1L, 61L)).thenReturn(List.of());
         when(mapper.toResponse(any(), any())).thenReturn(
                 new IAEResponse(1L, "IAE", null, null, null, null, List.of()));
 

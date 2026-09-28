@@ -7,8 +7,6 @@ import org.springframework.data.repository.query.Param;
 import java.util.List;
 
 public interface ImovelRuralRepository extends JpaRepository<ImovelRural, Long> {
-    // Retorna uma única linha com a área somada de todos os embargos que intersectam o imóvel
-    // e a área total do imóvel. Para o resultado.
     @Query(value = """
         SELECT
             SDO_GEOM.SDO_AREA(
@@ -16,19 +14,18 @@ public interface ImovelRuralRepository extends JpaRepository<ImovelRural, Long> 
                     i.imo_geometria,
                     (SELECT SDO_AGGR_UNION(SDOAGGRTYPE(e.emb_geometria, 0.5))
                     FROM EMBARGO e
-                    WHERE e.ver_id = i.ver_id
+                    WHERE e.ver_id = :versaoEmbargoId
                     AND SDO_RELATE(i.imo_geometria, e.emb_geometria, 'mask=ANYINTERACT') = 'TRUE'),
                     0.5
                 ), 0.5
             ) AS areaEmbargadaM2,
-            i.imo_area_total AS areaTotalM2
+            i.imo_area_total AS areaTotalHa
         FROM IMOVEL_RURAL i
         WHERE i.imo_id = :imovelId
         """, nativeQuery = true)
-    Object[] calcularAreaEmbargadaAgregada(@Param("imovelId") Long imovelId);
+    Object[] calcularAreaEmbargadaAgregada(@Param("imovelId") Long imovelId,
+                                        @Param("versaoEmbargoId") Long versaoEmbargoId);
 
-    // Retorna uma lista de embargos que intersectam o imóvel, com a área de interseção e a 
-    // área total do imóvel. Para a plotagem no mapa.
     @Query(value = """
         SELECT
             i.imo_id AS imovelId,
@@ -37,13 +34,12 @@ public interface ImovelRuralRepository extends JpaRepository<ImovelRural, Long> 
             SDO_GEOM.SDO_AREA(
                 SDO_GEOM.SDO_INTERSECTION(i.imo_geometria, e.emb_geometria, 0.5),
                 0.5
-            ) AS areaSobrepostaM2,
-            i.imo_area_total AS areaTotalM2
+            ) AS areaSobrepostaM2
         FROM IMOVEL_RURAL i
-        JOIN EMBARGO e
-            ON e.ver_id = i.ver_id
+        JOIN EMBARGO e ON e.ver_id = :versaoEmbargoId
         WHERE i.imo_id = :imovelId
         AND SDO_RELATE(i.imo_geometria, e.emb_geometria, 'mask=ANYINTERACT') = 'TRUE'
         """, nativeQuery = true)
-    List<Object[]> encontrarEmbargosIntersectantes(@Param("imovelId") Long imovelId);
+    List<Object[]> encontrarEmbargosIntersectantes(@Param("imovelId") Long imovelId,
+                                               @Param("versaoEmbargoId") Long versaoEmbargoId);
 }
