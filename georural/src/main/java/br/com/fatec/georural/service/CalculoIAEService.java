@@ -25,6 +25,8 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class CalculoIAEService {
 
+    private static final BigDecimal M2_POR_HECTARE = BigDecimal.valueOf(10000);
+
     private final ImovelRuralRepository imovelRuralRepository;
     private final ResultadoIndicadorRepository resultadoIndicadorRepository;
     private final IndicadorRepository indicadorRepository;
@@ -48,15 +50,17 @@ public class CalculoIAEService {
             resultadoAgregado = linha;
         }
 
-        BigDecimal areaEmbargada = toBigDecimal(resultadoAgregado[0]);
-        BigDecimal areaTotal = toBigDecimal(resultadoAgregado[1]);
+        BigDecimal areaEmbargadaM2 = toBigDecimal(resultadoAgregado[0]);
+        // area total do imovel esta em HECTARES (imo_area_total)
+        BigDecimal areaTotalHa = toBigDecimal(resultadoAgregado[1]);
 
-        BigDecimal percentual = areaTotal.compareTo(BigDecimal.ZERO) > 0
-                ? areaEmbargada.divide(areaTotal, 10, RoundingMode.HALF_UP)
+        BigDecimal areaEmbargadaHa = areaEmbargadaM2.divide(M2_POR_HECTARE, 4, RoundingMode.HALF_UP);
+
+        BigDecimal percentual = areaTotalHa.compareTo(BigDecimal.ZERO) > 0
+                ? areaEmbargadaHa.divide(areaTotalHa, 10, RoundingMode.HALF_UP)
                 .multiply(BigDecimal.valueOf(100))
                 .setScale(4, RoundingMode.HALF_UP)
                 : BigDecimal.ZERO;
-
 
         ResultadoIndicador entidade = resultadoIndicadorRepository
                 .findByImovelIdAndIndicadorAndVersao(imovel.getId(), indicador, imovel.getVersao())
@@ -66,9 +70,9 @@ public class CalculoIAEService {
         entidade.setIndicador(indicador);
         entidade.setVersao(imovel.getVersao());
         entidade.setRegraCalculo(regra);
-        entidade.setValorAbsoluto(areaEmbargada);
-        entidade.setValorPercentual(percentual);
-        entidade.setValorHectares(areaEmbargada.divide(BigDecimal.valueOf(10000), 4, RoundingMode.HALF_UP));
+        entidade.setValorAbsoluto(areaEmbargadaM2);        // area embargada em m²
+        entidade.setValorPercentual(percentual);           // % da area do imovel sob embargo
+        entidade.setValorHectares(areaEmbargadaHa);        // area embargada em hectares
         entidade.setDataCalculo(LocalDateTime.now());
 
         ResultadoIndicador salvo = resultadoIndicadorRepository.save(entidade);

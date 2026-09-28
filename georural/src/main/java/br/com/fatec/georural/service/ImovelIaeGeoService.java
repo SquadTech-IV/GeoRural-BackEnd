@@ -42,6 +42,7 @@ public class ImovelIaeGeoService {
 
         String geometria = clobParaString(imovelRepository.buscarGeometriaGeoJson(imovel.getId()));
 
+        String embargos = clobParaString(imovelRepository.buscarEmbargosGeoJson(imovel.getId()));
 
         ImovelIaeResumo iae = indicadorRepository.findBySigla(SIGLA_IAE)
                 .flatMap(ind -> resultadoRepository
@@ -55,9 +56,9 @@ public class ImovelIaeGeoService {
                 imovel.getMunicipio() != null ? imovel.getMunicipio().getNome() : null,
                 iae);
 
-        return new ImovelGeoJsonResponse("Feature", geometria, props);
+        return new ImovelGeoJsonResponse("Feature", geometria, embargos, props);
     }
-    
+
     private String clobParaString(Object valor) {
         if (valor == null) {
             return null;
@@ -69,10 +70,9 @@ public class ImovelIaeGeoService {
             try {
                 return clob.getSubString(1, (int) clob.length());
             } catch (java.sql.SQLException e) {
-                throw new RuntimeException("Falha ao ler a geometria (CLOB) do imovel", e);
+                throw new RuntimeException("Falha ao ler a geometria (CLOB)", e);
             }
         }
-
         return valor.toString();
     }
 

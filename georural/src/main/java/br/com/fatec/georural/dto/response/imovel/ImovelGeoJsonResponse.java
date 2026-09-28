@@ -5,5 +5,6 @@ import com.fasterxml.jackson.annotation.JsonRawValue;
 public record ImovelGeoJsonResponse(
         String type,
         @JsonRawValue String geometry,
+        @JsonRawValue String embargos,
         ImovelProperties properties
 ) {}
