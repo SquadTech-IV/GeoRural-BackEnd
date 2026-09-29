@@ -57,16 +57,25 @@ public class MetadataResolutionState implements PropertyAreaState {
 
         String hash = calcularHash(propertyArea.getPropertyAreaFile());
 
-        ArquivoBruto arquivoBruto = new ArquivoBruto();
-        arquivoBruto.setConjunto(conjunto);
-        arquivoBruto.setNome(propertyArea.getPropertyAreaFile().getName());
-        arquivoBruto.setFormato("SHP");
-        arquivoBruto.setPathArmazenamento(propertyArea.getPropertyAreaFile().getAbsolutePath());
-        arquivoBruto.setTamanhoBytes(propertyArea.getPropertyAreaFile().length());
-        arquivoBruto.setStatus("RECEBIDO");
-        arquivoBruto.setHash(hash);
-        arquivoBruto.setDataUpload(LocalDateTime.now());
-        arquivoBruto = arquivoRepository.save(arquivoBruto);
+        ArquivoBruto arquivoBruto = arquivoRepository.findByHash(hash)
+            .orElseGet(() -> {
+            ArquivoBruto novo = new ArquivoBruto();
+
+            novo.setConjunto(conjunto);
+            novo.setNome(propertyArea.getPropertyAreaFile().getName());
+            novo.setFormato("SHP");
+            novo.setPathArmazenamento(
+                    propertyArea.getPropertyAreaFile().getAbsolutePath()
+            );
+            novo.setTamanhoBytes(
+                    propertyArea.getPropertyAreaFile().length()
+            );
+            novo.setStatus("RECEBIDO");
+            novo.setHash(hash);
+            novo.setDataUpload(LocalDateTime.now());
+
+            return arquivoRepository.save(novo);
+        });
 
         long proximoNumero = versaoRepository.findTopByConjuntoOrderByNumeroDesc(conjunto)
                 .map(v -> v.getNumero() + 1)

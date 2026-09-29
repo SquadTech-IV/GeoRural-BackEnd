@@ -51,7 +51,9 @@ public class CalculoIAEService {
         }
 
         Long versaoEmbargoId = versaoEmbargoResolver.resolverId();
-        Object[] agregado = imovelRuralRepository.calcularAreaEmbargadaAgregada(imovelId, versaoEmbargoId);
+
+        List<Object[]> resultado = imovelRuralRepository.calcularAreaEmbargadaAgregada(imovelId, versaoEmbargoId);
+        Object[] agregado = resultado.get(0);
 
         BigDecimal areaEmbargadaM2 = agregado[0] != null
             ? new BigDecimal(agregado[0].toString())

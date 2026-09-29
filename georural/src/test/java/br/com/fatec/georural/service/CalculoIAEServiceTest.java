@@ -71,7 +71,10 @@ class CalculoIAEServiceTest {
     void calcular_deveRetornarPercentualZero_quandoNaoHaEmbargo() {
         stubsBase();
         when(imovelRuralRepository.calcularAreaEmbargadaAgregada(1L, 61L))
-                .thenReturn(new Object[]{null, new BigDecimal("1472.88")});
+                .thenReturn(
+                    List.<Object[]>of(
+                        new Object[]{null, new BigDecimal("1472.88")}
+                    ));
 
         IAEResponse resposta = service.calcularSobreposicaoEmbargo(1L);
 
@@ -84,7 +87,12 @@ class CalculoIAEServiceTest {
         stubsBase();
         // 915030 m2 = 91,503 ha, sobre um imóvel de 1472,88 ha
         when(imovelRuralRepository.calcularAreaEmbargadaAgregada(1L, 61L))
-                .thenReturn(new Object[]{new BigDecimal("915030"), new BigDecimal("1472.88")});
+                .thenReturn(
+                    List.<Object[]>of(
+                        new Object[]{new BigDecimal("915030"), 
+                        new BigDecimal("1472.88")}
+                    )
+                );
 
         IAEResponse resposta = service.calcularSobreposicaoEmbargo(1L);
 

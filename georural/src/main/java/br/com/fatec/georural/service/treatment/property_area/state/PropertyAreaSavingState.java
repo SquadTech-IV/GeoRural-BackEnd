@@ -66,18 +66,25 @@ public class PropertyAreaSavingState implements PropertyAreaState {
                 return municipioRepository.save(novo);
             });
 
-            ImovelRural imovel = new ImovelRural();
-            imovel.setCodigoCar((String) feature.getAttribute("recibo"));
-            imovel.setGeometria((Geometry) feature.getDefaultGeometry());
+            String codigoCar = (String) feature.getAttribute("recibo");
 
-            Number area = (Number) feature.getAttribute("area");
-            imovel.setAreaTotal(BigDecimal.valueOf(area.doubleValue()));
+            if (imovelRepository.findByCodigoCar(codigoCar).isEmpty()) {
 
-            imovel.setMunicipio(municipio);
-            imovel.setArquivoBruto(arquivoBruto);
-            imovel.setVersao(versao);
+                ImovelRural novo = new ImovelRural();
 
-            imovelRepository.save(imovel);
+                novo.setCodigoCar(codigoCar);
+                novo.setGeometria((Geometry) feature.getDefaultGeometry());
+
+                Number area = (Number) feature.getAttribute("area");
+                novo.setAreaTotal(BigDecimal.valueOf(area.doubleValue()));
+
+                novo.setMunicipio(municipio);
+                novo.setArquivoBruto(arquivoBruto);
+                novo.setVersao(versao);
+
+                imovelRepository.save(novo);
+            }
+
             totalSalvos++;
         }
 

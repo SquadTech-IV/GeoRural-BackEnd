@@ -22,7 +22,7 @@ class CalculoIAEServiceIntegrationTest {
 
     @Test
     void calcular_deveRetornarAreaProximaDaMedidaManualmente() {
-        Long imovelId = 41L;
+        Long imovelId = 121L;
         BigDecimal areaEsperadaHa = new BigDecimal("91.503");
         BigDecimal tolerancia = new BigDecimal("1.83"); // ~2% de 91.503
 

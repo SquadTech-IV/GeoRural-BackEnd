@@ -16,6 +16,8 @@ import org.geotools.data.simple.SimpleFeatureCollection;
 import org.geotools.data.simple.SimpleFeatureIterator;
 import org.geotools.feature.DefaultFeatureCollection;
 import org.locationtech.jts.geom.Geometry;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import br.com.fatec.georural.config.SpringContextHolder;
 import br.com.fatec.georural.entity.ArquivoBruto;
@@ -34,6 +36,8 @@ public class MetadataResolutionState implements EmbargoState {
     private static final String ORGAO_FONTE = "IBAMA / ICMBio";
     private static final String NOME_CONJUNTO = "Embargos Ambientais Federais";
     private static final String TIPO_CAMADA = "EMBARGO";
+
+    private static final Logger log = LoggerFactory.getLogger(MetadataResolutionState.class);
 
     // Caminho fixo do shapefile com o limite do estado do Paraná (recorte
     // do shapefile de limites estaduais do IBGE, filtrado só pro PR).
@@ -69,7 +73,11 @@ public class MetadataResolutionState implements EmbargoState {
             return conjuntoRepository.save(novo);
         });
 
+        log.info("CALCULANDO HASH");        
+
         String hash = calcularHash(context.getEmbargoFile());
+
+        System.out.println("HASH CALCULADO: " + hash);
 
         // arq_hash é UNIQUE — reaproveita se o mesmo arquivo já foi processado antes
         ArquivoBruto arquivoBruto = arquivoRepository.findByHash(hash).orElseGet(() -> {
@@ -84,7 +92,6 @@ public class MetadataResolutionState implements EmbargoState {
             novo.setDataUpload(LocalDateTime.now());
             return arquivoRepository.save(novo);
         });
-
         long proximoNumero = versaoRepository.findTopByConjuntoOrderByNumeroDesc(conjunto)
                 .map(v -> v.getNumero() + 1)
                 .orElse(1L);
