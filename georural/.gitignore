@@ -32,8 +32,8 @@ build/
 ### VS Code ###
 .vscode/
 
-# Credenciais -
-wallet/
+### Credenciais ###
 .env
-application-local.properties
 wallet/
+*.pem
+application-local.properties
