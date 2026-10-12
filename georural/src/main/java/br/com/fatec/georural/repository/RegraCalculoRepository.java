@@ -8,5 +8,9 @@ import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface RegraCalculoRepository extends JpaRepository<RegraCalculo, Long> {
+
     Optional<RegraCalculo> findByIndicadorAndVigente(Indicador indicador, String vigente);
+
+    /** Base para criar as versoes */
+    long countByIndicador(Indicador indicador);
 }
