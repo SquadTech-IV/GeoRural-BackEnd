@@ -33,6 +33,7 @@ public class RegraCalculoService {
 
     @Transactional
     public RegraCalculoResponse criarNovaVersao(String sigla, CriarVersaoRegraRequest request) {
+
         if (isBlank(request.motivo())) {
             throw new RequisicaoInvalidaException("O motivo e obrigatorio para criar uma nova versao.");
         }
@@ -46,6 +47,10 @@ public class RegraCalculoService {
                 .findByIndicadorAndVigente(indicador, "S")
                 .orElse(null);
 
+        if (atual != null) {
+            atual.setVigente("N");
+            regraCalculoRepository.saveAndFlush(atual);
+        }
 
         long qtdVersoes = regraCalculoRepository.countByIndicador(indicador);
         String novoNumero = "v" + (qtdVersoes + 1);
@@ -87,7 +92,7 @@ public class RegraCalculoService {
             return atual.getFormula();
         }
         throw new RequisicaoInvalidaException(
-                "A formula é obrigatoria quando o indicador ainda nao tem regra vigente.");
+                "A formula e obrigatoria quando o indicador ainda nao tem regra vigente.");
     }
 
     private boolean isBlank(String valor) {
