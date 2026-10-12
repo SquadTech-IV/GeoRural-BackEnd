@@ -22,18 +22,20 @@ public class RegraCalculoService {
     private final RegraCalculoRepository regraCalculoRepository;
     private final ParametroRegraCalculoRepository parametroRegraCalculoRepository;
     private final IndicadorService indicadorService;
+    private final ParametroRegraValidador parametroRegraValidador;
 
     public RegraCalculoService(RegraCalculoRepository regraCalculoRepository,
                                ParametroRegraCalculoRepository parametroRegraCalculoRepository,
-                               IndicadorService indicadorService) {
+                               IndicadorService indicadorService,
+                               ParametroRegraValidador parametroRegraValidador) {
         this.regraCalculoRepository = regraCalculoRepository;
         this.parametroRegraCalculoRepository = parametroRegraCalculoRepository;
         this.indicadorService = indicadorService;
+        this.parametroRegraValidador = parametroRegraValidador;
     }
 
     @Transactional
     public RegraCalculoResponse criarNovaVersao(String sigla, CriarVersaoRegraRequest request) {
-
         if (isBlank(request.motivo())) {
             throw new RequisicaoInvalidaException("O motivo e obrigatorio para criar uma nova versao.");
         }
@@ -41,7 +43,9 @@ public class RegraCalculoService {
             throw new RequisicaoInvalidaException("O autor e obrigatorio para criar uma nova versao.");
         }
 
-        Indicador indicador = indicadorService.buscarEntidade(sigla); // 404 se a sigla nao existir
+        parametroRegraValidador.validar(request.parametros());
+
+        Indicador indicador = indicadorService.buscarEntidade(sigla);
 
         RegraCalculo atual = regraCalculoRepository
                 .findByIndicadorAndVigente(indicador, "S")
@@ -72,10 +76,10 @@ public class RegraCalculoService {
             for (ParametroInput entrada : request.parametros()) {
                 ParametroRegraCalculo parametro = new ParametroRegraCalculo();
                 parametro.setRegraCalculo(salva);
-                parametro.setNome(entrada.nome());
-                parametro.setTipo(entrada.tipo());
+                parametro.setNome(entrada.nome().trim());
+                parametro.setTipo(entrada.tipo().trim().toUpperCase());
                 parametro.setUnidade(entrada.unidade());
-                parametro.setValor(entrada.valor());
+                parametro.setValor(entrada.valor().trim());
                 parametros.add(parametro);
             }
             parametroRegraCalculoRepository.saveAll(parametros);
