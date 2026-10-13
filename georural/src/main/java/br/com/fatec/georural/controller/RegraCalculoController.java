@@ -6,6 +6,8 @@ import br.com.fatec.georural.service.RegraCalculoService;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/indicadores/{sigla}/regras")
 public class RegraCalculoController {
@@ -22,5 +24,15 @@ public class RegraCalculoController {
             @PathVariable String sigla,
             @RequestBody CriarVersaoRegraRequest request) {
         return regraCalculoService.criarNovaVersao(sigla, request);
+    }
+
+    @GetMapping
+    public RegraCalculoResponse buscarVigente(@PathVariable String sigla) {
+        return regraCalculoService.buscarVigente(sigla);
+    }
+
+    @GetMapping("/historico")
+    public List<RegraCalculoResponse> listarHistorico(@PathVariable String sigla) {
+        return regraCalculoService.listarHistorico(sigla);
     }
 }

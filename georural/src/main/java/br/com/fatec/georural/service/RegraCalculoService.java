@@ -7,6 +7,7 @@ import br.com.fatec.georural.entity.Indicador;
 import br.com.fatec.georural.entity.ParametroRegraCalculo;
 import br.com.fatec.georural.entity.RegraCalculo;
 import br.com.fatec.georural.exception.EstadoInconsistenteException;
+import br.com.fatec.georural.exception.RecursoNaoEncontradoException;
 import br.com.fatec.georural.exception.RequisicaoInvalidaException;
 import br.com.fatec.georural.repository.ParametroRegraCalculoRepository;
 import br.com.fatec.georural.repository.RegraCalculoRepository;
@@ -19,7 +20,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-
 
 @Service
 public class RegraCalculoService {
@@ -39,6 +39,26 @@ public class RegraCalculoService {
         this.parametroRegraValidador = parametroRegraValidador;
     }
 
+    @Transactional(readOnly = true)
+    public RegraCalculoResponse buscarVigente(String sigla) {
+        Indicador indicador = indicadorService.buscarEntidade(sigla); // 404 se a sigla nao existir
+        RegraCalculo vigente = regraCalculoRepository
+                .findByIndicadorAndVigente(indicador, "S")
+                .orElseThrow(() -> new RecursoNaoEncontradoException(
+                        "Nenhuma regra vigente para o indicador " + sigla + "."));
+        return RegraCalculoResponse.de(vigente, parametrosDe(vigente));
+    }
+
+    /** Historico completo do indicador */
+    @Transactional(readOnly = true)
+    public List<RegraCalculoResponse> listarHistorico(String sigla) {
+        Indicador indicador = indicadorService.buscarEntidade(sigla); // 404 se a sigla nao existir
+        return regraCalculoRepository.findByIndicadorOrderByDataCriacaoDesc(indicador).stream()
+                .map(regra -> RegraCalculoResponse.de(regra, parametrosDe(regra)))
+                .toList();
+    }
+
+
     @Transactional
     public RegraCalculoResponse criarNovaVersao(String sigla, CriarVersaoRegraRequest request) {
 
@@ -48,7 +68,6 @@ public class RegraCalculoService {
         if (isBlank(request.autor())) {
             throw new RequisicaoInvalidaException("O autor e obrigatorio para criar uma nova versao.");
         }
-
 
         parametroRegraValidador.validar(request.parametros());
 
@@ -106,6 +125,10 @@ public class RegraCalculoService {
         return RegraCalculoResponse.de(salva, parametros);
     }
 
+    private List<ParametroRegraCalculo> parametrosDe(RegraCalculo regra) {
+        return parametroRegraCalculoRepository.findByRegraCalculo(regra);
+    }
+
     private boolean semAlteracao(CriarVersaoRegraRequest request, RegraCalculo atual) {
         String novaFormula = resolverFormula(request, atual);
         String novaDescricao = request.descricao() != null ? request.descricao() : atual.getDescricao();
@@ -116,8 +139,7 @@ public class RegraCalculoService {
             return false;
         }
         Map<String, String> novos = mapaDosInputs(request.parametros());
-        Map<String, String> atuais = mapaDasEntidades(
-                parametroRegraCalculoRepository.findByRegraCalculo(atual));
+        Map<String, String> atuais = mapaDasEntidades(parametrosDe(atual));
         return novos.equals(atuais);
     }
 
