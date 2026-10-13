@@ -17,4 +17,6 @@ public interface RegraCalculoRepository extends JpaRepository<RegraCalculo, Long
     long countByIndicadorAndVigente(Indicador indicador, String vigente);
 
     List<RegraCalculo> findByIndicadorOrderByDataCriacaoDesc(Indicador indicador);
+    
+    Optional<RegraCalculo> findByIndicadorAndVersao(Indicador indicador, String versao);
 }

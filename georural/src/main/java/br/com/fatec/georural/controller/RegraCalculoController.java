@@ -35,4 +35,11 @@ public class RegraCalculoController {
     public List<RegraCalculoResponse> listarHistorico(@PathVariable String sigla) {
         return regraCalculoService.listarHistorico(sigla);
     }
+
+    @GetMapping("/{versao}")
+    public RegraCalculoResponse buscarVersao(
+            @PathVariable String sigla,
+            @PathVariable String versao) {
+        return regraCalculoService.buscarVersao(sigla, versao);
+    }
 }

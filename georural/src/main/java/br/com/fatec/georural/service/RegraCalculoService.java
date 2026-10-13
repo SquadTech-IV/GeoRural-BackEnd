@@ -39,6 +39,8 @@ public class RegraCalculoService {
         this.parametroRegraValidador = parametroRegraValidador;
     }
 
+
+    /** Regra vigente do indicador. */
     @Transactional(readOnly = true)
     public RegraCalculoResponse buscarVigente(String sigla) {
         Indicador indicador = indicadorService.buscarEntidade(sigla); // 404 se a sigla nao existir
@@ -49,13 +51,25 @@ public class RegraCalculoService {
         return RegraCalculoResponse.de(vigente, parametrosDe(vigente));
     }
 
-    /** Historico completo do indicador */
+    /** Historico completo do indicador. */
     @Transactional(readOnly = true)
     public List<RegraCalculoResponse> listarHistorico(String sigla) {
         Indicador indicador = indicadorService.buscarEntidade(sigla); // 404 se a sigla nao existir
         return regraCalculoRepository.findByIndicadorOrderByDataCriacaoDesc(indicador).stream()
                 .map(regra -> RegraCalculoResponse.de(regra, parametrosDe(regra)))
                 .toList();
+    }
+
+    /** Versao especifica do indicador */
+    @Transactional(readOnly = true)
+    public RegraCalculoResponse buscarVersao(String sigla, String versao) {
+        Indicador indicador = indicadorService.buscarEntidade(sigla); // 404 se a sigla nao existir
+        String versaoNormalizada = normalizarVersao(versao);
+        RegraCalculo regra = regraCalculoRepository
+                .findByIndicadorAndVersao(indicador, versaoNormalizada)
+                .orElseThrow(() -> new RecursoNaoEncontradoException(
+                        "Versao " + versao + " nao encontrada para o indicador " + sigla + "."));
+        return RegraCalculoResponse.de(regra, parametrosDe(regra));
     }
 
 
@@ -127,6 +141,17 @@ public class RegraCalculoService {
 
     private List<ParametroRegraCalculo> parametrosDe(RegraCalculo regra) {
         return parametroRegraCalculoRepository.findByRegraCalculo(regra);
+    }
+
+    private String normalizarVersao(String versao) {
+        if (versao == null) {
+            return null;
+        }
+        String v = versao.trim().toLowerCase();
+        if (v.matches("\\d+")) {
+            v = "v" + v;
+        }
+        return v;
     }
 
     private boolean semAlteracao(CriarVersaoRegraRequest request, RegraCalculo atual) {
