@@ -25,6 +25,12 @@ public class GlobalExceptionHandler {
         return montar(HttpStatus.CONFLICT, ex.getMessage(), req);
     }
 
+    @ExceptionHandler(RequisicaoInvalidaException.class)
+    public ResponseEntity<ErroResponse> tratarRequisicaoInvalida(
+            RequisicaoInvalidaException ex, HttpServletRequest req) {
+        return montar(HttpStatus.BAD_REQUEST, ex.getMessage(), req);
+    }
+
     @ExceptionHandler(EstadoInconsistenteException.class)
     public ResponseEntity<ErroResponse> tratarEstadoInconsistente(
             EstadoInconsistenteException ex, HttpServletRequest req) {
@@ -38,8 +44,7 @@ public class GlobalExceptionHandler {
         return montar(HttpStatus.BAD_REQUEST, mensagem, req);
     }
 
-    // rede de seguranca: qualquer erro nao previsto vira 500 padronizado
-    // rede de seguranca: qualquer erro nao previsto vira 500 padronizado
+    // erro de seguranca: qualquer erro nao previsto vira 500 padronizado
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErroResponse> tratarGenerico(
             Exception ex, HttpServletRequest req) {
@@ -59,6 +64,4 @@ public class GlobalExceptionHandler {
                 req.getRequestURI());
         return ResponseEntity.status(status).body(corpo);
     }
-
-
 }
