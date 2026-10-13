@@ -11,6 +11,7 @@ public interface RegraCalculoRepository extends JpaRepository<RegraCalculo, Long
 
     Optional<RegraCalculo> findByIndicadorAndVigente(Indicador indicador, String vigente);
 
-    /** Base para criar as versoes */
     long countByIndicador(Indicador indicador);
+
+    long countByIndicadorAndVigente(Indicador indicador, String vigente);
 }

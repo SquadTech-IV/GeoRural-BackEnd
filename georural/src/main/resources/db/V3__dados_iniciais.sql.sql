@@ -57,8 +57,8 @@ INSERT INTO REGRA_CALCULO (ind_id, rca_versao, rca_formula, rca_descricao, rca_v
         'Supressão dentro do imóvel a partir de cada marco legal.', 'S'
  FROM INDICADOR WHERE ind_sigla = 'IDESMAT';
 INSERT INTO REGRA_CALCULO (ind_id, rca_versao, rca_formula, rca_descricao, rca_vigente)
- SELECT ind_id, 'v1', 'qtd_focos(imovel) / area(imovel) * fator',
-        'Focos no imóvel proporcionais à área, por fator de hectares.', 'S'
+ SELECT ind_id, 'v1', 'qtd_focos(imovel, periodo) / area(imovel) * fator',
+        'Focos no imóvel no período apurado, proporcionais à área, por fator de hectares.', 'S'
  FROM INDICADOR WHERE ind_sigla = 'IFC';
 
 -- Parametros das regras
@@ -82,6 +82,10 @@ INSERT INTO PARAMETRO_REGRA_CALCULO (rca_id, prc_nome, prc_tipo, prc_unidade, pr
 
 INSERT INTO PARAMETRO_REGRA_CALCULO (rca_id, prc_nome, prc_tipo, prc_unidade, prc_valor)
  SELECT r.rca_id, 'fator_area', 'NUMERO', 'ha', '1000'
+ FROM REGRA_CALCULO r JOIN INDICADOR i ON i.ind_id = r.ind_id
+ WHERE i.ind_sigla = 'IFC' AND r.rca_versao = 'v1';
+INSERT INTO PARAMETRO_REGRA_CALCULO (rca_id, prc_nome, prc_tipo, prc_unidade, prc_valor)
+ SELECT r.rca_id, 'periodo_meses', 'NUMERO', 'meses', '12'
  FROM REGRA_CALCULO r JOIN INDICADOR i ON i.ind_id = r.ind_id
  WHERE i.ind_sigla = 'IFC' AND r.rca_versao = 'v1';
 
