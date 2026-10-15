@@ -36,7 +36,7 @@ CREATE TABLE AUDITORIA (
     aud_data_hora        TIMESTAMP     DEFAULT SYSTIMESTAMP NOT NULL,
     CONSTRAINT pk_auditoria PRIMARY KEY (aud_id),
     CONSTRAINT fk_aud_usuario FOREIGN KEY (usu_id) REFERENCES USUARIO (usu_id),
-    CONSTRAINT ck_aud_operacao CHECK (aud_operacao IN ('INSERT','UPDATE','DELETE','LOGIN','EXPORT')),
+    CONSTRAINT ck_aud_operacao CHECK (aud_operacao IN ('INSERT','UPDATE','DELETE','LOGIN','LOGOUT','EXPORT','DOWNLOAD','API_ACCESS')),
     CONSTRAINT ck_aud_antigos_json CHECK (aud_dados_antigos IS NULL OR aud_dados_antigos IS JSON),
     CONSTRAINT ck_aud_novos_json   CHECK (aud_dados_novos  IS NULL OR aud_dados_novos  IS JSON)
 );
@@ -436,13 +436,20 @@ CREATE TABLE RESULTADO_INDICADOR (
     rin_valor_hectares   NUMBER(14,4),
     rin_valor_absoluto   NUMBER(14,4),
     rin_data_calculo     TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL,
+    rin_situacao         VARCHAR2(20),
+    rin_vigente          CHAR(1)   DEFAULT 'S' NOT NULL,
+    rin_features         CLOB,
+    rin_detalhes         CLOB,
     CONSTRAINT pk_resultado_ind PRIMARY KEY (rin_id),
     CONSTRAINT uk_rin_imo_ind_ver UNIQUE (imo_id, ind_id, ver_id),
     CONSTRAINT fk_rin_imovel    FOREIGN KEY (imo_id) REFERENCES IMOVEL_RURAL (imo_id),
     CONSTRAINT fk_rin_indicador FOREIGN KEY (ind_id) REFERENCES INDICADOR (ind_id),
     CONSTRAINT fk_rin_versao    FOREIGN KEY (ver_id) REFERENCES VERSAO (ver_id),
     CONSTRAINT fk_rin_execucao  FOREIGN KEY (exe_id) REFERENCES EXECUCAO_PIPELINE (exe_id),
-    CONSTRAINT fk_rin_regra     FOREIGN KEY (rca_id) REFERENCES REGRA_CALCULO (rca_id)
+    CONSTRAINT fk_rin_regra     FOREIGN KEY (rca_id) REFERENCES REGRA_CALCULO (rca_id),
+    CONSTRAINT ck_rin_vigente   CHECK (rin_vigente IN ('S','N')),
+    CONSTRAINT ck_rin_features_json CHECK (rin_features IS NULL OR rin_features IS JSON),
+    CONSTRAINT ck_rin_detalhes_json CHECK (rin_detalhes IS NULL OR rin_detalhes IS JSON)
 );
 
 CREATE TABLE RESULTADO_MUNICIPIO (
@@ -451,12 +458,17 @@ CREATE TABLE RESULTADO_MUNICIPIO (
     ind_id             NUMBER     NOT NULL,
     ver_id             NUMBER     NOT NULL,
     rmu_valor_agregado NUMBER(16,4),
+    rmu_situacao       VARCHAR2(20),
+    rmu_vigente        CHAR(1)    DEFAULT 'S' NOT NULL,
+    rmu_detalhes       CLOB,
     rmu_data_calculo   TIMESTAMP  DEFAULT SYSTIMESTAMP NOT NULL,
     CONSTRAINT pk_resultado_mun PRIMARY KEY (rmu_id),
     CONSTRAINT uk_rmu_mun_ind_ver UNIQUE (mun_id, ind_id, ver_id),
     CONSTRAINT fk_rmu_municipio FOREIGN KEY (mun_id) REFERENCES MUNICIPIO (mun_id),
     CONSTRAINT fk_rmu_indicador FOREIGN KEY (ind_id) REFERENCES INDICADOR (ind_id),
-    CONSTRAINT fk_rmu_versao    FOREIGN KEY (ver_id) REFERENCES VERSAO (ver_id)
+    CONSTRAINT fk_rmu_versao    FOREIGN KEY (ver_id) REFERENCES VERSAO (ver_id),
+    CONSTRAINT ck_rmu_vigente   CHECK (rmu_vigente IN ('S','N')),
+    CONSTRAINT ck_rmu_detalhes_json CHECK (rmu_detalhes IS NULL OR rmu_detalhes IS JSON)
 );
 
 -- Metadados e indices espaciais
@@ -515,5 +527,7 @@ CREATE UNIQUE INDEX uk_regra_vigente_ind ON REGRA_CALCULO (CASE WHEN rca_vigente
 CREATE INDEX idx_param_regra        ON PARAMETRO_REGRA_CALCULO(rca_id);
 CREATE INDEX idx_rin_versao         ON RESULTADO_INDICADOR(ver_id);
 CREATE INDEX idx_rin_imovel         ON RESULTADO_INDICADOR(imo_id);
+CREATE UNIQUE INDEX uk_resultado_vigente     ON RESULTADO_INDICADOR (CASE WHEN rin_vigente = 'S' THEN imo_id END, CASE WHEN rin_vigente = 'S' THEN ind_id END);
 CREATE INDEX idx_rmu_versao         ON RESULTADO_MUNICIPIO(ver_id);
+CREATE UNIQUE INDEX uk_resultado_mun_vigente ON RESULTADO_MUNICIPIO (CASE WHEN rmu_vigente = 'S' THEN mun_id END, CASE WHEN rmu_vigente = 'S' THEN ind_id END);
 CREATE INDEX idx_auditoria_usu      ON AUDITORIA(usu_id);
