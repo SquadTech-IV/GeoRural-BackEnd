@@ -13,4 +13,6 @@ public interface ResultadoIndicadorRepository extends JpaRepository<ResultadoInd
     Optional<ResultadoIndicador> findTopByImovelIdAndIndicadorOrderByDataCalculoDesc(Long imovelId, Indicador indicador);
 
     Optional<ResultadoIndicador> findByImovelIdAndIndicadorAndVersao(Long imovelId, Indicador indicador, Versao versao);
+
+    Optional<ResultadoIndicador> findByImovelIdAndIndicadorAndVigente(Long imovelId, Indicador indicador, String vigente);
 }
