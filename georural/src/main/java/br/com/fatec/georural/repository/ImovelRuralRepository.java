@@ -60,4 +60,32 @@ public interface ImovelRuralRepository extends JpaRepository<ImovelRural, Long> 
         WHERE i.imo_id = :imovelId
         """, nativeQuery = true)
     List<Object[]> encontrarEmbargosIntersectantes(@Param("imovelId") Long imovelId);
+
+    // espacial do IRL (Reserva Legal)
+    @Query(value = """
+        SELECT
+            SDO_GEOM.SDO_AREA(
+                SDO_GEOM.SDO_INTERSECTION(
+                    i.imo_geometria,
+                    (SELECT SDO_AGGR_UNION(SDOAGGRTYPE(rl.rle_geometria, 0.5))
+                     FROM RESERVA_LEGAL rl
+                     WHERE rl.imo_id = i.imo_id),
+                    0.5
+                ), 0.5
+            ) AS areaReservaLegalM2,
+            i.imo_area_total AS areaTotalHa
+        FROM IMOVEL_RURAL i
+        WHERE i.imo_id = :imovelId
+        """, nativeQuery = true)
+    Object[] calcularAreaReservaLegalAgregada(@Param("imovelId") Long imovelId);
+
+    // GeoJSON da Reserva Legal do imovel
+    @Query(value = """
+        SELECT SDO_UTIL.TO_GEOJSON(
+            (SELECT SDO_AGGR_UNION(SDOAGGRTYPE(rl.rle_geometria, 0.5))
+             FROM RESERVA_LEGAL rl
+             WHERE rl.imo_id = :id)
+        ) FROM DUAL
+        """, nativeQuery = true)
+    Object buscarReservaLegalGeoJson(@Param("id") Long id);
 }
