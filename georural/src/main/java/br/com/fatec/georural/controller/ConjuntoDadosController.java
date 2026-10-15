@@ -19,4 +19,8 @@ public class ConjuntoDadosController {
     public TrajetoriaResponse trajetoria(@PathVariable Long id) {
         return trajetoriaService.consultarTrajetoria(id);
     }
+    @GetMapping("/{id}/status-atual")
+    public StatusAtualResponse statusAtual(@PathVariable Long id) {
+        return trajetoriaService.consultarStatusAtual(id);
+    }
 }
