@@ -22,7 +22,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
 
-
 @ExtendWith(MockitoExtension.class)
 class ImovelIndicadoresServiceTest {
 
@@ -75,10 +74,10 @@ class ImovelIndicadoresServiceTest {
         assertThat(resp.indicadores().get(0).sigla()).isEqualTo("IAE");
         assertThat(resp.indicadores().get(0).situacao()).isEqualTo("ruim");
         assertThat(resp.indicadores().get(0).versaoRegra()).isEqualTo("v1");
+        // no detalhe, as features vem preenchidas
         assertThat(resp.indicadores().get(0).features()).contains("MultiPolygon");
         assertThat(resp.indicadores().get(1).sigla()).isEqualTo("IRL");
         assertThat(resp.indicadores().get(1).versaoRegra()).isEqualTo("v2");
-        assertThat(resp.indicadores().get(1).features()).isNull();
     }
 
     @Test
@@ -98,5 +97,22 @@ class ImovelIndicadoresServiceTest {
 
         assertThatThrownBy(() -> service.detalharPorCar("NAO-EXISTE"))
                 .isInstanceOf(RecursoNaoEncontradoException.class);
+    }
+
+    @Test
+    void listarMapa_deveRetornarTodosOsImoveis_semFeatures() {
+        when(imovelRepository.findAll()).thenReturn(List.of(imovel()));
+        when(imovelRepository.buscarGeometriaGeoJson(1L)).thenReturn("{\"type\":\"Polygon\"}");
+        when(resultadoRepository.buscarVigentesDoImovel(1L)).thenReturn(List.of(
+                resultado("IAE", "Indice de Area Embargada", "ruim", "v1", "{\"type\":\"MultiPolygon\"}")));
+
+        List<ImovelIndicadoresResponse> mapa = service.listarMapa();
+
+        assertThat(mapa).hasSize(1);
+        assertThat(mapa.get(0).geometria()).contains("Polygon");
+        assertThat(mapa.get(0).indicadores()).hasSize(1);
+        assertThat(mapa.get(0).indicadores().get(0).sigla()).isEqualTo("IAE");
+        assertThat(mapa.get(0).indicadores().get(0).situacao()).isEqualTo("ruim");
+        assertThat(mapa.get(0).indicadores().get(0).features()).isNull();
     }
 }

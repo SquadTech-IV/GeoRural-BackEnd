@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import java.sql.Clob;
 import java.util.List;
 
+
 @Service
 public class ImovelIndicadoresService {
 
@@ -37,9 +38,32 @@ public class ImovelIndicadoresService {
 
         List<IndicadorVigenteResponse> indicadores = resultadoRepository
                 .buscarVigentesDoImovel(imovel.getId()).stream()
-                .map(this::toIndicadorVigente)
+                .map(r -> toIndicador(r, true))
                 .toList();
 
+        return montar(imovel, geometria, indicadores);
+    }
+
+    //todos os imoveis para pintar o mapa
+    public List<ImovelIndicadoresResponse> listarMapa() {
+        return imovelRepository.findAll().stream()
+                .map(this::toItemMapa)
+                .toList();
+    }
+
+    private ImovelIndicadoresResponse toItemMapa(ImovelRural imovel) {
+        String geometria = clobParaString(imovelRepository.buscarGeometriaGeoJson(imovel.getId()));
+
+        List<IndicadorVigenteResponse> indicadores = resultadoRepository
+                .buscarVigentesDoImovel(imovel.getId()).stream()
+                .map(r -> toIndicador(r, false))
+                .toList();
+
+        return montar(imovel, geometria, indicadores);
+    }
+
+    private ImovelIndicadoresResponse montar(ImovelRural imovel, String geometria,
+                                             List<IndicadorVigenteResponse> indicadores) {
         return new ImovelIndicadoresResponse(
                 imovel.getId(),
                 imovel.getCodigoCar(),
@@ -49,7 +73,7 @@ public class ImovelIndicadoresService {
                 indicadores);
     }
 
-    private IndicadorVigenteResponse toIndicadorVigente(ResultadoIndicador r) {
+    private IndicadorVigenteResponse toIndicador(ResultadoIndicador r, boolean comFeatures) {
         var indicador = r.getIndicador();
         String versaoRegra = r.getRegraCalculo() != null ? r.getRegraCalculo().getVersao() : null;
         return new IndicadorVigenteResponse(
@@ -61,9 +85,10 @@ public class ImovelIndicadoresService {
                 r.getValorHectares(),
                 r.getValorAbsoluto(),
                 versaoRegra,
-                r.getFeatures());
+                comFeatures ? r.getFeatures() : null);
     }
 
+    //converte o CLOB do TO_GEOJSON em texto
     private String clobParaString(Object valor) {
         if (valor == null) {
             return null;
