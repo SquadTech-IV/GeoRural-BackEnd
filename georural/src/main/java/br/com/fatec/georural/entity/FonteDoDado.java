@@ -4,7 +4,6 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
@@ -22,28 +21,19 @@ public class FonteDoDado {
     @Column(name = "fon_nome", nullable = false)
     private String nome;
 
-    @Column(name = "fon_orgao")
-    private String orgao;
+    @Column(name = "fon_sigla")
+    private String sigla;
 
-    @Lob
-    @Column(name = "fon_esquema_tecnico")
-    private String esquemaTecnico;
-
-    @Column(name = "fon_crs_origem")
-    private Integer crsOrigem;
-
-    @Column(name = "fon_competencia")
-    private String competencia;
-
-    @Column(name = "fon_data_cadastro")
-    private LocalDateTime dataCadastro;
+    @Column(name = "fon_esfera")
+    private String esfera;
 
     @Column(name = "fon_status", nullable = false)
-    private String status;
+    private String status = "S";
 
-    @Column(name = "fon_cobertura_temporal_inicio")
-    private LocalDate coberturaTemporalInicio;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "usu_id")
+    private Usuario usuario;
 
-    @Column(name = "fon_cobertura_temporal_fim")
-    private LocalDate coberturaTemporalFim;
+    @Column(name = "fon_data_cadastro", nullable = false)
+    private LocalDateTime dataCadastro;
 }
