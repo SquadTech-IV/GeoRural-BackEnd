@@ -2,11 +2,19 @@
 
 BEGIN
     FOR v IN (SELECT view_name FROM user_views) LOOP
-        EXECUTE IMMEDIATE 'DROP VIEW "' || v.view_name || '"';
+        BEGIN
+            EXECUTE IMMEDIATE 'DROP VIEW "' || v.view_name || '"';
+        EXCEPTION WHEN OTHERS THEN NULL;
+        END;
     END LOOP;
-    FOR t IN (SELECT table_name FROM user_tables) LOOP
-        EXECUTE IMMEDIATE 'DROP TABLE "' || t.table_name || '" CASCADE CONSTRAINTS PURGE';
+
+    FOR t IN (SELECT table_name FROM user_tables WHERE secondary = 'N') LOOP
+        BEGIN
+            EXECUTE IMMEDIATE 'DROP TABLE "' || t.table_name || '" CASCADE CONSTRAINTS PURGE';
+        EXCEPTION WHEN OTHERS THEN NULL;
+        END;
     END LOOP;
+
     DELETE FROM user_sdo_geom_metadata;
     COMMIT;
 END;
