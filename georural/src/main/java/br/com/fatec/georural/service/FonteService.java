@@ -5,7 +5,6 @@ import br.com.fatec.georural.dto.response.cadastro.FonteResponse;
 import br.com.fatec.georural.entity.FonteDoDado;
 import br.com.fatec.georural.exception.ConflitoException;
 import br.com.fatec.georural.exception.RecursoNaoEncontradoException;
-import br.com.fatec.georural.exception.RequisicaoInvalidaException;
 import br.com.fatec.georural.repository.FonteDoDadoRepository;
 
 import org.springframework.data.domain.Sort;
@@ -21,9 +20,14 @@ import java.util.Objects;
 public class FonteService {
 
     private final FonteDoDadoRepository repository;
+    private final CadastroValidacaoService validacao;
 
-    public FonteService(FonteDoDadoRepository repository) {
+    public FonteService(
+        FonteDoDadoRepository repository,
+        CadastroValidacaoService validacao
+    ) {
         this.repository = repository;
+        this.validacao = validacao;
     }
 
     public List<FonteResponse> listar() {
@@ -71,9 +75,7 @@ public class FonteService {
 
     @Transactional
     public void desativar(Long id) {
-        FonteDoDado fonte = obter(id);
-
-        fonte.setStatus("N");
+        obter(id).setStatus("N");
     }
 
     @Transactional
@@ -89,45 +91,20 @@ public class FonteService {
         FonteDoDado fonte,
         FonteRequest request
     ) {
-        if (request == null) {
-            throw new RequisicaoInvalidaException(
-                "Informe os dados da fonte."
-            );
-        }
+        validacao.validarFonte(request);
 
-        String nome = CadastroCampos.obrigatorio(
-            request.nome(),
-            "nome",
-            120
-        );
+        String nome = request.nome().trim();
 
-        String sigla = CadastroCampos.obrigatorio(
-            request.sigla(),
-            "sigla",
-            20
-        ).toUpperCase(Locale.ROOT);
-
-        String orgao = CadastroCampos.obrigatorio(
-            request.orgao(),
-            "órgão responsável",
-            160
-        );
-
-        String descricao = CadastroCampos.obrigatorio(
-            request.descricao(),
-            "descrição da origem",
-            4000
-        );
-
-        String esfera = CadastroCampos.opcional(
-            request.esfera(),
-            "esfera",
-            20
-        );
+        String sigla = request.sigla()
+            .trim()
+            .toUpperCase(Locale.ROOT);
 
         repository.findByNomeIgnoreCase(nome)
             .filter(existente ->
-                !Objects.equals(existente.getId(), fonte.getId())
+                !Objects.equals(
+                    existente.getId(),
+                    fonte.getId()
+                )
             )
             .ifPresent(existente -> {
                 throw new ConflitoException(
@@ -137,7 +114,10 @@ public class FonteService {
 
         repository.findBySiglaIgnoreCase(sigla)
             .filter(existente ->
-                !Objects.equals(existente.getId(), fonte.getId())
+                !Objects.equals(
+                    existente.getId(),
+                    fonte.getId()
+                )
             )
             .ifPresent(existente -> {
                 throw new ConflitoException(
@@ -147,9 +127,15 @@ public class FonteService {
 
         fonte.setNome(nome);
         fonte.setSigla(sigla);
-        fonte.setOrgao(orgao);
-        fonte.setEsfera(esfera);
-        fonte.setDescricao(descricao);
+        fonte.setOrgao(request.orgao().trim());
+        fonte.setDescricao(request.descricao().trim());
+        fonte.setEsfera(
+            CadastroCampos.opcional(
+                request.esfera(),
+                "esfera",
+                20
+            )
+        );
     }
 
     private FonteResponse resposta(FonteDoDado fonte) {
