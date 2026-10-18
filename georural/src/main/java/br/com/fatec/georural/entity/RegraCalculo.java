@@ -31,6 +31,12 @@ public class RegraCalculo {
     @Column(name = "rca_descricao")
     private String descricao;
 
+    @Column(name = "rca_autor")
+    private String autor;
+
+    @Column(name = "rca_motivo")
+    private String motivo;
+
     @Column(name = "rca_vigente", nullable = false)
     private String vigente;
 

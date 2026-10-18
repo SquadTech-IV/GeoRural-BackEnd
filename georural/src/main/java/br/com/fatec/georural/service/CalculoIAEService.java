@@ -31,6 +31,7 @@ public class CalculoIAEService {
     private final ResultadoIndicadorRepository resultadoIndicadorRepository;
     private final IndicadorRepository indicadorRepository;
     private final RegraCalculoRepository regraCalculoRepository;
+    private final ResultadoIndicadorService resultadoIndicadorService;
     private final IAEMapper mapper;
 
     public IAEResponse calcularSobreposicaoEmbargo(Long imovelId) {
@@ -75,7 +76,10 @@ public class CalculoIAEService {
         entidade.setValorHectares(areaEmbargadaHa);        // area embargada em hectares
         entidade.setDataCalculo(LocalDateTime.now());
 
-        ResultadoIndicador salvo = resultadoIndicadorRepository.save(entidade);
+        entidade.setSituacao(areaEmbargadaHa.compareTo(BigDecimal.ZERO) > 0 ? "ruim" : "ok");
+        entidade.setFeatures(toTexto(imovelRuralRepository.buscarEmbargosGeoJson(imovelId)));
+
+        ResultadoIndicador salvo = resultadoIndicadorService.salvarComoVigente(entidade);
 
         List<Object[]> embargosRaw = imovelRuralRepository.encontrarEmbargosIntersectantes(imovelId);
         return mapper.toResponse(salvo, embargosRaw);
@@ -103,5 +107,24 @@ public class CalculoIAEService {
             throw new EstadoInconsistenteException(
                     "Valor numérico inválido: '" + valor + "' (tipo " + valor.getClass().getName() + ")");
         }
+    }
+
+    // Converte o retorno do SDO_UTIL.TO_GEOJSON (CLOB ou String) em texto
+    private String toTexto(Object valor) {
+        if (valor == null) {
+            return null;
+        }
+        if (valor instanceof String s) {
+            return s;
+        }
+        if (valor instanceof java.sql.Clob clob) {
+            try {
+                return clob.getSubString(1, (int) clob.length());
+            } catch (java.sql.SQLException e) {
+                throw new EstadoInconsistenteException(
+                        "Falha ao ler o GeoJSON dos embargos: " + e.getMessage());
+            }
+        }
+        return valor.toString();
     }
 }
