@@ -74,20 +74,36 @@ public class ArquivoDatalakeService {
                 conteudo.getConteudo());
     }
 
-    public void salvarConteudo(Long id, MultipartFile arquivo) {
-        ArquivoDatalake meta = buscarArquivo(id);
-        try {
-            ArquivoDatalakeConteudo c = new ArquivoDatalakeConteudo();
-            c.setArquivoId(meta.getId());
-            c.setContentType(arquivo.getContentType() != null
-                    ? arquivo.getContentType() : "application/zip");
-            c.setConteudo(arquivo.getBytes());
-            conteudoRepository.save(c);
-        } catch (IOException e) {
-            throw new RuntimeException("Falha ao ler o arquivo enviado", e);
-        }
+   public void salvarConteudo(Long id, MultipartFile arquivo) {
+    ArquivoDatalake metadata = buscarArquivo(id);
+
+    if (metadata.getConjunto() != null) {
+        throw new ConflitoException(
+            "O conteúdo de um arquivo vinculado não pode ser substituído. " +
+            "Envie um novo upload para preservar a origem."
+        );
     }
 
+    try {
+        ArquivoDatalakeConteudo conteudo =
+            new ArquivoDatalakeConteudo();
+
+        conteudo.setArquivoId(metadata.getId());
+        conteudo.setContentType(
+            arquivo.getContentType() == null
+                ? "application/octet-stream"
+                : arquivo.getContentType()
+        );
+        conteudo.setConteudo(arquivo.getBytes());
+
+        conteudoRepository.save(conteudo);
+    } catch (IOException erro) {
+        throw new IllegalStateException(
+            "Falha ao ler o arquivo enviado.",
+            erro
+        );
+    }
+}
     public EnvioProcessamentoResponse enviarParaProcessamento(Long id) {
         ArquivoDatalake arquivo = buscarArquivo(id);
 
