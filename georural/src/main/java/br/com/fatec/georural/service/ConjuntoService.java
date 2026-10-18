@@ -6,7 +6,6 @@ import br.com.fatec.georural.entity.ConjuntoDados;
 import br.com.fatec.georural.entity.FonteDoDado;
 import br.com.fatec.georural.exception.ConflitoException;
 import br.com.fatec.georural.exception.RecursoNaoEncontradoException;
-import br.com.fatec.georural.exception.RequisicaoInvalidaException;
 import br.com.fatec.georural.repository.ConjuntoDadosRepository;
 
 import org.springframework.data.domain.Sort;
@@ -24,13 +23,16 @@ public class ConjuntoService {
 
     private final ConjuntoDadosRepository repository;
     private final FonteService fonteService;
+    private final CadastroValidacaoService validacao;
 
     public ConjuntoService(
         ConjuntoDadosRepository repository,
-        FonteService fonteService
+        FonteService fonteService,
+        CadastroValidacaoService validacao
     ) {
         this.repository = repository;
         this.fonteService = fonteService;
+        this.validacao = validacao;
     }
 
     public List<ConjuntoResponse> listar(Long fonteId) {
@@ -92,25 +94,14 @@ public class ConjuntoService {
 
     @Transactional
     public void desativar(Long id) {
-        ConjuntoDados conjunto = obter(id);
-
-        conjunto.setSituacao("ARQUIVADO");
+        obter(id).setSituacao("ARQUIVADO");
     }
 
     private void preencher(
         ConjuntoDados conjunto,
         ConjuntoRequest request
     ) {
-        if (request == null) {
-            throw new RequisicaoInvalidaException(
-                "Informe os dados do conjunto."
-            );
-        }
-
-        CadastroCampos.validarId(
-            request.fonteId(),
-            "a fonte do conjunto"
-        );
+        validacao.validarConjunto(request);
 
         FonteDoDado fonte = fonteService.obter(
             request.fonteId()
@@ -123,55 +114,11 @@ public class ConjuntoService {
             );
         }
 
-        String nome = CadastroCampos.obrigatorio(
-            request.nome(),
-            "nome do conjunto",
-            160
-        );
+        String nome = request.nome().trim();
 
-        String tipoCamada = CadastroCampos.obrigatorio(
-            request.tipoCamada(),
-            "tipo de camada",
-            30
-        ).toUpperCase(Locale.ROOT);
-
-        String descricao = CadastroCampos.opcional(
-            request.descricao(),
-            "descrição",
-            400
-        );
-
-        String esquemaTecnico = CadastroCampos.obrigatorio(
-            request.esquemaTecnico(),
-            "esquema técnico",
-            20000
-        );
-
-        String competencia = CadastroCampos.obrigatorio(
-            request.competencia(),
-            "competência",
-            40
-        );
-
-        String cobertura = CadastroCampos.obrigatorio(
-            request.cobertura(),
-            "cobertura",
-            30
-        );
-
-        String periodicidade = CadastroCampos.opcional(
-            request.periodicidade(),
-            "periodicidade",
-            20
-        );
-
-        Integer srs = request.srs();
-
-        if (srs == null || srs <= 0 || srs > 999999) {
-            throw new RequisicaoInvalidaException(
-                "Informe um código EPSG entre 1 e 999999."
-            );
-        }
+        String tipoCamada = request.tipoCamada()
+            .trim()
+            .toUpperCase(Locale.ROOT);
 
         if (conjunto.getId() != null) {
             boolean mudouFonte = !Objects.equals(
@@ -211,15 +158,27 @@ public class ConjuntoService {
         conjunto.setFonte(fonte);
         conjunto.setNome(nome);
         conjunto.setTipoCamada(tipoCamada);
-        conjunto.setDescricao(descricao);
-        conjunto.setEsquemaTecnico(esquemaTecnico);
-        conjunto.setSrs(srs);
-        conjunto.setCompetencia(competencia);
-        conjunto.setCobertura(cobertura);
+        conjunto.setDescricao(
+            CadastroCampos.opcional(
+                request.descricao(),
+                "descrição",
+                400
+            )
+        );
+        conjunto.setEsquemaTecnico(
+            request.esquemaTecnico().trim()
+        );
+        conjunto.setSrs(request.srs());
+        conjunto.setCompetencia(
+            request.competencia().trim()
+        );
+        conjunto.setCobertura(
+            request.cobertura().trim()
+        );
         conjunto.setPeriodicidade(
-            periodicidade == null
-                ? null
-                : periodicidade.toUpperCase(Locale.ROOT)
+            validacao.normalizarPeriodicidade(
+                request.periodicidade()
+            )
         );
     }
 
