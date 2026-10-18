@@ -1,6 +1,7 @@
 package br.com.fatec.georural.dto.response.cadastro;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 public record FonteResponse(
     Long id,
@@ -10,5 +11,6 @@ public record FonteResponse(
     String esfera,
     String descricao,
     boolean ativo,
-    LocalDateTime dataCadastro
+    LocalDateTime dataCadastro,
+    List<String> oferece
 ) {}

@@ -16,5 +16,10 @@ public record ConjuntoResponse(
     String periodicidade,
     String situacao,
     boolean ativo,
-    LocalDateTime dataCadastro
+    LocalDateTime dataCadastro,
+    boolean upload,
+    boolean api,
+    String endpoint,
+    String formatoApi,
+    boolean autenticacaoConfigurada
 ) {}

@@ -12,6 +12,8 @@ public interface ConjuntoDadosRepository
 
     Optional<ConjuntoDados> findByNome(String nome);
 
+    Optional<ConjuntoDados> findByFonteIdAndTipoConjuntoId(Long fonteId, Long tipoId);
+
     List<ConjuntoDados> findByFonteIdOrderByNomeAsc(Long fonteId);
 
     Optional<ConjuntoDados> findByFonteIdAndNomeIgnoreCase(

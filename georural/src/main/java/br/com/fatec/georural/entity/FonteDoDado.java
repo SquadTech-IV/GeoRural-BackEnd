@@ -5,7 +5,6 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.Lob;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 
@@ -33,15 +32,8 @@ public class FonteDoDado {
     @Column(name = "fon_sigla", length = 20)
     private String sigla;
 
-    @Column(name = "fon_orgao", length = 160)
-    private String orgao;
-
     @Column(name = "fon_esfera", length = 20)
     private String esfera;
-
-    @Lob
-    @Column(name = "fon_descricao")
-    private String descricao;
 
     @Column(name = "fon_status", nullable = false, length = 1)
     private String status = "S";

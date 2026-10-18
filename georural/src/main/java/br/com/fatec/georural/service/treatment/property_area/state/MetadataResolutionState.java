@@ -18,6 +18,7 @@ import br.com.fatec.georural.repository.ArquivoBrutoRepository;
 import br.com.fatec.georural.repository.ConjuntoDadosRepository;
 import br.com.fatec.georural.repository.FonteDoDadoRepository;
 import br.com.fatec.georural.repository.VersaoRepository;
+import br.com.fatec.georural.repository.TipoConjuntoRepository;
 import br.com.fatec.georural.service.treatment.property_area.PropertyArea;
 
 
@@ -26,7 +27,7 @@ public class MetadataResolutionState implements PropertyAreaState {
     private static final String NOME_FONTE = "CAR - Área do Imóvel";
     private static final String ORGAO_FONTE = "Serviço Florestal Brasileiro (SFB)";
     private static final String NOME_CONJUNTO = "Área do Imóvel";
-    private static final String TIPO_CAMADA = "IMOVEL"; // valor válido do CHECK con_tipo_camada
+    private static final String TIPO_CAMADA = "IMOVEL"; // código cadastrado em TIPO_CONJUNTO
 
     @Override
     public void execute(PropertyArea propertyArea) {
@@ -35,21 +36,24 @@ public class MetadataResolutionState implements PropertyAreaState {
         ConjuntoDadosRepository conjuntoRepository = SpringContextHolder.getBean(ConjuntoDadosRepository.class);
         ArquivoBrutoRepository arquivoRepository = SpringContextHolder.getBean(ArquivoBrutoRepository.class);
         VersaoRepository versaoRepository = SpringContextHolder.getBean(VersaoRepository.class);
+        TipoConjuntoRepository tipos = SpringContextHolder.getBean(TipoConjuntoRepository.class);
+        var tipo = tipos.findByCodigoIgnoreCase(TIPO_CAMADA).orElseThrow(() ->
+            new IllegalStateException("Tipo não cadastrado em TIPO_CONJUNTO: " + TIPO_CAMADA));
 
         FonteDoDado fonte = fonteRepository.findByNome(NOME_FONTE).orElseGet(() -> {
             FonteDoDado nova = new FonteDoDado();
             nova.setNome(NOME_FONTE);
-            nova.setOrgao(ORGAO_FONTE);
+            nova.setSigla("CAR");
             nova.setStatus("S"); // CHECK (fon_status IN ('S','N'))
             nova.setDataCadastro(LocalDateTime.now());
             return fonteRepository.save(nova);
         });
 
-        ConjuntoDados conjunto = conjuntoRepository.findByNome(NOME_CONJUNTO).orElseGet(() -> {
+        ConjuntoDados conjunto = conjuntoRepository.findByFonteIdAndTipoConjuntoId(fonte.getId(), tipo.getId()).orElseGet(() -> {
             ConjuntoDados novo = new ConjuntoDados();
             novo.setFonte(fonte);
             novo.setNome(NOME_CONJUNTO);
-            novo.setTipoCamada(TIPO_CAMADA);
+            novo.setTipoConjunto(tipo);
             novo.setSituacao("RASCUNHO"); // CHECK (con_situacao IN ('RASCUNHO','EM_VALIDACAO','PUBLICADO','ARQUIVADO'))
             novo.setDataCadastro(LocalDateTime.now());
             return conjuntoRepository.save(novo);

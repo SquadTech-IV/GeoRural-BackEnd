@@ -65,6 +65,10 @@ public class OrigemArquivoService {
             );
         }
 
+        if (!conjunto.permiteUpload()) {
+            throw new ConflitoException("Este conjunto não permite envio manual de arquivos.");
+        }
+
         validacao.validarConjunto(
             new ConjuntoRequest(
                 fonte.getId(),

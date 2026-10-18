@@ -26,6 +26,7 @@ import br.com.fatec.georural.repository.ArquivoBrutoRepository;
 import br.com.fatec.georural.repository.ConjuntoDadosRepository;
 import br.com.fatec.georural.repository.FonteDoDadoRepository;
 import br.com.fatec.georural.repository.VersaoRepository;
+import br.com.fatec.georural.repository.TipoConjuntoRepository;
 import br.com.fatec.georural.service.treatment.embargo.Embargo;
 
 public class MetadataResolutionState implements EmbargoState {
@@ -48,21 +49,24 @@ public class MetadataResolutionState implements EmbargoState {
         ConjuntoDadosRepository conjuntoRepository = SpringContextHolder.getBean(ConjuntoDadosRepository.class);
         ArquivoBrutoRepository arquivoRepository = SpringContextHolder.getBean(ArquivoBrutoRepository.class);
         VersaoRepository versaoRepository = SpringContextHolder.getBean(VersaoRepository.class);
+        TipoConjuntoRepository tipos = SpringContextHolder.getBean(TipoConjuntoRepository.class);
+        var tipo = tipos.findByCodigoIgnoreCase(TIPO_CAMADA).orElseThrow(() ->
+            new IllegalStateException("Tipo não cadastrado em TIPO_CONJUNTO: " + TIPO_CAMADA));
 
         FonteDoDado fonte = fonteRepository.findByNome(NOME_FONTE).orElseGet(() -> {
             FonteDoDado nova = new FonteDoDado();
             nova.setNome(NOME_FONTE);
-            nova.setOrgao(ORGAO_FONTE);
+            nova.setSigla("IBAMA/ICMBio");
             nova.setStatus("S"); // CHECK (fon_status IN ('S','N'))
             nova.setDataCadastro(LocalDateTime.now());
             return fonteRepository.save(nova);
         });
 
-        ConjuntoDados conjunto = conjuntoRepository.findByNome(NOME_CONJUNTO).orElseGet(() -> {
+        ConjuntoDados conjunto = conjuntoRepository.findByFonteIdAndTipoConjuntoId(fonte.getId(), tipo.getId()).orElseGet(() -> {
             ConjuntoDados novo = new ConjuntoDados();
             novo.setFonte(fonte);
             novo.setNome(NOME_CONJUNTO);
-            novo.setTipoCamada(TIPO_CAMADA); // CHECK: precisa ser um dos valores do enum
+            novo.setTipoConjunto(tipo); // relacionamento com TIPO_CONJUNTO
             novo.setSituacao("RASCUNHO"); // precisa ser setado explicitamente — Hibernate valida
                                            // nullable=false ANTES do DEFAULT do banco entrar em ação
             novo.setDataCadastro(LocalDateTime.now());
