@@ -52,17 +52,13 @@ public class CadastroValidacaoService {
             20
         );
 
-        CadastroCampos.obrigatorio(
-            request.orgao(),
-            "órgão responsável",
-            160
-        );
-
-        CadastroCampos.obrigatorio(
-            request.descricao(),
-            "descrição da origem",
-            4000
-        );
+        if ((request.orgao() != null && !request.orgao().isBlank())
+            || (request.descricao() != null && !request.descricao().isBlank())) {
+            throw new RequisicaoInvalidaException("O cadastro de fontes deste banco utiliza nome, sigla, esfera e tipos fornecidos; órgão e descrição não possuem armazenamento neste esquema.");
+        }
+        if (request.oferece() != null) {
+            for (String tipo : request.oferece()) CadastroCampos.obrigatorio(tipo, "tipo fornecido", 120);
+        }
 
         CadastroCampos.opcional(
             request.esfera(),
@@ -107,10 +103,10 @@ public class CadastroValidacaoService {
             20000
         );
 
-        String competencia = CadastroCampos.obrigatorio(
+        String competencia = CadastroCampos.opcional(
             request.competencia(),
             "competência",
-            40
+            20
         );
 
         CadastroCampos.obrigatorio(
@@ -127,8 +123,26 @@ public class CadastroValidacaoService {
 
         validarSrs(request.srs());
         validarEsquema(esquema);
-        validarCompetencia(competencia);
+        if (competencia != null) validarCompetencia(competencia);
         normalizarPeriodicidade(request.periodicidade());
+    }
+
+    public void validarEntradaConjunto(ConjuntoRequest request) {
+        boolean upload = !Boolean.FALSE.equals(request.upload());
+        boolean api = Boolean.TRUE.equals(request.api());
+        if (!upload && !api) throw new RequisicaoInvalidaException("Selecione Upload, API ou ambas as opções.");
+        if (!api) return;
+        String endpoint = CadastroCampos.obrigatorio(request.endpoint(), "endpoint", 500);
+        try {
+            java.net.URI url = new java.net.URI(endpoint);
+            if (url.getScheme() == null || !(url.getScheme().equalsIgnoreCase("http") || url.getScheme().equalsIgnoreCase("https")) || url.getHost() == null || url.getUserInfo() != null) throw new IllegalArgumentException();
+        } catch (Exception erro) {
+            throw new RequisicaoInvalidaException("Informe um endpoint HTTP ou HTTPS válido, sem usuário e senha na URL.");
+        }
+        if (request.formatoApi() == null || !Set.of("GeoJSON", "WFS / GML", "Shapefile (.zip)").contains(request.formatoApi())) {
+            throw new RequisicaoInvalidaException("Selecione um formato válido para a API.");
+        }
+        CadastroCampos.opcional(request.autenticacao(), "autenticação", 4000);
     }
 
     private void validarSrs(Integer srs) {

@@ -59,4 +59,8 @@ public class ConjuntoController {
 
         return ResponseEntity.noContent().build();
     }
+    @PatchMapping("/{id}/reativar")
+    public ConjuntoResponse reativar(@PathVariable Long id) {
+        return service.reativar(id);
+    }
 }
