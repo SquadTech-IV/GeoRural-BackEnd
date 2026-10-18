@@ -5,5 +5,9 @@ public record ConjuntoRequest(
     String nome,
     String tipoCamada,
     String descricao,
-    String competencia
+    String esquemaTecnico,
+    Integer srs,
+    String competencia,
+    String cobertura,
+    String periodicidade
 ) {}

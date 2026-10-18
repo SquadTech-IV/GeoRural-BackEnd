@@ -9,7 +9,11 @@ public record ConjuntoResponse(
     String nome,
     String tipoCamada,
     String descricao,
+    String esquemaTecnico,
+    Integer srs,
     String competencia,
+    String cobertura,
+    String periodicidade,
     String situacao,
     boolean ativo,
     LocalDateTime dataCadastro

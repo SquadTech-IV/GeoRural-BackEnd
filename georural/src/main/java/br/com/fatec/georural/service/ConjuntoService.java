@@ -141,11 +141,37 @@ public class ConjuntoService {
             400
         );
 
-        String competencia = CadastroCampos.opcional(
+        String esquemaTecnico = CadastroCampos.obrigatorio(
+            request.esquemaTecnico(),
+            "esquema técnico",
+            20000
+        );
+
+        String competencia = CadastroCampos.obrigatorio(
             request.competencia(),
             "competência",
             40
         );
+
+        String cobertura = CadastroCampos.obrigatorio(
+            request.cobertura(),
+            "cobertura",
+            30
+        );
+
+        String periodicidade = CadastroCampos.opcional(
+            request.periodicidade(),
+            "periodicidade",
+            20
+        );
+
+        Integer srs = request.srs();
+
+        if (srs == null || srs <= 0 || srs > 999999) {
+            throw new RequisicaoInvalidaException(
+                "Informe um código EPSG entre 1 e 999999."
+            );
+        }
 
         if (conjunto.getId() != null) {
             boolean mudouFonte = !Objects.equals(
@@ -186,7 +212,15 @@ public class ConjuntoService {
         conjunto.setNome(nome);
         conjunto.setTipoCamada(tipoCamada);
         conjunto.setDescricao(descricao);
+        conjunto.setEsquemaTecnico(esquemaTecnico);
+        conjunto.setSrs(srs);
         conjunto.setCompetencia(competencia);
+        conjunto.setCobertura(cobertura);
+        conjunto.setPeriodicidade(
+            periodicidade == null
+                ? null
+                : periodicidade.toUpperCase(Locale.ROOT)
+        );
     }
 
     private ConjuntoResponse resposta(ConjuntoDados conjunto) {
@@ -203,7 +237,11 @@ public class ConjuntoService {
             conjunto.getNome(),
             conjunto.getTipoCamada(),
             conjunto.getDescricao(),
+            conjunto.getEsquemaTecnico(),
+            conjunto.getSrs(),
             conjunto.getCompetencia(),
+            conjunto.getCobertura(),
+            conjunto.getPeriodicidade(),
             conjunto.getSituacao(),
             ativo,
             conjunto.getDataCadastro()
