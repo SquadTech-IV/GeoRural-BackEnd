@@ -13,6 +13,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import jakarta.persistence.Transient;
+import jakarta.persistence.Lob;
 
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -47,11 +48,21 @@ public class ConjuntoDados {
     @Column(name = "con_nome", nullable = false, length = 160)
     private String nome;
 
+    @Column(name = "con_tipo_camada", nullable = false, length = 30)
+    private String tipoCamada;
+
     @Column(name = "con_descricao", length = 400)
     private String descricao;
 
+    @Lob
+    @Column(name = "con_esquema_tecnico")
+    private String esquemaTecnico;
+
     @Column(name = "con_srs")
-    private Integer srs = 4674;
+    private Integer srs;
+
+    @Column(name = "con_competencia", length = 40)
+    private String competencia;
 
     @Column(name = "con_cobertura", length = 30)
     private String cobertura;
