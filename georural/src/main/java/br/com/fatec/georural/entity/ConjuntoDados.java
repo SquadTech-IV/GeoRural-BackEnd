@@ -1,6 +1,17 @@
 package br.com.fatec.georural.entity;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.Lob;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.Table;
+
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -22,42 +33,32 @@ public class ConjuntoDados {
     @JoinColumn(name = "fon_id", nullable = false)
     private FonteDoDado fonte;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "tip_id", nullable = false)
-    private TipoConjunto tipo;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "usu_id")
-    private Usuario usuario;
-
-    @Column(name = "con_nome", nullable = false)
+    @Column(name = "con_nome", nullable = false, length = 160)
     private String nome;
 
-    @Column(name = "con_descricao")
+    @Column(name = "con_tipo_camada", nullable = false, length = 30)
+    private String tipoCamada;
+
+    @Column(name = "con_descricao", length = 400)
     private String descricao;
 
-    @Column(name = "con_srs")
-    private Integer srs = 4674;
+    @Lob
+    @Column(name = "con_esquema_tecnico")
+    private String esquemaTecnico;
 
-    @Column(name = "con_cobertura")
+    @Column(name = "con_srs")
+    private Integer srs;
+
+    @Column(name = "con_competencia", length = 40)
+    private String competencia;
+
+    @Column(name = "con_cobertura", length = 30)
     private String cobertura;
 
-    @Column(name = "con_periodicidade")
+    @Column(name = "con_periodicidade", length = 20)
     private String periodicidade;
 
-    @Column(name = "con_forma_entrada", nullable = false)
-    private String formaEntrada = "UPLOAD";
-
-    @Column(name = "con_api_endpoint")
-    private String apiEndpoint;
-
-    @Column(name = "con_api_formato")
-    private String apiFormato;
-
-    @Column(name = "con_api_auth")
-    private String apiAuth;
-
-    @Column(name = "con_situacao", nullable = false)
+    @Column(name = "con_situacao", nullable = false, length = 15)
     private String situacao = "RASCUNHO";
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -66,4 +67,15 @@ public class ConjuntoDados {
 
     @Column(name = "con_data_cadastro", nullable = false)
     private LocalDateTime dataCadastro;
+
+    @PrePersist
+    void prepararCadastro() {
+        if (dataCadastro == null) {
+            dataCadastro = LocalDateTime.now();
+        }
+
+        if (situacao == null || situacao.isBlank()) {
+            situacao = "RASCUNHO";
+        }
+    }
 }
