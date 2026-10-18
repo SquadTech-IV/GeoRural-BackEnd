@@ -7,7 +7,8 @@ public record ImportacaoResponse(
         int importados,
         int jaRecebidos,
         int falhas,
-        List<ResultadoImportacaoItem> itens
+        List<ResultadoImportacaoItem> itens,
+        List<NotificacaoIngestao> notificacoes
 ) {
     public static ImportacaoResponse de(List<ResultadoImportacaoItem> itens) {
         int imp = 0, ja = 0, fal = 0;
@@ -18,6 +19,7 @@ public record ImportacaoResponse(
                 default -> fal++;
             }
         }
-        return new ImportacaoResponse(itens.size(), imp, ja, fal, List.copyOf(itens));
+        List<NotificacaoIngestao> notas = NotificacaoIngestaoFactory.construir(imp, ja, itens);
+        return new ImportacaoResponse(itens.size(), imp, ja, fal, List.copyOf(itens), notas);
     }
 }
