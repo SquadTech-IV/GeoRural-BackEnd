@@ -59,6 +59,8 @@ public class MetadataResolutionState implements PropertyAreaState {
 
         ArquivoBruto arquivoBruto = new ArquivoBruto();
         arquivoBruto.setConjunto(conjunto);
+        arquivoBruto.setAlgoritmoHash("SHA-256");
+        arquivoBruto.setCanalEntrada("UPLOAD");
         arquivoBruto.setNome(propertyArea.getPropertyAreaFile().getName());
         arquivoBruto.setFormato("SHP");
         arquivoBruto.setPathArmazenamento(propertyArea.getPropertyAreaFile().getAbsolutePath());

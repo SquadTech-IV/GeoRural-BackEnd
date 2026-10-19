@@ -46,4 +46,12 @@ public class ArquivoBruto {
 
     @Column(name = "arq_data_upload", nullable = false)
     private LocalDateTime dataUpload;
+
+    // Adicionado em decorrência da US#07
+    @Column(name = "arq_algoritmo_hash", nullable = false, length = 10)
+    private String algoritmoHash = "SHA-256";
+ 
+    @Column(name = "arq_canal_entrada", nullable = false, length = 10)
+    private String canalEntrada = "UPLOAD";
+
 }
