@@ -19,6 +19,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -28,6 +29,7 @@ public class TrajetoriaConjuntoServiceTest {
     @Mock private ArquivoBrutoRepository arquivoBrutoRepository;
     @Mock private MovimentacaoZonaRepository movimentacaoZonaRepository;
     @Mock private ValidacaoRepository validacaoRepository;
+    @Mock private ResultadoIndicadorRepository resultadoIndicadorRepository;
 
     @InjectMocks
     private TrajetoriaConjuntoService service;
@@ -191,5 +193,48 @@ public class TrajetoriaConjuntoServiceTest {
 
         assertThat(arquivoResp.zonaAtual()).isEqualTo("PUBLICADA");
         assertThat(arquivoResp.passagens()).allMatch(p -> p.status().equals("done"));
+    }
+
+    @Test
+    void deveRetornarIndicadoresGeradosQuandoMovimentacaoTiverExecucao() {
+        ConjuntoDados conjunto = conjuntoComFonte("INPE", "Focos de calor");
+        ArquivoBruto arq = arquivo(conjunto, "focos_2026-10-17.geojson");
+
+        ExecucaoPipeline exec = new ExecucaoPipeline();
+        exec.setId(77L);
+        MovimentacaoZona mov = movimentacao(arq, "PUBLICADA", LocalDateTime.of(2026, 10, 17, 3, 18), null);
+        mov.setExecucao(exec);
+
+        when(conjuntoRepository.findById(1L)).thenReturn(Optional.of(conjunto));
+        when(arquivoBrutoRepository.findByConjunto_IdOrderByDataUploadAsc(1L)).thenReturn(List.of(arq));
+        when(movimentacaoZonaRepository.findByArquivoBrutoIdOrderByDataAsc(10L)).thenReturn(List.of(mov));
+        when(validacaoRepository.findFirstByArquivoBruto_IdOrderByDataExecucaoDesc(10L)).thenReturn(Optional.empty());
+        Indicador ifc = new Indicador();
+        ifc.setSigla("IFC");
+        ifc.setNome("Índice de Focos de Calor");
+        when(resultadoIndicadorRepository.buscarIndicadoresGeradosPorExecucoes(anyCollection()))
+                .thenReturn(List.of(ifc));
+
+        var indicadores = service.consultarTrajetoriaPorArquivo(1L).arquivos().get(0).indicadoresGerados();
+
+        assertThat(indicadores).hasSize(1);
+        assertThat(indicadores.get(0).sigla()).isEqualTo("IFC");
+        assertThat(indicadores.get(0).nome()).isEqualTo("Índice de Focos de Calor");
+    }
+
+    @Test
+    void arquivoSemExecucaoNaoDeveConsultarIndicadoresEDeveRetornarListaVazia() {
+        ConjuntoDados conjunto = conjuntoComFonte("INPE", "Focos de calor");
+        ArquivoBruto arq = arquivo(conjunto, "focos_2026-10-16.geojson");
+
+        when(conjuntoRepository.findById(1L)).thenReturn(Optional.of(conjunto));
+        when(arquivoBrutoRepository.findByConjunto_IdOrderByDataUploadAsc(1L)).thenReturn(List.of(arq));
+        when(movimentacaoZonaRepository.findByArquivoBrutoIdOrderByDataAsc(10L)).thenReturn(List.of(
+                movimentacao(arq, "BRUTA", LocalDateTime.of(2026, 10, 16, 3, 0), null)));
+        when(validacaoRepository.findFirstByArquivoBruto_IdOrderByDataExecucaoDesc(10L)).thenReturn(Optional.empty());
+
+        var indicadores = service.consultarTrajetoriaPorArquivo(1L).arquivos().get(0).indicadoresGerados();
+
+        assertThat(indicadores).isEmpty();
     }
 }

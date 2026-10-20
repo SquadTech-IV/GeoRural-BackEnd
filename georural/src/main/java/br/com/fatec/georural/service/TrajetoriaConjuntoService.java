@@ -1,5 +1,6 @@
 package br.com.fatec.georural.service;
 
+import br.com.fatec.georural.dto.response.indicador.IndicadorResponse;
 import br.com.fatec.georural.dto.response.trajetoria.*;
 import br.com.fatec.georural.entity.*;
 import br.com.fatec.georural.exception.RecursoNaoEncontradoException;
@@ -18,15 +19,18 @@ public class TrajetoriaConjuntoService {
     private final ArquivoBrutoRepository arquivoBrutoRepository;
     private final MovimentacaoZonaRepository movimentacaoZonaRepository;
     private final ValidacaoRepository validacaoRepository;
+    private final ResultadoIndicadorRepository resultadoIndicadorRepository;
 
     public TrajetoriaConjuntoService(ConjuntoDadosRepository conjuntoRepository,
                                      ArquivoBrutoRepository arquivoBrutoRepository,
                                      MovimentacaoZonaRepository movimentacaoZonaRepository,
-                                     ValidacaoRepository validacaoRepository) {
+                                     ValidacaoRepository validacaoRepository,
+                                     ResultadoIndicadorRepository resultadoIndicadorRepository) {
         this.conjuntoRepository = conjuntoRepository;
         this.arquivoBrutoRepository = arquivoBrutoRepository;
         this.movimentacaoZonaRepository = movimentacaoZonaRepository;
         this.validacaoRepository = validacaoRepository;
+        this.resultadoIndicadorRepository = resultadoIndicadorRepository;
     }
 
     public List<ConjuntoResumoResponse> listarConjuntos() {
@@ -48,8 +52,11 @@ public class TrajetoriaConjuntoService {
     }
 
     private ArquivoTrajetoriaResponse montarTrajetoriaDoArquivo(ArquivoBruto arquivo) {
+        List<MovimentacaoZona> movimentacoes =
+                movimentacaoZonaRepository.findByArquivoBrutoIdOrderByDataAsc(arquivo.getId());
+
         Map<String, MovimentacaoZona> movsPorZona = new HashMap<>();
-        for (MovimentacaoZona mov : movimentacaoZonaRepository.findByArquivoBrutoIdOrderByDataAsc(arquivo.getId())) {
+        for (MovimentacaoZona mov : movimentacoes) {
             movsPorZona.put(mov.getZona(), mov); // mantém a mais recente de cada zona
         }
 
@@ -92,7 +99,25 @@ public class TrajetoriaConjuntoService {
         return new ArquivoTrajetoriaResponse(
                 arquivo.getId(), arquivo.getNome(),
                 arquivo.getConjunto().getFonte() != null ? arquivo.getConjunto().getFonte().getNome() : null,
-                arquivo.getDataUpload(), zonaAtual, passagens);
+                arquivo.getDataUpload(), zonaAtual, passagens,
+                buscarIndicadoresGerados(movimentacoes));
+    }
+
+    // Indicadores gerados a partir do arquivo: movimentação -> execução -> resultado -> indicador
+    private List<IndicadorResponse> buscarIndicadoresGerados(List<MovimentacaoZona> movimentacoes) {
+        Set<Long> execucaoIds = new HashSet<>();
+        for (MovimentacaoZona mov : movimentacoes) {
+            if (mov.getExecucao() != null) {
+                execucaoIds.add(mov.getExecucao().getId());
+            }
+        }
+        if (execucaoIds.isEmpty()) {
+            return List.of();
+        }
+        return resultadoIndicadorRepository.buscarIndicadoresGeradosPorExecucoes(execucaoIds)
+                .stream()
+                .map(IndicadorResponse::de)
+                .toList();
     }
 
     private boolean temRessalva(Validacao validacao) {

@@ -4,6 +4,7 @@ import br.com.fatec.georural.entity.ResultadoIndicador;
 import br.com.fatec.georural.entity.Indicador;
 import br.com.fatec.georural.entity.Versao;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -27,4 +28,18 @@ public interface ResultadoIndicadorRepository extends JpaRepository<ResultadoInd
            WHERE r.imovel.id = :imovelId AND r.vigente = 'S'
            """)
     List<ResultadoIndicador> buscarVigentesDoImovel(@Param("imovelId") Long imovelId);
+
+    @Query("""
+       SELECT DISTINCT i
+       FROM ResultadoIndicador r
+       JOIN r.indicador i
+       WHERE r.execucao.id IN (:execucaoIds)
+          OR r.execucao.id IN (
+               SELECT ent.execucao.id FROM EntradaExecucao ent
+               WHERE ent.versao.id IN (
+                   SELECT ex.versaoGerada.id FROM ExecucaoPipeline ex
+                   WHERE ex.id IN (:execucaoIds) AND ex.versaoGerada IS NOT NULL))
+       ORDER BY i.sigla
+       """)
+    List<Indicador> buscarIndicadoresGeradosPorExecucoes(@Param("execucaoIds") Collection<Long> execucaoIds);
 }
