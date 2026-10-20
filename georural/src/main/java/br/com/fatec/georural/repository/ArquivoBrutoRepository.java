@@ -16,4 +16,6 @@ public interface ArquivoBrutoRepository extends JpaRepository<ArquivoBruto, Long
 
     /** ingestoes recentes de um conjunto  */
     List<ArquivoBruto> findByConjunto_IdOrderByDataUploadDesc(Long conjuntoId, Pageable pageable);
+
+    List<ArquivoBruto> findByConjunto_IdOrderByDataUploadAsc(Long conjuntoId);
 }
