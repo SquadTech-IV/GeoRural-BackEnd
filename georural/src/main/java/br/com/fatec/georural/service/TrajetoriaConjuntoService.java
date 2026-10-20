@@ -1,70 +1,123 @@
 package br.com.fatec.georural.service;
 
-import br.com.fatec.georural.dto.response.trajetoria.StatusAtualResponse;
-import br.com.fatec.georural.dto.response.trajetoria.TrajetoriaEvento;
-import br.com.fatec.georural.dto.response.trajetoria.TrajetoriaResponse;
-import br.com.fatec.georural.entity.ConjuntoDados;
-import br.com.fatec.georural.entity.MovimentacaoZona;
+import br.com.fatec.georural.dto.response.trajetoria.*;
+import br.com.fatec.georural.entity.*;
 import br.com.fatec.georural.exception.RecursoNaoEncontradoException;
-import br.com.fatec.georural.repository.ConjuntoDadosRepository;
-import br.com.fatec.georural.repository.MovimentacaoZonaRepository;
+import br.com.fatec.georural.repository.*;
 
 import org.springframework.stereotype.Service;
 
-import java.util.List;
+import java.util.*;
 
 @Service
 public class TrajetoriaConjuntoService {
 
+    private static final List<String> ORDEM_ZONAS = List.of("BRUTA", "QUARENTENA", "TRATADA", "PUBLICADA");
+
     private final ConjuntoDadosRepository conjuntoRepository;
+    private final ArquivoBrutoRepository arquivoBrutoRepository;
     private final MovimentacaoZonaRepository movimentacaoZonaRepository;
+    private final ValidacaoRepository validacaoRepository;
 
     public TrajetoriaConjuntoService(ConjuntoDadosRepository conjuntoRepository,
-                                     MovimentacaoZonaRepository movimentacaoZonaRepository) {
+                                     ArquivoBrutoRepository arquivoBrutoRepository,
+                                     MovimentacaoZonaRepository movimentacaoZonaRepository,
+                                     ValidacaoRepository validacaoRepository) {
         this.conjuntoRepository = conjuntoRepository;
+        this.arquivoBrutoRepository = arquivoBrutoRepository;
         this.movimentacaoZonaRepository = movimentacaoZonaRepository;
+        this.validacaoRepository = validacaoRepository;
     }
 
-    public TrajetoriaResponse consultarTrajetoria(Long conjuntoId) {
+    public List<ConjuntoResumoResponse> listarConjuntos() {
+        return conjuntoRepository.findAll().stream()
+                .map(c -> new ConjuntoResumoResponse(c.getId(), montarRotulo(c)))
+                .toList();
+    }
+
+    public ConjuntoTrajetoriaResponse consultarTrajetoriaPorArquivo(Long conjuntoId) {
         ConjuntoDados conjunto = buscarConjunto(conjuntoId);
 
-        List<TrajetoriaEvento> eventos = movimentacaoZonaRepository
-                .findByArquivoBruto_Conjunto_IdOrderByDataAsc(conjuntoId)
+        List<ArquivoTrajetoriaResponse> arquivos = arquivoBrutoRepository
+                .findByConjunto_IdOrderByDataUploadAsc(conjuntoId)
                 .stream()
-                .map(this::paraEvento)
+                .map(this::montarTrajetoriaDoArquivo)
                 .toList();
 
-        String zonaAtual = eventos.isEmpty() ? "BRUTA" : eventos.get(eventos.size() - 1).zona();
-
-        return new TrajetoriaResponse(conjunto.getId(), conjunto.getNome(), zonaAtual, eventos);
+        return new ConjuntoTrajetoriaResponse(conjunto.getId(), conjunto.getNome(), arquivos);
     }
 
-    public StatusAtualResponse consultarStatusAtual(Long conjuntoId) {
-        TrajetoriaResponse trajetoria = consultarTrajetoria(conjuntoId);
-        ConjuntoDados conjunto = buscarConjunto(conjuntoId);
+    private ArquivoTrajetoriaResponse montarTrajetoriaDoArquivo(ArquivoBruto arquivo) {
+        Map<String, MovimentacaoZona> movsPorZona = new HashMap<>();
+        for (MovimentacaoZona mov : movimentacaoZonaRepository.findByArquivoBrutoIdOrderByDataAsc(arquivo.getId())) {
+            movsPorZona.put(mov.getZona(), mov); // mantém a mais recente de cada zona
+        }
 
-        var ultimoEvento = trajetoria.eventos().isEmpty() ? null
-                : trajetoria.eventos().get(trajetoria.eventos().size() - 1);
+        Validacao validacao = validacaoRepository
+                .findFirstByArquivoBruto_IdOrderByDataExecucaoDesc(arquivo.getId())
+                .orElse(null);
 
-        return new StatusAtualResponse(
-                conjunto.getId(),
-                conjunto.getNome(),
-                trajetoria.zonaAtual(),
-                conjunto.getSituacao(),
-                ultimoEvento == null ? conjunto.getDataCadastro() : ultimoEvento.dataHora());
+        int indiceMaisAvancado = -1;
+        for (int i = 0; i < ORDEM_ZONAS.size(); i++) {
+            if (movsPorZona.containsKey(ORDEM_ZONAS.get(i))) {
+                indiceMaisAvancado = i;
+            }
+        }
+
+        List<PassagemZonaResponse> passagens = new ArrayList<>();
+        for (int i = 0; i < ORDEM_ZONAS.size(); i++) {
+            String zona = ORDEM_ZONAS.get(i);
+            MovimentacaoZona mov = movsPorZona.get(zona);
+
+            if (mov == null) {
+                passagens.add(new PassagemZonaResponse(zona, "pendente", null, null, null));
+                continue;
+            }
+
+            String status;
+            if (i == indiceMaisAvancado) {
+                status = zona.equals("PUBLICADA") ? "done" : "atual";
+            } else if (zona.equals("QUARENTENA") && temRessalva(validacao)) {
+                status = "ressalva";
+            } else {
+                status = "done";
+            }
+
+            passagens.add(new PassagemZonaResponse(
+                    zona, status, mov.getData(), montarContagem(zona, validacao), mov.getObservacao()));
+        }
+
+        String zonaAtual = indiceMaisAvancado >= 0 ? ORDEM_ZONAS.get(indiceMaisAvancado) : "BRUTA";
+
+        return new ArquivoTrajetoriaResponse(
+                arquivo.getId(), arquivo.getNome(),
+                arquivo.getConjunto().getFonte() != null ? arquivo.getConjunto().getFonte().getNome() : null,
+                arquivo.getDataUpload(), zonaAtual, passagens);
     }
 
-    private TrajetoriaEvento paraEvento(MovimentacaoZona movimentacao) {
-        String descricao = movimentacao.getObservacao() != null
-                ? movimentacao.getObservacao()
-                : "Arquivo '" + movimentacao.getArquivoBruto().getNome() + "' entrou na zona " + movimentacao.getZona();
+    private boolean temRessalva(Validacao validacao) {
+        if (validacao == null || validacao.getRegistrosInvalidos() == null || validacao.getTotalRegistros() == null) {
+            return false;
+        }
+        return validacao.getRegistrosInvalidos() > 0
+                && validacao.getRegistrosInvalidos() < validacao.getTotalRegistros();
+    }
 
-        return new TrajetoriaEvento(
-                movimentacao.getZona(),
-                "MOVIMENTACAO_ZONA",
-                movimentacao.getData(),
-                movimentacao.getStatus(),
-                descricao);
+    private String montarContagem(String zona, Validacao validacao) {
+        if (validacao == null) return null;
+        return switch (zona) {
+            case "BRUTA" -> validacao.getTotalRegistros() + " registros recebidos";
+            case "QUARENTENA" -> (validacao.getRegistrosInvalidos() != null && validacao.getRegistrosInvalidos() > 0)
+                    ? validacao.getRegistrosInvalidos() + " retidos · " + validacao.getRegistrosValidos() + " seguiram"
+                    : "sem registros em quarentena";
+            default -> null; // TRATADA/PUBLICADA: sem fonte de contagem confirmada ainda
+        };
+    }
+
+    private String montarRotulo(ConjuntoDados conjunto) {
+        return conjunto.getFonte() != null
+                ? conjunto.getFonte().getNome() + " · " + conjunto.getNome()
+                : conjunto.getNome();
     }
 
     private ConjuntoDados buscarConjunto(Long id) {
