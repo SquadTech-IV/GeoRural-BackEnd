@@ -46,7 +46,7 @@ public class VerificadorDuplicidade {
         }
         String hashNormalizado = hash.trim().toLowerCase();
 
-        Optional<ArquivoBruto> ativo = repositorio.findArquivoBruto(conjuntoId, hashNormalizado);
+        Optional<ArquivoBruto> ativo = repositorio.findByHash(hashNormalizado);
         if (ativo.isEmpty()) {
             return Optional.empty();
         }
