@@ -50,6 +50,50 @@ BEGIN
 END;
 /
 
+CREATE OR REPLACE TRIGGER trg_rin_imutavel
+BEFORE INSERT OR UPDATE OR DELETE ON RESULTADO_INDICADOR
+FOR EACH ROW
+DECLARE
+    v_ver_id   NUMBER;
+    v_situacao VARCHAR2(15);
+BEGIN
+    v_ver_id := CASE WHEN INSERTING THEN :NEW.ver_id ELSE :OLD.ver_id END;
+    IF v_ver_id IS NULL THEN
+        RETURN;
+    END IF;
+    SELECT ver_situacao INTO v_situacao FROM VERSAO WHERE ver_id = v_ver_id;
+    IF v_situacao IN ('VIGENTE', 'ANTERIOR') THEN
+        RAISE_APPLICATION_ERROR(-20011,
+            'Resultado de indicador pertence a versao publicada e e imutavel.');
+    END IF;
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        NULL; -- versao inexistente: deixa a FK tratar
+END;
+/
+
+CREATE OR REPLACE TRIGGER trg_rmu_imutavel
+BEFORE INSERT OR UPDATE OR DELETE ON RESULTADO_MUNICIPIO
+FOR EACH ROW
+DECLARE
+    v_ver_id   NUMBER;
+    v_situacao VARCHAR2(15);
+BEGIN
+    v_ver_id := CASE WHEN INSERTING THEN :NEW.ver_id ELSE :OLD.ver_id END;
+    IF v_ver_id IS NULL THEN
+        RETURN;
+    END IF;
+    SELECT ver_situacao INTO v_situacao FROM VERSAO WHERE ver_id = v_ver_id;
+    IF v_situacao IN ('VIGENTE', 'ANTERIOR') THEN
+        RAISE_APPLICATION_ERROR(-20012,
+            'Resultado municipal pertence a versao publicada e e imutavel.');
+    END IF;
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        NULL;
+END;
+/
+
 -- Views
 CREATE OR REPLACE VIEW vw_catalogo_conjuntos AS
 SELECT c.con_id,
