@@ -55,9 +55,6 @@ public class ConjuntoDados {
     @Column(name = "con_situacao", nullable = false, length = 15)
     private String situacao = "RASCUNHO";
 
-    @Column(name = "con_forma_entrada", nullable = false)
-    private String formaEntrada;
-
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "con_ver_vigente_id")
     private Versao versaoVigente;
