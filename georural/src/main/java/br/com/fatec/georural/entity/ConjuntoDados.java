@@ -22,20 +22,43 @@ public class ConjuntoDados {
     @JoinColumn(name = "fon_id", nullable = false)
     private FonteDoDado fonte;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "tip_id", nullable = false)
+    private TipoConjunto tipo;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "usu_id")
+    private Usuario usuario;
+
     @Column(name = "con_nome", nullable = false)
     private String nome;
-
-    @Column(name = "con_tipo_camada", nullable = false)
-    private String tipoCamada;
 
     @Column(name = "con_descricao")
     private String descricao;
 
-    @Column(name = "con_competencia")
-    private String competencia;
+    @Column(name = "con_srs")
+    private Integer srs = 4674;
+
+    @Column(name = "con_cobertura")
+    private String cobertura;
+
+    @Column(name = "con_periodicidade")
+    private String periodicidade;
+
+    @Column(name = "con_forma_entrada", nullable = false)
+    private String formaEntrada = "UPLOAD";
+
+    @Column(name = "con_api_endpoint")
+    private String apiEndpoint;
+
+    @Column(name = "con_api_formato")
+    private String apiFormato;
+
+    @Column(name = "con_api_auth")
+    private String apiAuth;
 
     @Column(name = "con_situacao", nullable = false)
-    private String situacao;
+    private String situacao = "RASCUNHO";
 
     @Column(name = "con_forma_entrada", nullable = false)
     private String formaEntrada;

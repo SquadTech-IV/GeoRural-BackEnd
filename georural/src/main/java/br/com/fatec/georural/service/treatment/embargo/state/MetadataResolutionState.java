@@ -52,7 +52,7 @@ public class MetadataResolutionState implements EmbargoState {
         FonteDoDado fonte = fonteRepository.findByNome(NOME_FONTE).orElseGet(() -> {
             FonteDoDado nova = new FonteDoDado();
             nova.setNome(NOME_FONTE);
-            nova.setOrgao(ORGAO_FONTE);
+
             nova.setStatus("S"); // CHECK (fon_status IN ('S','N'))
             nova.setDataCadastro(LocalDateTime.now());
             return fonteRepository.save(nova);
@@ -62,7 +62,7 @@ public class MetadataResolutionState implements EmbargoState {
             ConjuntoDados novo = new ConjuntoDados();
             novo.setFonte(fonte);
             novo.setNome(NOME_CONJUNTO);
-            novo.setTipoCamada(TIPO_CAMADA); // CHECK: precisa ser um dos valores do enum
+
             novo.setSituacao("RASCUNHO"); // precisa ser setado explicitamente — Hibernate valida
                                            // nullable=false ANTES do DEFAULT do banco entrar em ação
             novo.setDataCadastro(LocalDateTime.now());
