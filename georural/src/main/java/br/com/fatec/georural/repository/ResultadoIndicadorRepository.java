@@ -42,4 +42,17 @@ public interface ResultadoIndicadorRepository extends JpaRepository<ResultadoInd
        ORDER BY i.sigla
        """)
     List<Indicador> buscarIndicadoresGeradosPorExecucoes(@Param("execucaoIds") Collection<Long> execucaoIds);
+
+    @Query("""
+       SELECT r FROM ResultadoIndicador r
+       JOIN FETCH r.indicador i
+       JOIN FETCH r.imovel im
+       JOIN FETCH r.versao v
+       WHERE v.situacao IN ('VIGENTE', 'ANTERIOR')
+         AND (:indicador = '' OR i.sigla = :indicador)
+         AND LOWER(im.codigoCar) LIKE :busca
+       ORDER BY r.dataCalculo DESC
+       """)
+    List<ResultadoIndicador> buscarPublicados(@Param("indicador") String indicador,
+                                              @Param("busca") String busca);
 }
