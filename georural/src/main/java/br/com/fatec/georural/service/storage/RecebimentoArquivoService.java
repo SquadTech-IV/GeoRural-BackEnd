@@ -181,17 +181,17 @@ public class RecebimentoArquivoService {
         if (existe) {
             return; // gravado apesar do erro: segue para concluir o registro
         }
-        marcarFalha(registro);
+        descartarRegistro(registro);
         throw new IllegalStateException("Falha ao gravar o arquivo na zona bruta.", causa);
     }
 
-    private void marcarFalha(ArquivoBruto registro) {
+    private void descartarRegistro(ArquivoBruto registro) {
         try {
-            registro.setStatus(SituacaoArquivoBruto.FALHA);
-            arquivoRepository.save(registro);
+            arquivoRepository.delete(registro);
         } catch (RuntimeException e) {
-            // Se não for possível gravar FALHA, o registro fica RECEBENDO e será resolvido na retomada.
-            log.warn("Não foi possível marcar o registro {} como FALHA.", registro.getId(), e);
+            // Se não for possível apagar, o registro fica RECEBENDO e será retomado depois do prazo de abandono.
+            log.warn("Não foi possível descartar o registro {} após a falha; ele permanece RECEBENDO.",
+                    registro.getId(), e);
         }
     }
 
@@ -219,7 +219,7 @@ public class RecebimentoArquivoService {
     private static boolean violouUnicidadeConjuntoHash(Throwable erro) {
         for (Throwable t = erro; t != null; t = (t.getCause() == t ? null : t.getCause())) {
             String mensagem = t.getMessage();
-            if (mensagem != null && mensagem.toUpperCase().contains("UK_ARQ_CON_HASH")) {
+            if (mensagem != null && mensagem.toUpperCase().contains("UK_ARQUIVO_HASH")) {
                 return true;
             }
         }

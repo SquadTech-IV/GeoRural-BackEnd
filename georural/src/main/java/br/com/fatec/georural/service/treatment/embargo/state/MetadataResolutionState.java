@@ -72,7 +72,7 @@ public class MetadataResolutionState implements EmbargoState {
         String hash = calcularHash(context.getEmbargoFile());
 
         // arq_hash é UNIQUE — reaproveita se o mesmo arquivo já foi processado antes
-        ArquivoBruto arquivoBruto = arquivoRepository.findArquivoBruto(conjunto.getId(), hash).orElseGet(() -> {
+        ArquivoBruto arquivoBruto = arquivoRepository.findByHash(hash).orElseGet(() -> {
             ArquivoBruto novo = new ArquivoBruto();
             novo.setConjunto(conjunto);
             novo.setNome(context.getEmbargoFile().getName());
