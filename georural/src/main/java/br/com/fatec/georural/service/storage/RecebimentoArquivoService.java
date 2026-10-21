@@ -57,7 +57,8 @@ public class RecebimentoArquivoService {
 
     /**
      * @param conjuntoId   conjunto de destino
-     * @param usuarioId    responsável pelo envio (a T007 acrescenta a validação contra USUARIO)
+     * @param usuarioId responsável pelo envio. Identificação provisória: apenas verifica que o usuário existe e o
+     *                  registra; não autentica o chamador, até a autenticação da US#13
      * @param nomeOriginal nome original do arquivo
      * @param conteudo     conteúdo do arquivo; não é fechado aqui
      * @throws ArquivoDuplicadoException      se já existe arquivo ativo com o mesmo hash no conjunto
@@ -66,19 +67,20 @@ public class RecebimentoArquivoService {
      */
     public ArquivoBruto receber(Long conjuntoId, Long usuarioId, String nomeOriginal, InputStream conteudo) {
         if (conjuntoId == null) {
-            throw new IllegalArgumentException("Identificador do conjunto é obrigatório.");
+            throw new RequisicaoInvalidaException("Identificador do conjunto é obrigatório.");
         }
         if (usuarioId == null) {
-            throw new IllegalArgumentException("Identificador do responsável é obrigatório.");
+            throw new RequisicaoInvalidaException("Identificador do responsável é obrigatório.");
         }
         if (conteudo == null) {
-            throw new IllegalArgumentException("Conteúdo do arquivo é obrigatório.");
+            throw new RequisicaoInvalidaException("Conteúdo do arquivo é obrigatório.");
         }
         String nome = CaminhoZonaBrutaHelper.extrairNomeArquivo(nomeOriginal);
 
         // 1. Validar conjunto e extensão antes de criar o arquivo temporário
         ConjuntoDados conjunto = validadorConjuntoDados.validar(conjuntoId);
         String formato = validadorFormatoArquivo.validarExtensao(nome);
+        validarResponsavel(usuarioId);
 
         Path temporario = null;
         try {
@@ -119,6 +121,12 @@ public class RecebimentoArquivoService {
             throw new UncheckedIOException("Falha ao tratar o arquivo na área temporária.", e);
         } finally {
             limparTemporario(temporario);
+        }
+    }
+
+    private void validarResponsavel(Long usuarioId) {
+        if (!usuarioRepository.existsById(usuarioId)) {
+            throw new RecursoNaoEncontradoException("Usuário não encontrado: " + usuarioId);
         }
     }
 
