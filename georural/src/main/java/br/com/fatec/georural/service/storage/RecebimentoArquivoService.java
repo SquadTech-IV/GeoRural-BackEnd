@@ -2,15 +2,15 @@ package br.com.fatec.georural.service.storage;
 
 import br.com.fatec.georural.entity.ArquivoBruto;
 import br.com.fatec.georural.entity.ConjuntoDados;
+import br.com.fatec.georural.exception.ArquivoDuplicadoException;
+import br.com.fatec.georural.exception.RecursoNaoEncontradoException;
+import br.com.fatec.georural.exception.RequisicaoInvalidaException;
 import br.com.fatec.georural.repository.ArquivoBrutoRepository;
-import br.com.fatec.georural.repository.ConjuntoDadosRepository;
 import br.com.fatec.georural.repository.UsuarioRepository;
 import com.oracle.bmc.model.BmcException;
-import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
-import br.com.fatec.georural.exception.ArquivoDuplicadoException;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -30,7 +30,8 @@ import java.util.Optional;
 /**
  * Recebe um arquivo, guarda-o sem alteração na zona bruta e registra no Oracle (US#07).
  *
- * <p>Sequência: área temporária (disco local), verificação do hash, verificação de duplicidade,
+ * <p>Sequência: validação do conjunto e da extensão, área temporária (disco local),
+ * verificação do hash, validação do conteúdo (assinatura), verificação de duplicidade,
  * registro RECEBENDO (reserva a vaga), promoção para a zona bruta, registro RECEBIDO.
  *
  * <p>Esta classe NÃO é {@code @Transactional}: o registro RECEBENDO precisa estar confirmado no banco
@@ -47,19 +48,21 @@ public class RecebimentoArquivoService {
 
     private static final String CANAL_UPLOAD = "UPLOAD";
 
-    private final ConjuntoDadosRepository conjuntoRepository;
     private final UsuarioRepository usuarioRepository;
     private final ArquivoBrutoRepository arquivoRepository;
     private final VerificadorDuplicidade verificadorDuplicidade;
     private final ArmazenamentoZonaBrutaService armazenamento;
+    private final ValidadorConjuntoDados validadorConjuntoDados;
+    private final ValidadorFormatoArquivo validadorFormatoArquivo;
 
     /**
-     * @param conjuntoId   conjunto de destino (a T006 acrescenta as validações de elegibilidade e de formato)
+     * @param conjuntoId   conjunto de destino
      * @param usuarioId    responsável pelo envio (a T007 acrescenta a validação contra USUARIO)
      * @param nomeOriginal nome original do arquivo
      * @param conteudo     conteúdo do arquivo; não é fechado aqui
-     * @throws ArquivoDuplicadoException se já existe arquivo ativo com o mesmo hash no conjunto
-     * @throws EntityNotFoundException   se o conjunto não existe
+     * @throws ArquivoDuplicadoException      se já existe arquivo ativo com o mesmo hash no conjunto
+     * @throws RecursoNaoEncontradoException se o conjunto não existe
+     * @throws RequisicaoInvalidaException    se o conjunto estiver arquivado/incompatível ou o formato/conteúdo for inválido
      */
     public ArquivoBruto receber(Long conjuntoId, Long usuarioId, String nomeOriginal, InputStream conteudo) {
         if (conjuntoId == null) {
@@ -72,8 +75,10 @@ public class RecebimentoArquivoService {
             throw new IllegalArgumentException("Conteúdo do arquivo é obrigatório.");
         }
         String nome = CaminhoZonaBrutaHelper.extrairNomeArquivo(nomeOriginal);
-        ConjuntoDados conjunto = conjuntoRepository.findById(conjuntoId)
-                .orElseThrow(() -> new EntityNotFoundException("Conjunto de dados não encontrado: " + conjuntoId));
+
+        // 1. Validar conjunto e extensão antes de criar o arquivo temporário
+        ConjuntoDados conjunto = validadorConjuntoDados.validar(conjuntoId);
+        String formato = validadorFormatoArquivo.validarExtensao(nome);
 
         Path temporario = null;
         try {
@@ -88,10 +93,17 @@ public class RecebimentoArquivoService {
                         "O arquivo temporário não confere com o conteúdo recebido (hash divergente).");
             }
 
+            // 2. Validar o conteúdo (assinatura dos primeiros bytes) depois da cópia e do hash, e antes de duplicidade
+            validadorFormatoArquivo.validarConteudo(temporario, formato);
+
             Optional<ArquivoBruto> abandonado = verificadorDuplicidade.verificar(conjuntoId, hash);
             boolean retomada = abandonado.isPresent();
             ArquivoBruto registro = abandonado.orElseGet(
-                    () -> criarRegistroRecebendo(conjunto, conjuntoId, usuarioId, nome, hash, tamanho));
+                    () -> criarRegistroRecebendo(conjunto, conjuntoId, usuarioId, nome, formato, hash, tamanho));
+
+            if (registro.getFormato() == null) {
+                registro.setFormato(formato);
+            }
 
             // Na retomada, o caminho e a data gravados no primeiro envio são reaproveitados; nunca recalculados.
             // Nesse caso o responsável gravado no objeto é o de quem reenviou, e o do registro continua o original.
@@ -111,13 +123,14 @@ public class RecebimentoArquivoService {
     }
 
     private ArquivoBruto criarRegistroRecebendo(ConjuntoDados conjunto, Long conjuntoId, Long usuarioId,
-                                                String nome, String hash, long tamanho) {
+                                                String nome, String formato, String hash, long tamanho) {
         LocalDateTime agora = LocalDateTime.now();
 
         ArquivoBruto registro = new ArquivoBruto();
         registro.setConjunto(conjunto);
         registro.setUsuario(usuarioRepository.getReferenceById(usuarioId));
         registro.setNome(nome);
+        registro.setFormato(formato);
         registro.setTamanhoBytes(tamanho);
         registro.setHash(hash);
         registro.setAlgoritmoHash(SHA256StreamCalculator.ALGORITMO);
