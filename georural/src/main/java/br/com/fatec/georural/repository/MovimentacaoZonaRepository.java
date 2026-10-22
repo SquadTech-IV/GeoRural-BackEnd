@@ -12,4 +12,6 @@ public interface MovimentacaoZonaRepository extends JpaRepository<MovimentacaoZo
 
     // historico de zonas de TODOS os arquivos de um conjunto de dados
     List<MovimentacaoZona> findByArquivoBruto_Conjunto_IdOrderByDataAsc(Long conjuntoId);
+
+    List<MovimentacaoZona> findByExecucao_Id(Long execucaoId);
 }
