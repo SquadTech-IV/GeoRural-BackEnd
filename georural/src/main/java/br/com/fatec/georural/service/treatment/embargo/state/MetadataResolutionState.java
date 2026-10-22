@@ -36,9 +36,6 @@ import br.com.fatec.georural.service.treatment.embargo.EmbargoTreatment;
 public class MetadataResolutionState implements TreatmentState {
 
     private static final String NOME_FONTE = "IBAMA/ICMBio - Embargos Ambientais";
-    private static final String ORGAO_FONTE = "IBAMA / ICMBio";
-    private static final String NOME_CONJUNTO = "Embargos Ambientais Federais";
-    private static final String TIPO_CAMADA = "EMBARGO";
 
     private static final String LIMITE_PARANA_PATH =
             "src/main/resources/shapefiles/limite_estadual_pr.shp";
@@ -99,7 +96,8 @@ public class MetadataResolutionState implements TreatmentState {
                     return conjuntoRepository.save(novo);
                 });
 
-        String hash = calcularHash(context.getEmbargoFile());
+        ConjuntoDadosRepository conjuntoRepository = SpringContextHolder.getBean(
+                ConjuntoDadosRepository.class);
 
         // arq_hash é UNIQUE — reaproveita se o mesmo arquivo já foi processado antes
         ArquivoBruto arquivoBruto = arquivoRepository.findByHash(hash)
@@ -125,15 +123,33 @@ public class MetadataResolutionState implements TreatmentState {
                 .orElse(1L);
 
         Versao versao = new Versao();
-        versao.setConjunto(conjunto);
-        versao.setNumero(proximoNumero);
-        versao.setHash(hash);
-        versao.setSituacao("RASCUNHO"); // idem — não confiar no DEFAULT do banco
-        versao.setDataCriacao(LocalDateTime.now());
-        versao = versaoRepository.save(versao);
 
-        context.setArquivoBruto(arquivoBruto);
-        context.setVersao(versao);
+        versao.setConjunto(
+                conjunto);
+
+        versao.setNumero(
+                proximoNumero);
+
+        versao.setHash(
+                hash);
+
+        versao.setSituacao(
+                "RASCUNHO");
+
+        versao.setDataCriacao(
+                LocalDateTime.now());
+
+        versao = versaoRepository.save(
+                versao);
+
+        context.setArquivoBruto(
+                arquivoBruto);
+
+        context.setVersao(
+                versao);
+
+        File limiteParanaFile = new File(
+                LIMITE_PARANA_PATH);
 
         // --- Área de corte: carregada de um caminho fixo dentro do projeto
         //     (NÃO derivada do banco, já que MUNICIPIO.mun_geometria ainda
@@ -141,14 +157,18 @@ public class MetadataResolutionState implements TreatmentState {
         File limiteParanaFile = new File(LIMITE_PARANA_PATH);
 
         if (!limiteParanaFile.exists()) {
+
             throw new IllegalStateException(
                     "Shapefile de limite do Paraná não encontrado em: "
                             + LIMITE_PARANA_PATH
             );
         }
 
-        Geometry areaDeCorte = carregarGeometriaUnica(limiteParanaFile);
-        context.setAreaDeCorte(areaDeCorte);
+        Geometry areaDeCorte = carregarGeometriaUnica(
+                limiteParanaFile);
+
+        context.setAreaDeCorte(
+                areaDeCorte);
 
         FileDataStore limiteStore = null;
 
@@ -202,6 +222,7 @@ public class MetadataResolutionState implements TreatmentState {
             List<SimpleFeature> features = new ArrayList<>();
 
             try (SimpleFeatureIterator iterator = collection.features()) {
+
                 while (iterator.hasNext()) {
                     features.add(iterator.next());
                 }
@@ -264,7 +285,9 @@ public class MetadataResolutionState implements TreatmentState {
         }
     }
 
-    private String calcularHash(File file) {
+    private String calcularHash(
+            File file) {
+
         try {
             MessageDigest digest =
                     MessageDigest.getInstance("SHA-256");
@@ -276,17 +299,21 @@ public class MetadataResolutionState implements TreatmentState {
                 byte[] buffer = new byte[8192];
 
                 while (dis.read(buffer) != -1) {
-                    // apenas consome o stream
                 }
             }
 
             StringBuilder sb = new StringBuilder();
 
             for (byte b : digest.digest()) {
-                sb.append(String.format("%02x", b));
+
+                sb.append(
+                        String.format(
+                                "%02x",
+                                b));
             }
 
             return sb.toString();
+
         } catch (NoSuchAlgorithmException | IOException e) {
             throw new RuntimeException(
                     "Erro ao calcular hash do arquivo: " + e.getMessage(),

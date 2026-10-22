@@ -36,7 +36,7 @@ public class MetadataResolutionState implements TreatmentState {
     private static final String NOME_FONTE = "CAR - Área do Imóvel";
     private static final String ORGAO_FONTE = "Serviço Florestal Brasileiro (SFB)";
     private static final String NOME_CONJUNTO = "Área do Imóvel";
-    private static final String TIPO_CAMADA = "IMOVEL"; // código cadastrado em TIPO_CONJUNTO
+    private static final String TIPO_CAMADA = "IMOVEL";
 
     @Override
     public void execute(BaseTreatment baseContext) {
@@ -95,6 +95,7 @@ public class MetadataResolutionState implements TreatmentState {
         );
 
         ArquivoBruto arquivoBruto = new ArquivoBruto();
+
         arquivoBruto.setConjunto(conjunto);
         arquivoBruto.setNome(
                 propertyArea.getPropertyAreaFile().getName()
@@ -118,6 +119,7 @@ public class MetadataResolutionState implements TreatmentState {
                 .orElse(1L);
 
         Versao versao = new Versao();
+
         versao.setConjunto(conjunto);
         versao.setNumero(proximoNumero);
         versao.setHash(hash);
@@ -139,6 +141,7 @@ public class MetadataResolutionState implements TreatmentState {
     }
 
     private String calcularHash(File file) {
+
         try {
             MessageDigest digest =
                     MessageDigest.getInstance("SHA-256");
@@ -156,10 +159,15 @@ public class MetadataResolutionState implements TreatmentState {
             StringBuilder sb = new StringBuilder();
 
             for (byte b : digest.digest()) {
-                sb.append(String.format("%02x", b));
+
+                sb.append(
+                        String.format(
+                                "%02x",
+                                b));
             }
 
             return sb.toString();
+
         } catch (NoSuchAlgorithmException | IOException e) {
             throw new RuntimeException(
                     "Erro ao calcular hash do arquivo: " + e.getMessage(),
