@@ -8,15 +8,12 @@ import org.geotools.api.feature.simple.SimpleFeatureType;
 import org.geotools.api.feature.type.AttributeDescriptor;
 import org.springframework.stereotype.Component;
 
+import br.com.fatec.georural.service.treatment.core.GeoDatasetType;
+
 @Component
 public class DetectorTipoCamada {
 
-    public enum TipoCamada {
-        EMBARGO,
-        IMOVEL
-    }
-
-    public TipoCamada detectar(File shapefile) {
+    public GeoDatasetType detectar(File shapefile) {
         FileDataStore store = null;
         try {
             store = FileDataStoreFinder.getDataStore(shapefile);
@@ -41,10 +38,10 @@ public class DetectorTipoCamada {
             }
 
             if (temNumTad) {
-                return TipoCamada.EMBARGO;
+                return GeoDatasetType.EMBARGO;
             }
             if (temRecibo) {
-                return TipoCamada.IMOVEL;
+                return GeoDatasetType.IMOVEL;
             }
 
             throw new IllegalArgumentException(

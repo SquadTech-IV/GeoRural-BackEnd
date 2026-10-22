@@ -14,7 +14,7 @@ public class Teste {
 
         File arquivoTeste = new File("src/test/resources/Area_do_Imovel/Area_do_Imovel.shp");
 
-        PropertyArea propertyArea = new PropertyArea(arquivoTeste);
+        PropertyAreaTreatment propertyArea = new PropertyAreaTreatment(arquivoTeste);
         propertyArea.execute();
     }
 }
