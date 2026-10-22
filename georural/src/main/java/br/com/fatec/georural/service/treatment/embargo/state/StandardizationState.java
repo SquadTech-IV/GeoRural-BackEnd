@@ -1,14 +1,19 @@
 package br.com.fatec.georural.service.treatment.embargo.state;
 
-import br.com.fatec.georural.service.treatment.embargo.Embargo;
+import br.com.fatec.georural.service.treatment.core.BaseTreatment;
+import br.com.fatec.georural.service.treatment.core.TreatmentState;
 
-public class StandardizationState implements EmbargoState {
+public class StandardizationState implements TreatmentState {
 
     @Override
-    public void execute(Embargo context) {
-        System.out.println("[7/8] Executando Padronização das Propriedades de Embargo...");
-        
-        // Encaminha a coleção tratada para o estado de salvamento
-        context.setState(new EmbargoSavingState());
+    public void execute(BaseTreatment context) {
+
+        System.out.println(
+                "[Standardization] Padronizando embargos..."
+        );
+
+        context.setState(
+                new EmbargoSavingState()
+        );
     }
 }

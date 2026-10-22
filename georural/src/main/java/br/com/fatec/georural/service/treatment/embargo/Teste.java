@@ -13,7 +13,7 @@ public class Teste {
 
         File arquivoTeste = new File("src/test/resources/Embargos_Ibama/adm_embargos_ibama_a.shp");
 
-        Embargo embargo = new Embargo(arquivoTeste);
+        EmbargoTreatment embargo = new EmbargoTreatment(arquivoTeste);
         embargo.execute();
     }
 }
