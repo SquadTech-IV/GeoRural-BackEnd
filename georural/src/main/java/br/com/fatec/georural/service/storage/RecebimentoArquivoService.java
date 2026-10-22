@@ -75,7 +75,12 @@ public class RecebimentoArquivoService {
         if (conteudo == null) {
             throw new RequisicaoInvalidaException("Conteúdo do arquivo é obrigatório.");
         }
-        String nome = CaminhoZonaBrutaHelper.extrairNomeArquivo(nomeOriginal);
+        String nome;
+        try {
+            nome = CaminhoZonaBrutaHelper.extrairNomeArquivo(nomeOriginal);
+        } catch (IllegalArgumentException e) {
+            throw new RequisicaoInvalidaException(e.getMessage());
+        }
 
         // 1. Validar conjunto e extensão antes de criar o arquivo temporário
         ConjuntoDados conjunto = validadorConjuntoDados.validar(conjuntoId);
