@@ -5,30 +5,49 @@ import java.util.Set;
 
 import org.geotools.api.feature.simple.SimpleFeature;
 
-import br.com.fatec.georural.service.treatment.property_area.PropertyArea;
+import br.com.fatec.georural.service.treatment.common.state.ReprojectionState;
+import br.com.fatec.georural.service.treatment.core.BaseTreatment;
+import br.com.fatec.georural.service.treatment.core.TreatmentState;
+import br.com.fatec.georural.service.treatment.property_area.PropertyAreaTreatment;
 
-public class DuplicityValidationState implements PropertyAreaState {
+public class DuplicityValidationState
+        implements TreatmentState {
 
     @Override
-    public void execute(PropertyArea propertyArea) {
+    public void execute(BaseTreatment baseContext) {
 
-        Set<String> chavesVistas = new HashSet<>();
+        PropertyAreaTreatment propertyArea =
+                (PropertyAreaTreatment) baseContext;
 
-        for (SimpleFeature feature : propertyArea.getFeatures()) {
+        Set<String> chavesVistas =
+                new HashSet<>();
 
-            String recibo = (String) feature.getAttribute("recibo");
-            String tema = (String) feature.getAttribute("tema");
+        for (SimpleFeature feature :
+                propertyArea.getFeatures()) {
 
-            String chave = recibo + "|" + tema;
+            String recibo =
+                    (String) feature.getAttribute("recibo");
+
+            String tema =
+                    (String) feature.getAttribute("tema");
+
+            String chave =
+                    recibo + "|" + tema;
 
             if (!chavesVistas.add(chave)) {
+
                 throw new IllegalStateException(
-                        "Registro duplicado: recibo=" + recibo + ", tema=" + tema
-                                + " (registro " + feature.getID() + ")");
+                        "Registro duplicado: recibo="
+                                + recibo
+                                + ", tema="
+                                + tema
+                                + " (registro "
+                                + feature.getID()
+                                + ")");
             }
         }
 
-        propertyArea.setState(new ReprojectionState());
-        propertyArea.execute();
+        propertyArea.setState(
+                new ReprojectionState());
     }
 }

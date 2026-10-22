@@ -1,97 +1,113 @@
 package br.com.fatec.georural.service.treatment.property_area.state;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
-import org.geotools.api.feature.simple.SimpleFeature;
-import org.locationtech.jts.geom.Geometry;
-
 import br.com.fatec.georural.config.SpringContextHolder;
+import br.com.fatec.georural.dto.request.regra.ProcessedProperty;
 import br.com.fatec.georural.entity.ArquivoBruto;
 import br.com.fatec.georural.entity.ConjuntoDados;
 import br.com.fatec.georural.entity.ImovelRural;
-import br.com.fatec.georural.entity.Municipio;
 import br.com.fatec.georural.entity.Versao;
 import br.com.fatec.georural.repository.ConjuntoDadosRepository;
 import br.com.fatec.georural.repository.ImovelRuralRepository;
-import br.com.fatec.georural.repository.MunicipioRepository;
 import br.com.fatec.georural.repository.VersaoRepository;
-import br.com.fatec.georural.service.treatment.property_area.PropertyArea;
+import br.com.fatec.georural.service.treatment.core.BaseTreatment;
+import br.com.fatec.georural.service.treatment.core.TreatmentState;
+import br.com.fatec.georural.service.treatment.property_area.PropertyAreaTreatment;
 
-public class PropertyAreaSavingState implements PropertyAreaState {
-
-    private static final String TEMA_AREA_BRUTA = "Área do Imóvel";
+public class PropertyAreaSavingState
+        implements TreatmentState {
 
     @Override
-    public void execute(PropertyArea propertyArea) {
+    public void execute(BaseTreatment baseContext) {
 
-        ImovelRuralRepository imovelRepository = SpringContextHolder.getBean(ImovelRuralRepository.class);
-        MunicipioRepository municipioRepository = SpringContextHolder.getBean(MunicipioRepository.class);
-        VersaoRepository versaoRepository = SpringContextHolder.getBean(VersaoRepository.class);
-        ConjuntoDadosRepository conjuntoRepository = SpringContextHolder.getBean(ConjuntoDadosRepository.class);
+        PropertyAreaTreatment propertyArea =
+                (PropertyAreaTreatment) baseContext;
 
-        ArquivoBruto arquivoBruto = propertyArea.getArquivoBruto();
-        Versao versao = propertyArea.getVersao();
+        ImovelRuralRepository imovelRepository =
+                SpringContextHolder.getBean(
+                        ImovelRuralRepository.class);
 
-        if (arquivoBruto == null || versao == null) {
+        VersaoRepository versaoRepository =
+                SpringContextHolder.getBean(
+                        VersaoRepository.class);
+
+        ConjuntoDadosRepository conjuntoRepository =
+                SpringContextHolder.getBean(
+                        ConjuntoDadosRepository.class);
+
+        ArquivoBruto arquivoBruto =
+                propertyArea.getArquivoBruto();
+
+        Versao versao =
+                propertyArea.getVersao();
+
+        if (arquivoBruto == null ||
+                versao == null) {
+
             throw new IllegalStateException(
-                    "ArquivoBruto/Versao ausentes — MetadataResolutionState deveria ter rodado antes");
+                    "ArquivoBruto/Versao ausentes");
         }
 
         int totalSalvos = 0;
 
-        for (SimpleFeature feature : propertyArea.getFeatures()) {
+        for (ProcessedProperty property :
+                propertyArea
+                        .getProcessedProperties()
+                        .values()) {
 
-            String tema = (String) feature.getAttribute("tema");
-            if (!TEMA_AREA_BRUTA.equals(tema)) {
-                continue; // ignora "Área Líquida do Imóvel"
-            }
+            ImovelRural imovel =
+                    new ImovelRural();
 
-            String nomeMunicipio = (String) feature.getAttribute("municipio");
-            Municipio municipio = municipioRepository.findByNome(nomeMunicipio).orElseGet(() -> {
-                Municipio novo = new Municipio();
-                novo.setNome(nomeMunicipio);
+            imovel.setCodigoCar(
+                    property.getRecibo());
 
-                // Garante limite estrito de 7 caracteres para a coluna mun_codigo_origem CHAR(7)
-                String codigoTemp = nomeMunicipio.replaceAll("[^a-zA-Z0-9]", "").toUpperCase();
-                if (codigoTemp.length() > 7) {
-                    codigoTemp = codigoTemp.substring(0, 7);
-                } else if (codigoTemp.length() < 7) {
-                    codigoTemp = String.format("%-7s", codigoTemp).replace(' ', '0');
-                }
+            imovel.setGeometria(
+                    property.getGeometry4674());
 
-                novo.setCodigoOrigem(codigoTemp);
-                novo.setUf("PR");
-                novo.setArquivoBruto(arquivoBruto);
-                return municipioRepository.save(novo);
-            });
+            imovel.setAreaTotal(
+                    property.getAreaHa());
 
-            ImovelRural imovel = new ImovelRural();
-            imovel.setCodigoCar((String) feature.getAttribute("recibo"));
-            imovel.setGeometria((Geometry) feature.getDefaultGeometry());
+            imovel.setArquivoBruto(
+                    arquivoBruto);
 
-            Number area = (Number) feature.getAttribute("area");
-            imovel.setAreaTotal(BigDecimal.valueOf(area.doubleValue()));
+            imovel.setVersao(
+                    versao);
 
-            imovel.setMunicipio(municipio);
-            imovel.setArquivoBruto(arquivoBruto);
-            imovel.setVersao(versao);
+            imovelRepository.save(
+                    imovel);
 
-            imovelRepository.save(imovel);
             totalSalvos++;
         }
 
-        // Fecha a versão: marca como VIGENTE e a torna a versão ativa do conjunto
-        versao.setSituacao("VIGENTE"); // Aceite pela CK_VER_SITUACAO
-        versao.setDataPublicacao(LocalDateTime.now());
-        versaoRepository.save(versao);
+        versao.setSituacao(
+                "VIGENTE");
 
-        ConjuntoDados conjunto = versao.getConjunto();
-        conjunto.setVersaoVigente(versao);
-        conjunto.setSituacao("PUBLICADO"); // Aceite pela CK_CON_SITUACAO
-        conjuntoRepository.save(conjunto);
+        versao.setDataPublicacao(
+                LocalDateTime.now());
 
-        System.out.println("PropertyAreaSavingState: " + totalSalvos
-                + " imóveis salvos. Versão " + versao.getNumero() + " publicada.");
+        versaoRepository.save(
+                versao);
+
+        ConjuntoDados conjunto =
+                versao.getConjunto();
+
+        conjunto.setVersaoVigente(
+                versao);
+
+        conjunto.setSituacao(
+                "PUBLICADO");
+
+        conjuntoRepository.save(
+                conjunto);
+
+        System.out.println(
+                "PropertyAreaSavingState: "
+                        + totalSalvos
+                        + " imóveis salvos. Versão "
+                        + versao.getNumero()
+                        + " publicada.");
+
+        propertyArea.setState(null);
     }
 }
