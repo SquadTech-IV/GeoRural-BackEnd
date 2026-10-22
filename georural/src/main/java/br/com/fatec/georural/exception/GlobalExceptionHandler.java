@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.time.LocalDateTime;
 
@@ -52,6 +53,11 @@ public class GlobalExceptionHandler {
         ex.printStackTrace();
         return montar(HttpStatus.INTERNAL_SERVER_ERROR,
                 "Erro interno no servidor.", req);
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ErroResponse> tratarArquivoGrande(MaxUploadSizeExceededException ex, HttpServletRequest req) {
+        return montar(HttpStatus.CONTENT_TOO_LARGE, "O arquivo excede o tamanho máximo permitido.", req);
     }
 
     private ResponseEntity<ErroResponse> montar(
