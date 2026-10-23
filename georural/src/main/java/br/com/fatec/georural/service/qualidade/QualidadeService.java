@@ -1,20 +1,23 @@
 package br.com.fatec.georural.service.qualidade;
 
 import br.com.fatec.georural.dto.response.qualidade.QualidadeResponse;
-import br.com.fatec.georural.dto.response.qualidade.RegraVioladaResponse;
+import br.com.fatec.georural.dto.response.qualidade.RegraAvaliadaResponse;
+import br.com.fatec.georural.entity.RegraQualidade;
 import br.com.fatec.georural.entity.Validacao;
 import br.com.fatec.georural.exception.RecursoNaoEncontradoException;
 import br.com.fatec.georural.repository.ExecucaoPipelineRepository;
 import br.com.fatec.georural.repository.QuarentenaRepository;
+import br.com.fatec.georural.repository.RegraQualidadeRepository;
 import br.com.fatec.georural.repository.ValidacaoRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
-
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -24,12 +27,13 @@ public class QualidadeService {
     private static final String STATUS_APROVADO = "APROVADO";
     private static final String STATUS_REJEITADO = "REJEITADO";
     private static final String STATUS_SEM_DADOS = "SEM_DADOS";
+    private static final String REGRA_ATIVA = "S";
 
     private final ExecucaoPipelineRepository execucaoRepository;
     private final ValidacaoRepository validacaoRepository;
     private final QuarentenaRepository quarentenaRepository;
+    private final RegraQualidadeRepository regraQualidadeRepository;
 
-    /** Avalia a qualidade usando os criterios padrao do projeto. */
     @Transactional(readOnly = true)
     public QualidadeResponse avaliar(Long execucaoId) {
         return avaliar(execucaoId, CriteriosQualidade.padrao());
@@ -60,16 +64,35 @@ public class QualidadeService {
 
         long emQuarentena = quarentenaRepository.contarPorExecucaoESituacao(execucaoId, SITUACAO_PENDENTE);
 
-        List<RegraVioladaResponse> regrasVioladas = new ArrayList<>();
+        // regras que retiveram registros nesta execucao
+        Map<String, Object[]> violadas = new LinkedHashMap<>();
         long registrosSeveridadeBloqueante = 0L;
         for (Object[] linha : quarentenaRepository.agruparRegrasVioladas(execucaoId, SITUACAO_PENDENTE)) {
             String nome = (String) linha[0];
             String tipo = (String) linha[1];
             String severidade = (String) linha[2];
             long quantidade = ((Number) linha[3]).longValue();
-            regrasVioladas.add(new RegraVioladaResponse(nome, tipo, severidade, quantidade));
+            violadas.put(nome, new Object[]{tipo, severidade, quantidade});
             if (criterios.severidadesBloqueantes().contains(severidade)) {
                 registrosSeveridadeBloqueante += quantidade;
+            }
+        }
+
+        // checklist completo: primeiro as regras violadas, depois as ativas que passaram
+        List<RegraAvaliadaResponse> regras = new ArrayList<>();
+        for (Map.Entry<String, Object[]> entrada : violadas.entrySet()) {
+            Object[] dados = entrada.getValue();
+            regras.add(new RegraAvaliadaResponse(
+                    entrada.getKey(),
+                    (String) dados[0],
+                    (String) dados[1],
+                    false,
+                    ((Number) dados[2]).longValue()));
+        }
+        for (RegraQualidade regra : regraQualidadeRepository.findByAtiva(REGRA_ATIVA)) {
+            if (!violadas.containsKey(regra.getNome())) {
+                regras.add(new RegraAvaliadaResponse(
+                        regra.getNome(), regra.getTipo(), regra.getSeveridade(), true, 0L));
             }
         }
 
@@ -97,7 +120,7 @@ public class QualidadeService {
         return new QualidadeResponse(
                 execucaoId, total, validos, invalidos, statusValidacao,
                 emQuarentena, percentualAprovacao, aprovado,
-                regrasVioladas, motivos);
+                regras, motivos);
     }
 
     private static long nz(Long valor) {

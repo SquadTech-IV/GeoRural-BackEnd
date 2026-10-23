@@ -11,11 +11,11 @@ public record QualidadeResponse(
         long registrosEmQuarentena,
         double percentualAprovacao,
         boolean aprovado,
-        List<RegraVioladaResponse> regrasVioladas,
+        List<RegraAvaliadaResponse> regras,
         List<String> motivosReprovacao
 ) {
     public QualidadeResponse {
-        regrasVioladas = regrasVioladas == null ? List.of() : List.copyOf(regrasVioladas);
+        regras = regras == null ? List.of() : List.copyOf(regras);
         motivosReprovacao = motivosReprovacao == null ? List.of() : List.copyOf(motivosReprovacao);
     }
 }

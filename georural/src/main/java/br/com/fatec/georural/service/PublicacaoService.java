@@ -20,7 +20,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.List;
 
-
 @Service
 @RequiredArgsConstructor
 public class PublicacaoService {
@@ -31,7 +30,7 @@ public class PublicacaoService {
     private final QualidadeService qualidadeService;
 
     @Transactional
-    public VersaoResponse publicar(Long versaoId) {
+    public VersaoResponse publicar(Long versaoId, String justificativa) {
         Versao versao = versaoRepository.findById(versaoId)
                 .orElseThrow(() -> new RecursoNaoEncontradoException("Versao nao encontrada: " + versaoId));
 
@@ -55,8 +54,17 @@ public class PublicacaoService {
                     + String.join(" ", qualidade.motivosReprovacao()));
         }
 
+        boolean comRessalva = qualidade.registrosEmQuarentena() > 0;
+        String justificativaLimpa = justificativa == null ? "" : justificativa.trim();
+        if (comRessalva && justificativaLimpa.isEmpty()) {
+            throw new ConflitoException("Versao " + versaoId + " tem "
+                    + qualidade.registrosEmQuarentena()
+                    + " registro(s) em quarentena: informe a justificativa para publicar com ressalva.");
+        }
+
         ConjuntoDados conjunto = versao.getConjunto();
 
+        // rebaixa a vigente anterior do mesmo conjunto
         List<Versao> vigentes = versaoRepository.findByConjunto_IdAndSituacao(
                 conjunto.getId(), SituacaoVersao.VIGENTE.name());
         for (Versao vigente : vigentes) {
@@ -64,7 +72,7 @@ public class PublicacaoService {
         }
         versaoRepository.saveAll(vigentes);
 
-        // publica esta versao
+        // publica uma  versao
         versao.setSituacao(SituacaoVersao.VIGENTE.name());
         versao.setDataPublicacao(LocalDateTime.now());
         versaoRepository.save(versao);
@@ -72,6 +80,21 @@ public class PublicacaoService {
         // aponta a vigente do conjunto para esta versao
         conjunto.setVersaoVigente(versao);
         conjuntoDadosRepository.save(conjunto);
+
+        // registra a publicacao na auditoria quando tem justificativa
+        if (comRessalva || !justificativaLimpa.isEmpty()) {
+            Auditoria registro = new Auditoria();
+            registro.setOperacao("UPDATE");
+            registro.setEntidadeAfetada("VERSAO");
+            registro.setRegistroId(versaoId);
+            registro.setDadosNovos("{\"acao\":\"PUBLICACAO\""
+                    + ",\"versao\":" + versao.getNumero()
+                    + ",\"comRessalva\":" + comRessalva
+                    + ",\"registrosEmQuarentena\":" + qualidade.registrosEmQuarentena()
+                    + ",\"justificativa\":\"" + escaparJson(justificativaLimpa) + "\"}");
+            registro.setDataHora(LocalDateTime.now());
+            auditoriaRepository.save(registro);
+        }
 
         return toResponse(versao);
     }
@@ -114,6 +137,7 @@ public class PublicacaoService {
                 v.getExecucao() != null ? v.getExecucao().getId() : null);
     }
 
+    /** Escapa o texto para ser embutido com seguranca em um valor JSON */
     private static String escaparJson(String texto) {
         StringBuilder sb = new StringBuilder(texto.length() + 16);
         for (int i = 0; i < texto.length(); i++) {

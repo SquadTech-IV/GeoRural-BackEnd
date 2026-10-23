@@ -20,7 +20,7 @@ public interface ResultadoIndicadorRepository extends JpaRepository<ResultadoInd
 
     Optional<ResultadoIndicador> findByImovelIdAndIndicadorAndVigente(Long imovelId, Indicador indicador, String vigente);
 
-    // todos os indicadores vigentes de um imovel
+    //indicadores vigentes de um imovel
     @Query("""
            SELECT r FROM ResultadoIndicador r
            JOIN FETCH r.indicador
@@ -55,4 +55,14 @@ public interface ResultadoIndicadorRepository extends JpaRepository<ResultadoInd
        """)
     List<ResultadoIndicador> buscarPublicados(@Param("indicador") String indicador,
                                               @Param("busca") String busca);
+
+    /** Indicadores e regras de calculo por versao */
+    @Query("""
+           SELECT DISTINCT r.versao.id, i.sigla, i.nome, rc.nome
+           FROM ResultadoIndicador r
+           JOIN r.indicador i
+           LEFT JOIN r.regraCalculo rc
+           WHERE r.versao.id IN :versaoIds
+           """)
+    List<Object[]> listarIndicadoresPorVersoes(@Param("versaoIds") Collection<Long> versaoIds);
 }
