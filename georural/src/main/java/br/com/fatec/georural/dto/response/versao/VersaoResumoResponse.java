@@ -3,6 +3,7 @@ package br.com.fatec.georural.dto.response.versao;
 import java.time.LocalDateTime;
 import java.util.List;
 
+/** Resumo de uma versao para a fila de conferencia/publicacao */
 public record VersaoResumoResponse(
         Long versaoId,
         Long numero,

@@ -2,6 +2,7 @@ package br.com.fatec.georural.dto.response.qualidade;
 
 import java.util.List;
 
+
 public record QualidadeResponse(
         Long execucaoId,
         long totalRegistros,
