@@ -4,6 +4,7 @@ import br.com.fatec.georural.entity.ResultadoIndicador;
 import br.com.fatec.georural.entity.Indicador;
 import br.com.fatec.georural.entity.Versao;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -19,7 +20,7 @@ public interface ResultadoIndicadorRepository extends JpaRepository<ResultadoInd
 
     Optional<ResultadoIndicador> findByImovelIdAndIndicadorAndVigente(Long imovelId, Indicador indicador, String vigente);
 
-    // todos os indicadores vigentes de um imovel
+    //indicadores vigentes de um imovel
     @Query("""
            SELECT r FROM ResultadoIndicador r
            JOIN FETCH r.indicador
@@ -27,4 +28,14 @@ public interface ResultadoIndicadorRepository extends JpaRepository<ResultadoInd
            WHERE r.imovel.id = :imovelId AND r.vigente = 'S'
            """)
     List<ResultadoIndicador> buscarVigentesDoImovel(@Param("imovelId") Long imovelId);
+
+    /** Indicadores e regras de calculo por versao */
+    @Query("""
+           SELECT DISTINCT r.versao.id, i.sigla, i.nome, rc.nome
+           FROM ResultadoIndicador r
+           JOIN r.indicador i
+           LEFT JOIN r.regraCalculo rc
+           WHERE r.versao.id IN :versaoIds
+           """)
+    List<Object[]> listarIndicadoresPorVersoes(@Param("versaoIds") Collection<Long> versaoIds);
 }
