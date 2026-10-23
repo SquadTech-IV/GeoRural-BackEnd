@@ -54,20 +54,22 @@ class PublicacaoServiceTest {
         return versao;
     }
 
-    private QualidadeResponse qualidade(Long exeId, boolean aprovado) {
+    private QualidadeResponse qualidade(Long exeId, boolean aprovado, long emQuarentena) {
         List<String> motivos = aprovado
                 ? List.of()
                 : List.of("Quarentena em 10,00% acima do limite de 2,00%.");
-        return new QualidadeResponse(exeId, 1000, 980, 20, "APROVADO", 20, 98.0, aprovado, List.of(), motivos);
+        long validos = 1000 - emQuarentena;
+        return new QualidadeResponse(exeId, 1000, validos, emQuarentena, "APROVADO",
+                emQuarentena, aprovado ? 98.0 : 90.0, aprovado, List.of(), motivos);
     }
 
     @Test
-    void publicar_devePublicar_quandoQualidadeAprovada() {
+    void publicar_devePublicar_quandoAprovadaSemRessalva() {
         Versao versao = versaoRascunho(5L, 3L, 10L);
         when(versaoRepository.findById(5L)).thenReturn(Optional.of(versao));
-        when(qualidadeService.avaliar(10L)).thenReturn(qualidade(10L, true));
+        when(qualidadeService.avaliar(10L)).thenReturn(qualidade(10L, true, 0));
 
-        VersaoResponse resposta = service.publicar(5L);
+        VersaoResponse resposta = service.publicar(5L, null);
 
         assertThat(versao.getSituacao()).isEqualTo("VIGENTE");
         assertThat(versao.getDataPublicacao()).isNotNull();
@@ -75,15 +77,53 @@ class PublicacaoServiceTest {
         assertThat(versao.getConjunto().getVersaoVigente()).isSameAs(versao);
         verify(versaoRepository).save(versao);
         verify(conjuntoDadosRepository).save(versao.getConjunto());
+        // sem ressalva e sem justificativa -> nao grava auditoria explicita (trigger cobre o update)
+        verify(auditoriaRepository, never()).save(any());
+    }
+
+    @Test
+    void publicar_deveExigirJustificativa_quandoHaRessalva() {
+        Versao versao = versaoRascunho(5L, 3L, 10L);
+        when(versaoRepository.findById(5L)).thenReturn(Optional.of(versao));
+        when(qualidadeService.avaliar(10L)).thenReturn(qualidade(10L, true, 20));
+
+        assertThatThrownBy(() -> service.publicar(5L, "   "))
+                .isInstanceOf(ConflitoException.class)
+                .hasMessageContaining("justificativa");
+
+        assertThat(versao.getSituacao()).isEqualTo("RASCUNHO");
+        verify(versaoRepository, never()).save(any());
+        verify(conjuntoDadosRepository, never()).save(any());
+    }
+
+    @Test
+    void publicar_devePublicarComRessalva_eRegistrarAuditoria_quandoJustificativaInformada() {
+        Versao versao = versaoRascunho(5L, 3L, 10L);
+        when(versaoRepository.findById(5L)).thenReturn(Optional.of(versao));
+        when(qualidadeService.avaliar(10L)).thenReturn(qualidade(10L, true, 20));
+
+        VersaoResponse resposta = service.publicar(5L, "Publico ciente das 20 retidas");
+
+        assertThat(versao.getSituacao()).isEqualTo("VIGENTE");
+        assertThat(resposta.situacao()).isEqualTo("VIGENTE");
+
+        ArgumentCaptor<Auditoria> captor = ArgumentCaptor.forClass(Auditoria.class);
+        verify(auditoriaRepository).save(captor.capture());
+        Auditoria registro = captor.getValue();
+        assertThat(registro.getEntidadeAfetada()).isEqualTo("VERSAO");
+        assertThat(registro.getRegistroId()).isEqualTo(5L);
+        assertThat(registro.getDadosNovos())
+                .contains("PUBLICACAO")
+                .contains("Publico ciente das 20 retidas");
     }
 
     @Test
     void publicar_deveBloquear_quandoQualidadeReprovada() {
         Versao versao = versaoRascunho(5L, 3L, 10L);
         when(versaoRepository.findById(5L)).thenReturn(Optional.of(versao));
-        when(qualidadeService.avaliar(10L)).thenReturn(qualidade(10L, false));
+        when(qualidadeService.avaliar(10L)).thenReturn(qualidade(10L, false, 50));
 
-        assertThatThrownBy(() -> service.publicar(5L))
+        assertThatThrownBy(() -> service.publicar(5L, null))
                 .isInstanceOf(ConflitoException.class)
                 .hasMessageContaining("qualidade reprovada");
 
@@ -98,7 +138,7 @@ class PublicacaoServiceTest {
         versao.setSituacao("VIGENTE");
         when(versaoRepository.findById(5L)).thenReturn(Optional.of(versao));
 
-        assertThatThrownBy(() -> service.publicar(5L))
+        assertThatThrownBy(() -> service.publicar(5L, null))
                 .isInstanceOf(ConflitoException.class)
                 .hasMessageContaining("apenas RASCUNHO");
     }
@@ -107,7 +147,7 @@ class PublicacaoServiceTest {
     void publicar_deveLancarNaoEncontrado_quandoVersaoInexistente() {
         when(versaoRepository.findById(99L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.publicar(99L))
+        assertThatThrownBy(() -> service.publicar(99L, null))
                 .isInstanceOf(RecursoNaoEncontradoException.class);
     }
 

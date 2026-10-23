@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
+
 @RestController
 @RequestMapping("/api/versoes")
 public class VersaoController {
@@ -30,7 +31,7 @@ public class VersaoController {
         this.consultaVersaoService = consultaVersaoService;
     }
 
-    /** Lista as versoes para a fila de conferencia/publicacao. Filtro opcional */
+    /** Lista as versoes para a fila de conferencia/publicacao */
     @GetMapping
     public ResponseEntity<List<VersaoResumoResponse>> listar(
             @RequestParam(required = false) String situacao) {
@@ -38,7 +39,7 @@ public class VersaoController {
     }
 
     /**
-     * Publica a versao ). 404 se nao existe; 409 se a qualidade reprovar ou se houver quarentena sem justificativa.
+     * Publica a versao. 404 se nao existe; 409 se a qualidade reprovar ou se houver quarentena sem justificativa.
      */
     @PostMapping("/{id}/publicar")
     public ResponseEntity<VersaoResponse> publicar(@PathVariable Long id,

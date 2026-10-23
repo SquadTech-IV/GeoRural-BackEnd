@@ -14,10 +14,10 @@ public interface VersaoRepository extends JpaRepository<Versao, Long> {
 
     Optional<Versao> findTopByConjuntoOrderByNumeroDesc(ConjuntoDados conjunto);
 
-    /** Versoes de um conjunto  */
+    /** Versoes de um conjunto em uma dada situacao. */
     List<Versao> findByConjunto_IdAndSituacao(Long conjuntoId, String situacao);
 
-    /** Fila de versoes com conjunto/usuario/execucao carregados */
+    /** Fila de versoes com conjunto/usuario/execucao carregados . */
     @Query("""
            SELECT DISTINCT v FROM Versao v
            JOIN FETCH v.conjunto
@@ -27,7 +27,7 @@ public interface VersaoRepository extends JpaRepository<Versao, Long> {
            """)
     List<Versao> listarResumo();
 
-    /**  filtrar por situacao (RASCUNHO/VIGENTE/ANTERIOR) */
+    /** filtro por situacao. */
     @Query("""
            SELECT DISTINCT v FROM Versao v
            JOIN FETCH v.conjunto

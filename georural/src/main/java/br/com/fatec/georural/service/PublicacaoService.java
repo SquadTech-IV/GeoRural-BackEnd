@@ -72,7 +72,7 @@ public class PublicacaoService {
         }
         versaoRepository.saveAll(vigentes);
 
-        // publica uma  versao
+        // publica esta versao
         versao.setSituacao(SituacaoVersao.VIGENTE.name());
         versao.setDataPublicacao(LocalDateTime.now());
         versaoRepository.save(versao);
@@ -115,6 +115,7 @@ public class PublicacaoService {
                     + " (apenas RASCUNHO pode ser reprovada).");
         }
 
+        // a versao permanece RASCUNHO
         Auditoria registro = new Auditoria();
         registro.setOperacao("UPDATE");
         registro.setEntidadeAfetada("VERSAO");
@@ -137,7 +138,7 @@ public class PublicacaoService {
                 v.getExecucao() != null ? v.getExecucao().getId() : null);
     }
 
-    /** Escapa o texto para ser embutido com seguranca em um valor JSON */
+    /** Escapa o texto para ser embutido com seguranca em um valor JSON  */
     private static String escaparJson(String texto) {
         StringBuilder sb = new StringBuilder(texto.length() + 16);
         for (int i = 0; i < texto.length(); i++) {

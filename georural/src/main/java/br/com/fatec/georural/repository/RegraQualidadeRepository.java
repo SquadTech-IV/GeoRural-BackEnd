@@ -7,6 +7,6 @@ import java.util.List;
 
 public interface RegraQualidadeRepository extends JpaRepository<RegraQualidade, Long> {
 
-    /** Regras ativas */
+    /** Regras ativas. */
     List<RegraQualidade> findByAtiva(String ativa);
 }

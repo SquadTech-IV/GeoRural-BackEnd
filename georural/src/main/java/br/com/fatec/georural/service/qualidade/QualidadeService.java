@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+
 @Service
 @RequiredArgsConstructor
 public class QualidadeService {
@@ -34,6 +35,7 @@ public class QualidadeService {
     private final QuarentenaRepository quarentenaRepository;
     private final RegraQualidadeRepository regraQualidadeRepository;
 
+    /** Avalia a qualidade usando os criterios padrao do projeto. */
     @Transactional(readOnly = true)
     public QualidadeResponse avaliar(Long execucaoId) {
         return avaliar(execucaoId, CriteriosQualidade.padrao());
