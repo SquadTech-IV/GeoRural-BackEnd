@@ -2,7 +2,7 @@ package br.com.fatec.georural.service.storage;
 
 import br.com.fatec.georural.config.DataLakeConfig;
 import br.com.fatec.georural.config.DataLakeProperties;
-import com.oracle.bmc.model.BmcException;
+import br.com.fatec.georural.exception.ObjetoJaExisteException;
 import com.oracle.bmc.objectstorage.ObjectStorage;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -45,7 +45,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ArmazenamentoZonaBrutaIntegracaoTest {
 
     private static ObjectStorage cliente;
-    private static ArmazenamentoZonaBrutaService armazenamento;
+    private static OCIArmazenamentoZona armazenamento;
 
     @BeforeAll
     static void conectar() throws IOException {
@@ -67,7 +67,7 @@ class ArmazenamentoZonaBrutaIntegracaoTest {
                 perfil);
 
         cliente = new DataLakeConfig().objectStorage(propriedades);
-        armazenamento = new ArmazenamentoZonaBrutaService(cliente, propriedades);
+        armazenamento = new OCIArmazenamentoZona(cliente, propriedades);
     }
 
     @AfterAll
@@ -89,25 +89,24 @@ class ArmazenamentoZonaBrutaIntegracaoTest {
         String caminho = "testes-integracao/us07/" + unico + ".csv";
 
         // 1. O objeto ainda não existe.
-        assertFalse(armazenamento.verificarExistenciaObjeto(caminho));
+        assertFalse(armazenamento.existe(Zona.BRUTA, caminho));
 
         // 2. Grava e confirma a existência.
-        armazenamento.armazenarObjetoBruto(
+        armazenamento.gravar(Zona.BRUTA,
                 caminho, new ByteArrayInputStream(original), original.length, Map.of("hash-sha256", hash));
-        assertTrue(armazenamento.verificarExistenciaObjeto(caminho));
+        assertTrue(armazenamento.existe(Zona.BRUTA, caminho));
 
         // 3. Relê o objeto armazenado e recalcula o hash: tem de ser o mesmo valor.
-        try (InputStream lido = armazenamento.obterObjetoBruto(caminho)) {
+        try (InputStream lido = armazenamento.ler(Zona.BRUTA, caminho)) {
             assertEquals(hash, SHA256StreamCalculator.calcular(lido));
         }
 
-        // 4. Uma segunda gravação no mesmo caminho é recusada com 412 e não altera o objeto.
+        // 4. Uma segunda gravação no mesmo caminho é recusada (ObjetoJaExisteException) e não altera o objeto.
         byte[] diferente = ("OUTRO-CONTEUDO-" + unico + "\n").getBytes(StandardCharsets.UTF_8);
-        BmcException conflito = assertThrows(BmcException.class, () -> armazenamento.armazenarObjetoBruto(
+        assertThrows(ObjetoJaExisteException.class, () -> armazenamento.gravar(Zona.BRUTA,
                 caminho, new ByteArrayInputStream(diferente), diferente.length, null));
-        assertTrue(PoliticaZonaBruta.ehConflitoPorObjetoJaExistente(conflito));
 
-        try (InputStream lido = armazenamento.obterObjetoBruto(caminho)) {
+        try (InputStream lido = armazenamento.ler(Zona.BRUTA, caminho)) {
             assertEquals(hash, SHA256StreamCalculator.calcular(lido));
         }
     }

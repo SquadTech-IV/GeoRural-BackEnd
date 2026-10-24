@@ -4,6 +4,7 @@ import br.com.fatec.georural.entity.ArquivoBruto;
 import br.com.fatec.georural.entity.ConjuntoDados;
 import br.com.fatec.georural.entity.Usuario;
 import br.com.fatec.georural.exception.ArquivoDuplicadoException;
+import br.com.fatec.georural.exception.ObjetoJaExisteException;
 import br.com.fatec.georural.exception.RecursoNaoEncontradoException;
 import br.com.fatec.georural.exception.RequisicaoInvalidaException;
 import br.com.fatec.georural.repository.ArquivoBrutoRepository;
@@ -39,6 +40,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
@@ -63,7 +65,7 @@ class RecebimentoArquivoServiceTest {
     private UsuarioRepository usuarioRepository;
     private ArquivoBrutoRepository arquivoRepository;
     private VerificadorDuplicidade verificadorDuplicidade;
-    private ArmazenamentoZonaBrutaService armazenamento;
+    private ArmazenamentoZonaPort armazenamento;
     private ValidadorConjuntoDados validadorConjuntoDados;
     private RecebimentoArquivoService service;
 
@@ -81,7 +83,7 @@ class RecebimentoArquivoServiceTest {
         usuarioRepository = Mockito.mock(UsuarioRepository.class);
         arquivoRepository = Mockito.mock(ArquivoBrutoRepository.class);
         verificadorDuplicidade = Mockito.mock(VerificadorDuplicidade.class);
-        armazenamento = Mockito.mock(ArmazenamentoZonaBrutaService.class);
+        armazenamento = Mockito.mock(ArmazenamentoZonaPort.class);
         validadorConjuntoDados = Mockito.mock(ValidadorConjuntoDados.class);
 
         service = new RecebimentoArquivoService(
@@ -109,14 +111,14 @@ class RecebimentoArquivoServiceTest {
         when(arquivoRepository.save(any(ArquivoBruto.class))).thenAnswer(invocacao -> invocacao.getArgument(0));
 
         // A gravação lê o stream recebido durante a chamada, porque ele é fechado em seguida.
-        when(armazenamento.armazenarObjetoBruto(any(), any(), anyLong(), any())).thenAnswer(invocacao -> {
-            caminhoGravado.set(invocacao.getArgument(0));
-            InputStream entrada = invocacao.getArgument(1);
+        doAnswer(invocacao -> {
+            caminhoGravado.set(invocacao.getArgument(1));
+            InputStream entrada = invocacao.getArgument(2);
             bytesGravados.set(entrada.readAllBytes());
-            tamanhoGravado.set(invocacao.getArgument(2));
-            metadadosGravados.set(invocacao.getArgument(3));
+            tamanhoGravado.set(invocacao.getArgument(3));
+            metadadosGravados.set(invocacao.getArgument(4));
             return null;
-        });
+        }).when(armazenamento).gravar(eq(Zona.BRUTA), any(), any(), anyLong(), any());
     }
 
     private ArquivoBruto receberCsv() {
@@ -180,7 +182,7 @@ class RecebimentoArquivoServiceTest {
         assertEquals(List.of("RECEBENDO"), situacoesNoFlush);
         InOrder ordem = inOrder(arquivoRepository, armazenamento);
         ordem.verify(arquivoRepository).saveAndFlush(any(ArquivoBruto.class));
-        ordem.verify(armazenamento).armazenarObjetoBruto(any(), any(), anyLong(), any());
+        ordem.verify(armazenamento).gravar(eq(Zona.BRUTA), any(), any(), anyLong(), any());
         ordem.verify(arquivoRepository).save(any(ArquivoBruto.class));
 
         assertEquals(temporariosAntes, contarTemporarios());
@@ -339,8 +341,8 @@ class RecebimentoArquivoServiceTest {
     @Test
     void receber_falhaNaPromocaoComObjetoInexistente_deveDescartarORegistro() throws IOException {
         long temporariosAntes = contarTemporarios();
-        doThrow(bmc(500)).when(armazenamento).armazenarObjetoBruto(any(), any(), anyLong(), any());
-        when(armazenamento.verificarExistenciaObjeto(any())).thenReturn(false);
+        doThrow(bmc(500)).when(armazenamento).gravar(eq(Zona.BRUTA), any(), any(), anyLong(), any());
+        when(armazenamento.existe(eq(Zona.BRUTA), any())).thenReturn(false);
 
         assertThrows(IllegalStateException.class, () -> receberCsv());
 
@@ -351,8 +353,8 @@ class RecebimentoArquivoServiceTest {
 
     @Test
     void receber_falhaNaPromocaoComObjetoExistente_deveConcluirComoRecebido() {
-        doThrow(bmc(500)).when(armazenamento).armazenarObjetoBruto(any(), any(), anyLong(), any());
-        when(armazenamento.verificarExistenciaObjeto(any())).thenReturn(true);
+        doThrow(bmc(500)).when(armazenamento).gravar(eq(Zona.BRUTA), any(), any(), anyLong(), any());
+        when(armazenamento.existe(eq(Zona.BRUTA), any())).thenReturn(true);
 
         ArquivoBruto resultado = receberCsv();
 
@@ -362,8 +364,8 @@ class RecebimentoArquivoServiceTest {
 
     @Test
     void receber_falhaNaPromocaoSemPoderConfirmarOObjeto_deveManterORegistroRecebendo() {
-        doThrow(bmc(500)).when(armazenamento).armazenarObjetoBruto(any(), any(), anyLong(), any());
-        when(armazenamento.verificarExistenciaObjeto(any())).thenThrow(bmc(503));
+        doThrow(bmc(500)).when(armazenamento).gravar(eq(Zona.BRUTA), any(), any(), anyLong(), any());
+        when(armazenamento.existe(eq(Zona.BRUTA), any())).thenThrow(bmc(503));
 
         IllegalStateException erro = assertThrows(IllegalStateException.class, () -> receberCsv());
 
@@ -373,13 +375,13 @@ class RecebimentoArquivoServiceTest {
     }
 
     @Test
-    void receber_promocaoRejeitadaPorObjetoJaExistente412_deveConcluirSemConsultarExistencia() {
-        doThrow(bmc(412)).when(armazenamento).armazenarObjetoBruto(any(), any(), anyLong(), any());
+    void receber_promocaoRejeitadaPorObjetoJaExistente_deveConcluirSemConsultarExistencia() {
+        doThrow(new ObjetoJaExisteException("conjuntos/1/a.csv")).when(armazenamento).gravar(eq(Zona.BRUTA), any(), any(), anyLong(), any());
 
         ArquivoBruto resultado = receberCsv();
 
         assertEquals("RECEBIDO", resultado.getStatus());
-        verify(armazenamento, never()).verificarExistenciaObjeto(any());
+        verify(armazenamento, never()).existe(eq(Zona.BRUTA), any());
         verify(arquivoRepository, never()).delete(any(ArquivoBruto.class));
     }
 
@@ -390,7 +392,7 @@ class RecebimentoArquivoServiceTest {
 
         assertThrows(RuntimeException.class, () -> receberCsv());
 
-        verify(armazenamento, times(1)).armazenarObjetoBruto(any(), any(), anyLong(), any());
+        verify(armazenamento, times(1)).gravar(eq(Zona.BRUTA), any(), any(), anyLong(), any());
         verify(arquivoRepository, never()).delete(any(ArquivoBruto.class));
     }
 
@@ -400,13 +402,13 @@ class RecebimentoArquivoServiceTest {
     void receber_registroAbandonadoComObjetoJaGravado_deveConcluirSemGravarDeNovo() {
         ArquivoBruto abandonado = registroAbandonado();
         when(verificadorDuplicidade.verificar(CONJUNTO_ID, HASH_ABC)).thenReturn(Optional.of(abandonado));
-        when(armazenamento.verificarExistenciaObjeto(abandonado.getPathArmazenamento())).thenReturn(true);
+        when(armazenamento.existe(Zona.BRUTA, abandonado.getPathArmazenamento())).thenReturn(true);
 
         ArquivoBruto resultado = receberCsv();
 
         assertSame(abandonado, resultado);
         assertEquals("RECEBIDO", resultado.getStatus());
-        verify(armazenamento, never()).armazenarObjetoBruto(any(), any(), anyLong(), any());
+        verify(armazenamento, never()).gravar(eq(Zona.BRUTA), any(), any(), anyLong(), any());
         verify(arquivoRepository, never()).saveAndFlush(any(ArquivoBruto.class));
     }
 
@@ -415,7 +417,7 @@ class RecebimentoArquivoServiceTest {
         ArquivoBruto abandonado = registroAbandonado();
         String caminhoOriginal = abandonado.getPathArmazenamento();
         when(verificadorDuplicidade.verificar(CONJUNTO_ID, HASH_ABC)).thenReturn(Optional.of(abandonado));
-        when(armazenamento.verificarExistenciaObjeto(caminhoOriginal)).thenReturn(false);
+        when(armazenamento.existe(Zona.BRUTA, caminhoOriginal)).thenReturn(false);
 
         ArquivoBruto resultado = receberCsv();
 
@@ -437,6 +439,6 @@ class RecebimentoArquivoServiceTest {
         assertTrue(resultado.getPathArmazenamento().endsWith("_dados.csv"));
         assertFalse(resultado.getPathArmazenamento().contains(".."));
         verify(arquivoRepository, times(1)).saveAndFlush(any(ArquivoBruto.class));
-        verify(armazenamento, times(1)).armazenarObjetoBruto(eq(resultado.getPathArmazenamento()), any(), eq(3L), any());
+        verify(armazenamento, times(1)).gravar(eq(Zona.BRUTA), eq(resultado.getPathArmazenamento()), any(), eq(3L), any());
     }
 }
