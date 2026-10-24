@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 package br.com.fatec.georural.repository;
 
 import java.util.List;
@@ -38,3 +39,17 @@ public interface VersaoRepository extends JpaRepository<Versao, Long> {
            """)
     List<Versao> listarResumoPorSituacao(@Param("situacao") String situacao);
 }
+=======
+package br.com.fatec.georural.repository;
+
+import java.util.Optional;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import br.com.fatec.georural.entity.ConjuntoDados;
+import br.com.fatec.georural.entity.Versao;
+
+public interface VersaoRepository extends JpaRepository<Versao, Long> {
+    Optional<Versao> findTopByConjuntoOrderByNumeroDesc(ConjuntoDados conjunto);
+}
+>>>>>>> 00e592e (chore(US#07): Commit em devcontainer)
