@@ -3,6 +3,7 @@ package br.com.fatec.georural.service.treatment.property_area;
 import java.io.File;
 import java.util.Map;
 
+import org.geotools.api.referencing.crs.CoordinateReferenceSystem;
 import org.locationtech.jts.geom.Geometry;
 
 import br.com.fatec.georural.dto.request.regra.ProcessedProperty;
@@ -23,9 +24,16 @@ public class PropertyAreaTreatment extends BaseTreatment {
 
     private final File propertyAreaFile;
 
+    /** Limite do Paraná (mesmo usado no fluxo de embargo) - US09.01. */
+    private Geometry areaDeCorte;
+
+    private CoordinateReferenceSystem areaDeCorteCRS;
+
     private Map<String, Geometry> dissolvedGeometries;
 
     private Map<String, ProcessedProperty> processedProperties;
+
+    private Map<String, String> municipiosPorRecibo;
 
     public PropertyAreaTreatment(File propertyAreaFile) {
         this.propertyAreaFile = propertyAreaFile;

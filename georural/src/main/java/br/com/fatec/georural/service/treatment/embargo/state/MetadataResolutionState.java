@@ -3,6 +3,7 @@ package br.com.fatec.georural.service.treatment.embargo.state;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
@@ -14,9 +15,9 @@ import java.util.List;
 import org.geotools.api.data.FileDataStore;
 import org.geotools.api.data.FileDataStoreFinder;
 import org.geotools.api.feature.simple.SimpleFeature;
+import org.geotools.data.shapefile.ShapefileDataStore;
 import org.geotools.data.simple.SimpleFeatureCollection;
 import org.geotools.data.simple.SimpleFeatureIterator;
-import org.locationtech.jts.geom.Geometry;
 
 import br.com.fatec.georural.config.SpringContextHolder;
 import br.com.fatec.georural.entity.ArquivoBruto;
@@ -30,6 +31,9 @@ import br.com.fatec.georural.repository.FonteDoDadoRepository;
 import br.com.fatec.georural.repository.TipoConjuntoRepository;
 import br.com.fatec.georural.repository.VersaoRepository;
 import br.com.fatec.georural.service.treatment.audit.ExecucaoPipelineService;
+import br.com.fatec.georural.service.treatment.audit.QuarentenaService;
+import br.com.fatec.georural.service.treatment.common.LimiteParanaProvider;
+import br.com.fatec.georural.service.treatment.common.LimiteParanaProvider.LimiteParana;
 import br.com.fatec.georural.service.treatment.common.state.ReprojectionState;
 import br.com.fatec.georural.service.treatment.core.BaseTreatment;
 import br.com.fatec.georural.service.treatment.core.TreatmentState;
@@ -38,11 +42,8 @@ import br.com.fatec.georural.service.treatment.embargo.EmbargoTreatment;
 public class MetadataResolutionState implements TreatmentState {
 
     private static final String NOME_FONTE = "IBAMA/ICMBio - Embargos Ambientais";
-    private static final String ORGAO_FONTE = "IBAMA / ICMBio";
     private static final String NOME_CONJUNTO = "Embargos Ambientais Federais";
     private static final String TIPO_CAMADA = "EMBARGO";
-
-    private static final String LIMITE_PARANA_PATH = "src/main/resources/shapefiles/limite_estadual_pr.shp";
 
     @Override
     public void execute(BaseTreatment baseContext) {
@@ -84,9 +85,8 @@ public class MetadataResolutionState implements TreatmentState {
                     ConjuntoDados novo = new ConjuntoDados();
                     novo.setFonte(fonte);
                     novo.setNome(NOME_CONJUNTO);
-                    novo.setTipoConjunto(tipo); // relacionamento com TIPO_CONJUNTO
-                    novo.setSituacao("RASCUNHO"); // precisa ser setado explicitamente — Hibernate valida
-                                                  // nullable=false ANTES do DEFAULT do banco entrar em ação
+                    novo.setTipoConjunto(tipo);
+                    novo.setSituacao("RASCUNHO"); // Hibernate valida nullable=false ANTES do DEFAULT do banco
                     novo.setDataCadastro(LocalDateTime.now());
 
                     return conjuntoRepository.save(novo);
@@ -104,7 +104,7 @@ public class MetadataResolutionState implements TreatmentState {
                     novo.setPathArmazenamento(
                             context.getEmbargoFile().getAbsolutePath());
                     novo.setTamanhoBytes(context.getEmbargoFile().length());
-                    novo.setStatus("RECEBIDO"); // CHECK: valor válido
+                    novo.setStatus("RECEBIDO");
                     novo.setHash(hash);
                     novo.setDataUpload(LocalDateTime.now());
 
@@ -116,78 +116,59 @@ public class MetadataResolutionState implements TreatmentState {
                 .map(v -> v.getNumero() + 1)
                 .orElse(1L);
 
-        Versao versao = new Versao();
         ExecucaoPipeline execucao = SpringContextHolder
-        .getBean(
-                ExecucaoPipelineService.class)
-        .iniciar(
-                conjunto,
-                "TRATAMENTO");
+                .getBean(ExecucaoPipelineService.class)
+                .iniciar(conjunto, "TRATAMENTO");
 
-        context.setExecucaoPipeline(
-                execucao);
+        context.setExecucaoPipeline(execucao);
+
+        Versao versao = new Versao();
         versao.setConjunto(conjunto);
         versao.setNumero(proximoNumero);
         versao.setHash(hash);
-        versao.setSituacao("RASCUNHO"); // idem — não confiar no DEFAULT do banco
+        versao.setSituacao("RASCUNHO");
         versao.setDataCriacao(LocalDateTime.now());
         versao = versaoRepository.save(versao);
 
         context.setArquivoBruto(arquivoBruto);
         context.setVersao(versao);
 
-        File limiteParanaFile = new File(LIMITE_PARANA_PATH);
+        // Validação desta execução: a ela ficam ligados os registros da QUARENTENA
+        context.setValidacao(
+                SpringContextHolder
+                        .getBean(QuarentenaService.class)
+                        .iniciarValidacao(arquivoBruto));
 
-        if (!limiteParanaFile.exists()) {
-            throw new IllegalStateException(
-                    "Shapefile de limite do Paraná não encontrado em: "
-                            + LIMITE_PARANA_PATH);
-        }
+        // Limite do Paraná: agora vem do provider compartilhado com o fluxo de imóvel
+        LimiteParana limite = SpringContextHolder
+                .getBean(LimiteParanaProvider.class)
+                .carregar();
 
-        Geometry areaDeCorte = carregarGeometriaUnica(limiteParanaFile);
-        context.setAreaDeCorte(areaDeCorte);
+        context.setAreaDeCorte(limite.geometria());
+        context.setAreaDeCorteCRS(limite.crs());
 
-        FileDataStore limiteStore = null;
+        List<SimpleFeature> features = carregarFeatures(context.getEmbargoFile());
 
-        try {
-            limiteStore = abrirShapefile(limiteParanaFile);
+        context.setFeatures(features);
 
-            context.setAreaDeCorteCRS(
-                    limiteStore.getSchema().getCoordinateReferenceSystem());
-        } catch (IOException e) {
-            throw new RuntimeException(
-                    "Erro ao ler o CRS do shapefile de limite do Paraná: "
-                            + e.getMessage(),
-                    e);
-        } finally {
-            if (limiteStore != null) {
-                limiteStore.dispose();
-            }
-        }
-
-        context.setFeatures(
-                carregarFeatures(context.getEmbargoFile()));
+        context.registrarTransformacao(
+                "CARGA",
+                features.size(),
+                features.size(),
+                "arquivo=" + context.getEmbargoFile().getName());
 
         context.setState(new ReprojectionState());
-    }
-
-    private FileDataStore abrirShapefile(File file) throws IOException {
-        FileDataStore store = FileDataStoreFinder.getDataStore(file);
-
-        if (store == null) {
-            throw new IOException(
-                    "Não foi possível abrir o shapefile: "
-                            + file.getAbsolutePath());
-        }
-
-        return store;
     }
 
     private List<SimpleFeature> carregarFeatures(File shapefile) {
         FileDataStore store = null;
 
         try {
-            store = abrirShapefile(shapefile);
+            store = FileDataStoreFinder.getDataStore(shapefile);
+
+            if (store instanceof ShapefileDataStore shp) {
+                shp.setCharset(StandardCharsets.UTF_8);
+            }
 
             SimpleFeatureCollection collection = store.getFeatureSource().getFeatures();
 
@@ -211,52 +192,11 @@ public class MetadataResolutionState implements TreatmentState {
         }
     }
 
-    private Geometry carregarGeometriaUnica(File file) {
-        FileDataStore store = null;
-
-        try {
-            store = abrirShapefile(file);
-
-            SimpleFeatureCollection collection = store.getFeatureSource().getFeatures();
-
-            Geometry uniao = null;
-
-            try (SimpleFeatureIterator iterator = collection.features()) {
-                while (iterator.hasNext()) {
-                    Geometry geom = (Geometry) iterator.next().getDefaultGeometry();
-
-                    if (geom != null) {
-                        uniao = uniao == null
-                                ? geom
-                                : uniao.union(geom);
-                    }
-                }
-            }
-
-            if (uniao == null || uniao.isEmpty()) {
-                throw new IllegalStateException(
-                        "Shapefile de limite do Paraná não contém nenhuma geometria válida para o recorte.");
-            }
-
-            return uniao;
-        } catch (IOException e) {
-            throw new RuntimeException(
-                    "Erro ao ler shapefile de limite do Paraná: "
-                            + e.getMessage(),
-                    e);
-        } finally {
-            if (store != null) {
-                store.dispose();
-            }
-        }
-    }
-
     private String calcularHash(File file) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
 
-            try (
-                    InputStream is = Files.newInputStream(file.toPath());
+            try (InputStream is = Files.newInputStream(file.toPath());
                     DigestInputStream dis = new DigestInputStream(is, digest)) {
                 byte[] buffer = new byte[8192];
 

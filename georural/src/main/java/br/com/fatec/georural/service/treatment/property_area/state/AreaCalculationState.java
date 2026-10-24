@@ -1,8 +1,8 @@
 package br.com.fatec.georural.service.treatment.property_area.state;
 
 import java.math.BigDecimal;
-import java.util.HashMap;
 import java.util.Map;
+import java.util.TreeMap;
 
 import org.geotools.api.referencing.crs.CoordinateReferenceSystem;
 import org.geotools.api.referencing.operation.MathTransform;
@@ -11,6 +11,7 @@ import org.geotools.referencing.CRS;
 import org.locationtech.jts.geom.Geometry;
 
 import br.com.fatec.georural.dto.request.regra.ProcessedProperty;
+import br.com.fatec.georural.service.treatment.audit.TipoTransformacao;
 import br.com.fatec.georural.service.treatment.core.BaseTreatment;
 import br.com.fatec.georural.service.treatment.core.TreatmentState;
 import br.com.fatec.georural.service.treatment.property_area.PropertyAreaTreatment;
@@ -47,6 +48,16 @@ public class AreaCalculationState implements TreatmentState {
 
         PropertyAreaTreatment propertyArea = (PropertyAreaTreatment) baseContext;
 
+        Map<String, Geometry> dissolvidas = propertyArea.getDissolvedGeometries();
+
+        if (dissolvidas == null) {
+            dissolvidas = new TreeMap<>();
+        }
+
+        Map<String, ProcessedProperty> properties = new TreeMap<>();
+
+        Map<String, String> municipios = propertyArea.getMunicipiosPorRecibo();
+
         try {
 
             CoordinateReferenceSystem sourceCRS = CRS.decode("EPSG:4674", true);
@@ -55,13 +66,14 @@ public class AreaCalculationState implements TreatmentState {
 
             MathTransform transform = CRS.findMathTransform(sourceCRS, areaCRS, true);
 
-            Map<String, ProcessedProperty> properties = new HashMap<>();
-
-            for (Map.Entry<String, Geometry> item : propertyArea.getDissolvedGeometries().entrySet()) {
+            for (Map.Entry<String, Geometry> item : dissolvidas.entrySet()) {
 
                 String recibo = item.getKey();
 
                 Geometry geometry4674 = item.getValue();
+
+                // defesa extra: garante o SRID exigido pelo índice espacial
+                geometry4674.setSRID(4674);
 
                 // A geometria usada só para medir; o que vai para o banco continua em 4674
                 Geometry areaGeom = JTS.transform(geometry4674, transform);
@@ -70,20 +82,28 @@ public class AreaCalculationState implements TreatmentState {
 
                 ProcessedProperty pp = new ProcessedProperty();
                 pp.setRecibo(recibo);
+                pp.setMunicipio(municipios != null ? municipios.get(recibo) : null);
+                pp.setEstado("Paraná");
+                pp.setTema("Área do Imóvel");
                 pp.setGeometry4674(geometry4674);
                 pp.setAreaHa(areaHa);
 
                 properties.put(recibo, pp);
             }
 
-            propertyArea.setProcessedProperties(properties);
-
         } catch (Exception e) {
 
             throw new RuntimeException("Erro calculando áreas", e);
         }
 
-        // Padronização agora roda ANTES do dissolve, então daqui vai direto para salvar
+        propertyArea.setProcessedProperties(properties);
+
+        propertyArea.registrarTransformacao(
+                TipoTransformacao.CALCULO_AREA,
+                dissolvidas.size(),
+                properties.size(),
+                "CRS de área=Albers Paraná (equivalente)");
+
         propertyArea.setState(new PropertyAreaSavingState());
     }
 }

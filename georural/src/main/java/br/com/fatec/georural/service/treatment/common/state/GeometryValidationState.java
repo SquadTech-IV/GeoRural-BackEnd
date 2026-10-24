@@ -23,44 +23,35 @@ public class GeometryValidationState
         int entrada =
                 context.getFeatures().size();
 
-        try {
+        for (SimpleFeature feature :
+                context.getFeatures()) {
 
-            for (SimpleFeature feature :
-                    context.getFeatures()) {
+            Geometry geometry =
+                    (Geometry) feature
+                            .getDefaultGeometry();
 
-                Geometry geometry =
-                        (Geometry) feature
-                                .getDefaultGeometry();
-
-                if (geometry == null) {
-                    continue;
-                }
-
-                if (!geometry.isValid()) {
-                    geometry =
-                            geometry.buffer(0);
-                }
-
-                if (geometry.isEmpty()) {
-                    continue;
-                }
-
-                if (!geometry.isValid()) {
-                    continue;
-                }
-
-                feature.setDefaultGeometry(
-                        geometry);
-
-                validFeatures.add(feature);
+            if (geometry == null) {
+                continue;
             }
 
-        } catch (Exception e) {
+            if (!geometry.isValid()) {
+                geometry =
+                        geometry.buffer(0);
+            }
 
-            throw new RuntimeException(
-                    "Erro na validação de geometria: "
-                            + e.getMessage(),
-                    e);
+            if (geometry.isEmpty()) {
+                continue;
+            }
+
+            if (!geometry.isValid()) {
+                continue;
+            }
+
+            feature.setDefaultGeometry(
+                    geometry);
+
+            validFeatures.add(
+                    feature);
         }
 
         context.setFeatures(

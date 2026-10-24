@@ -19,6 +19,10 @@ public class ProcessedProperty {
 
     private String municipio;
 
+    private String estado;
+
+    private String tema;
+
     private Geometry geometry4674;
 
     private BigDecimal areaHa;

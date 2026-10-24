@@ -3,6 +3,7 @@ package br.com.fatec.georural.service.treatment.property_area.state;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
@@ -19,6 +20,7 @@ import org.geotools.data.simple.SimpleFeatureIterator;
 import br.com.fatec.georural.config.SpringContextHolder;
 import br.com.fatec.georural.entity.ArquivoBruto;
 import br.com.fatec.georural.entity.ConjuntoDados;
+import br.com.fatec.georural.entity.ExecucaoPipeline;
 import br.com.fatec.georural.entity.FonteDoDado;
 import br.com.fatec.georural.entity.Versao;
 import br.com.fatec.georural.repository.ArquivoBrutoRepository;
@@ -26,44 +28,38 @@ import br.com.fatec.georural.repository.ConjuntoDadosRepository;
 import br.com.fatec.georural.repository.FonteDoDadoRepository;
 import br.com.fatec.georural.repository.TipoConjuntoRepository;
 import br.com.fatec.georural.repository.VersaoRepository;
+import br.com.fatec.georural.service.treatment.audit.ExecucaoPipelineService;
+import br.com.fatec.georural.service.treatment.audit.QuarentenaService;
+import br.com.fatec.georural.service.treatment.common.LimiteParanaProvider;
+import br.com.fatec.georural.service.treatment.common.LimiteParanaProvider.LimiteParana;
 import br.com.fatec.georural.service.treatment.common.state.GeometryValidationState;
 import br.com.fatec.georural.service.treatment.core.BaseTreatment;
 import br.com.fatec.georural.service.treatment.core.TreatmentState;
 import br.com.fatec.georural.service.treatment.property_area.PropertyAreaTreatment;
-import br.com.fatec.georural.entity.ExecucaoPipeline;
-import br.com.fatec.georural.service.treatment.audit.ExecucaoPipelineService;
 
 public class MetadataResolutionState implements TreatmentState {
 
     private static final String NOME_FONTE = "CAR - Área do Imóvel";
-    private static final String ORGAO_FONTE = "Serviço Florestal Brasileiro (SFB)";
     private static final String NOME_CONJUNTO = "Área do Imóvel";
     private static final String TIPO_CAMADA = "IMOVEL"; // código cadastrado em TIPO_CONJUNTO
 
     @Override
     public void execute(BaseTreatment baseContext) {
-        PropertyAreaTreatment propertyArea =
-                (PropertyAreaTreatment) baseContext;
+        PropertyAreaTreatment propertyArea = (PropertyAreaTreatment) baseContext;
 
-        FonteDoDadoRepository fonteRepository =
-                SpringContextHolder.getBean(FonteDoDadoRepository.class);
+        FonteDoDadoRepository fonteRepository = SpringContextHolder.getBean(FonteDoDadoRepository.class);
 
-        ConjuntoDadosRepository conjuntoRepository =
-                SpringContextHolder.getBean(ConjuntoDadosRepository.class);
+        ConjuntoDadosRepository conjuntoRepository = SpringContextHolder.getBean(ConjuntoDadosRepository.class);
 
-        ArquivoBrutoRepository arquivoRepository =
-                SpringContextHolder.getBean(ArquivoBrutoRepository.class);
+        ArquivoBrutoRepository arquivoRepository = SpringContextHolder.getBean(ArquivoBrutoRepository.class);
 
-        VersaoRepository versaoRepository =
-                SpringContextHolder.getBean(VersaoRepository.class);
+        VersaoRepository versaoRepository = SpringContextHolder.getBean(VersaoRepository.class);
 
-        TipoConjuntoRepository tipos =
-                SpringContextHolder.getBean(TipoConjuntoRepository.class);
+        TipoConjuntoRepository tipos = SpringContextHolder.getBean(TipoConjuntoRepository.class);
 
         var tipo = tipos.findByCodigoIgnoreCase(TIPO_CAMADA)
                 .orElseThrow(() -> new IllegalStateException(
-                        "Tipo não cadastrado em TIPO_CONJUNTO: " + TIPO_CAMADA
-                ));
+                        "Tipo não cadastrado em TIPO_CONJUNTO: " + TIPO_CAMADA));
 
         FonteDoDado fonte = fonteRepository.findByNome(NOME_FONTE)
                 .orElseGet(() -> {
@@ -77,56 +73,52 @@ public class MetadataResolutionState implements TreatmentState {
                 });
 
         ConjuntoDados conjunto = conjuntoRepository
-                .findByFonteIdAndTipoConjuntoId(
-                        fonte.getId(),
-                        tipo.getId()
-                )
+                .findByFonteIdAndTipoConjuntoId(fonte.getId(), tipo.getId())
                 .orElseGet(() -> {
                     ConjuntoDados novo = new ConjuntoDados();
                     novo.setFonte(fonte);
                     novo.setNome(NOME_CONJUNTO);
                     novo.setTipoConjunto(tipo);
-                    novo.setSituacao("RASCUNHO"); // CHECK (con_situacao IN ('RASCUNHO','EM_VALIDACAO','PUBLICADO','ARQUIVADO'))
+                    novo.setSituacao("RASCUNHO"); // CHECK (con_situacao IN
+                                                  // ('RASCUNHO','EM_VALIDACAO','PUBLICADO','ARQUIVADO'))
                     novo.setDataCadastro(LocalDateTime.now());
 
                     return conjuntoRepository.save(novo);
                 });
 
-        String hash = calcularHash(
-                propertyArea.getPropertyAreaFile()
-        );
+        File arquivo = propertyArea.getPropertyAreaFile();
 
-        ArquivoBruto arquivoBruto = new ArquivoBruto();
-        arquivoBruto.setConjunto(conjunto);
-        arquivoBruto.setNome(
-                propertyArea.getPropertyAreaFile().getName()
-        );
-        arquivoBruto.setFormato("SHP");
-        arquivoBruto.setPathArmazenamento(
-                propertyArea.getPropertyAreaFile().getAbsolutePath()
-        );
-        arquivoBruto.setTamanhoBytes(
-                propertyArea.getPropertyAreaFile().length()
-        );
-        arquivoBruto.setStatus("RECEBIDO");
-        arquivoBruto.setHash(hash);
-        arquivoBruto.setDataUpload(LocalDateTime.now());
+        String hash = calcularHash(arquivo);
 
-        arquivoBruto = arquivoRepository.save(arquivoBruto);
+        // arq_hash é UNIQUE — reaproveita se o mesmo arquivo já foi processado antes
+        // (mesmo comportamento do fluxo de embargo)
+        ArquivoBruto arquivoBruto = arquivoRepository.findByHash(hash)
+                .orElseGet(() -> {
+                    ArquivoBruto novo = new ArquivoBruto();
+                    novo.setConjunto(conjunto);
+                    novo.setNome(arquivo.getName());
+                    novo.setFormato("SHP");
+                    novo.setPathArmazenamento(arquivo.getAbsolutePath());
+                    novo.setTamanhoBytes(arquivo.length());
+                    novo.setStatus("RECEBIDO");
+                    novo.setHash(hash);
+                    novo.setDataUpload(LocalDateTime.now());
+
+                    return arquivoRepository.save(novo);
+                });
 
         long proximoNumero = versaoRepository
                 .findTopByConjuntoOrderByNumeroDesc(conjunto)
                 .map(v -> v.getNumero() + 1)
                 .orElse(1L);
 
-        Versao versao = new Versao();
         ExecucaoPipeline execucao = SpringContextHolder
-        .getBean(
-                ExecucaoPipelineService.class)
-        .iniciar(
-                conjunto,
-                "TRATAMENTO");
+                .getBean(ExecucaoPipelineService.class)
+                .iniciar(conjunto, "TRATAMENTO");
+
         propertyArea.setExecucaoPipeline(execucao);
+
+        Versao versao = new Versao();
         versao.setConjunto(conjunto);
         versao.setNumero(proximoNumero);
         versao.setHash(hash);
@@ -138,27 +130,45 @@ public class MetadataResolutionState implements TreatmentState {
         propertyArea.setArquivoBruto(arquivoBruto);
         propertyArea.setVersao(versao);
 
-        propertyArea.setFeatures(
-                carregarFeatures(
-                        propertyArea.getPropertyAreaFile()
-                )
-        );
+        // Validação desta execução: a ela ficam ligados os registros da QUARENTENA
+        propertyArea.setValidacao(
+                SpringContextHolder
+                        .getBean(QuarentenaService.class)
+                        .iniciarValidacao(arquivoBruto, execucao));
+
+        // US09.01: o imóvel também é recortado pelo limite do Paraná
+        LimiteParana limite = SpringContextHolder
+                .getBean(LimiteParanaProvider.class)
+                .carregar();
+
+        propertyArea.setAreaDeCorte(limite.geometria());
+        propertyArea.setAreaDeCorteCRS(limite.crs());
+
+        List<SimpleFeature> features = carregarFeatures(arquivo);
+
+        propertyArea.setFeatures(features);
+
+        propertyArea.setTotalCarregado(features.size());
+
+        propertyArea.registrarTransformacao(
+                "CARGA",
+                features.size(),
+                features.size(),
+                "arquivo=" + arquivo.getName());
 
         propertyArea.setState(new GeometryValidationState());
     }
 
     private String calcularHash(File file) {
         try {
-            MessageDigest digest =
-                    MessageDigest.getInstance("SHA-256");
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
 
-            try (
-                    InputStream is = Files.newInputStream(file.toPath());
-                    DigestInputStream dis = new DigestInputStream(is, digest)
-            ) {
+            try (InputStream is = Files.newInputStream(file.toPath());
+                    DigestInputStream dis = new DigestInputStream(is, digest)) {
                 byte[] buffer = new byte[8192];
 
                 while (dis.read(buffer) != -1) {
+                    // apenas consome o stream
                 }
             }
 
@@ -172,8 +182,7 @@ public class MetadataResolutionState implements TreatmentState {
         } catch (NoSuchAlgorithmException | IOException e) {
             throw new RuntimeException(
                     "Erro ao calcular hash do arquivo: " + e.getMessage(),
-                    e
-            );
+                    e);
         }
     }
 
@@ -181,9 +190,8 @@ public class MetadataResolutionState implements TreatmentState {
         ShapefileDataStore dataStore = null;
 
         try {
-            dataStore = new ShapefileDataStore(
-                    shapefile.toURI().toURL()
-            );
+            dataStore = new ShapefileDataStore(shapefile.toURI().toURL());
+            dataStore.setCharset(StandardCharsets.UTF_8);
 
             SimpleFeatureCollection collection = dataStore
                     .getFeatureSource()
@@ -201,8 +209,7 @@ public class MetadataResolutionState implements TreatmentState {
         } catch (IOException e) {
             throw new RuntimeException(
                     "Erro ao ler shapefile: " + e.getMessage(),
-                    e
-            );
+                    e);
         } finally {
             if (dataStore != null) {
                 dataStore.dispose();

@@ -1,6 +1,8 @@
 package br.com.fatec.georural.service.treatment.property_area.state;
 
 import java.text.Normalizer;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.regex.Pattern;
 
 import org.geotools.api.feature.simple.SimpleFeature;
@@ -9,129 +11,117 @@ import br.com.fatec.georural.service.treatment.core.BaseTreatment;
 import br.com.fatec.georural.service.treatment.core.TreatmentState;
 import br.com.fatec.georural.service.treatment.property_area.PropertyAreaTreatment;
 
-public class FieldsValidationState implements TreatmentState {
+/**
+ * Validação de campos do imóvel. Cada reprovação vai para a QUARENTENA com a
+ * coluna e o motivo (US09.02). Os 1º argumentos de rejeitar() devem bater com
+ * o campo "tipo" das linhas de REGRA_QUALIDADE.
+ */
+public class FieldsValidationState
+        implements TreatmentState {
 
-    private static final Pattern RECIBO_PATTERN =
-            Pattern.compile("^[A-Z]{2}-\\d{7}-[0-9A-F]{32}$");
+    private static final Pattern RECIBO_PATTERN = Pattern.compile("^[A-Z]{2}-\\d{7}-[0-9A-F]{32}$");
 
     @Override
     public void execute(BaseTreatment baseContext) {
 
-        PropertyAreaTreatment propertyArea =
-                (PropertyAreaTreatment) baseContext;
+        PropertyAreaTreatment propertyArea = (PropertyAreaTreatment) baseContext;
 
-        for (SimpleFeature feature :
-                propertyArea.getFeatures()) {
+        List<SimpleFeature> validFeatures = new ArrayList<>();
 
-            String id = feature.getID();
+        int entrada = propertyArea.getFeatures().size();
 
-            Object recibo =
-                    feature.getAttribute("recibo");
+        for (SimpleFeature feature : propertyArea.getFeatures()) {
 
-            if (recibo == null ||
-                    recibo.toString().isBlank()) {
+            Object recibo = feature.getAttribute("recibo");
 
-                throw new IllegalStateException(
-                        "Campo obrigatório ausente: recibo (registro "
-                                + id + ")");
+            if (recibo == null || recibo.toString().isBlank()) {
+                propertyArea.rejeitar("OBRIGATORIO", "recibo",
+                        "Recibo ausente", feature);
+                continue;
             }
 
-            if (!RECIBO_PATTERN.matcher(
-                    recibo.toString()).matches()) {
-
-                throw new IllegalStateException(
-                        "Formato de recibo inválido: "
-                                + recibo
-                                + " (registro "
-                                + id + ")");
+            if (!RECIBO_PATTERN.matcher(recibo.toString()).matches()) {
+                propertyArea.rejeitar("FORMATO", "recibo",
+                        "Recibo fora do padrão: " + recibo, feature);
+                continue;
             }
 
-            Object tema =
-                    feature.getAttribute("tema");
+            Object tema = feature.getAttribute("tema");
 
-            if (tema == null ||
-                    tema.toString().isBlank()) {
-
-                throw new IllegalStateException(
-                        "Campo obrigatório ausente: tema (registro "
-                                + id + ")");
+            if (tema == null || tema.toString().isBlank()) {
+                propertyArea.rejeitar("OBRIGATORIO", "tema",
+                        "Tema ausente", feature);
+                continue;
             }
 
-            Object area =
-                    feature.getAttribute("area");
+            Object area = feature.getAttribute("area");
 
             if (area == null) {
-
-                throw new IllegalStateException(
-                        "Campo obrigatório ausente: area (registro "
-                                + id + ")");
+                propertyArea.rejeitar("OBRIGATORIO", "area",
+                        "Área ausente", feature);
+                continue;
             }
 
             if (((Number) area).doubleValue() <= 0) {
-
-                throw new IllegalStateException(
-                        "Área inválida (<= 0) no registro "
-                                + id);
+                propertyArea.rejeitar("INTERVALO", "area",
+                        "Área menor ou igual a zero: " + area, feature);
+                continue;
             }
 
-            Object modFiscais =
-                    feature.getAttribute("modfiscais");
+            Object modFiscais = feature.getAttribute("modfiscais");
 
             if (modFiscais == null) {
-
-                throw new IllegalStateException(
-                        "Campo obrigatório ausente: modfiscais (registro "
-                                + id + ")");
+                propertyArea.rejeitar("OBRIGATORIO", "modfiscais",
+                        "Módulos fiscais ausente", feature);
+                continue;
             }
 
             if (((Number) modFiscais).doubleValue() < 0) {
-
-                throw new IllegalStateException(
-                        "Módulos fiscais inválido (negativo) no registro "
-                                + id);
+                propertyArea.rejeitar("INTERVALO", "modfiscais",
+                        "Módulos fiscais negativo: " + modFiscais, feature);
+                continue;
             }
 
-            Object municipio =
-                    feature.getAttribute("municipio");
+            Object municipio = feature.getAttribute("municipio");
 
-            if (municipio == null ||
-                    municipio.toString().isBlank()) {
-
-                throw new IllegalStateException(
-                        "Campo obrigatório ausente: municipio (registro "
-                                + id + ")");
+            if (municipio == null || municipio.toString().isBlank()) {
+                propertyArea.rejeitar("OBRIGATORIO", "municipio",
+                        "Município ausente", feature);
+                continue;
             }
 
-            Object estado =
-                    feature.getAttribute("estado");
+            Object estado = feature.getAttribute("estado");
 
-            if (estado == null ||
-                    estado.toString().isBlank()) {
-
-                throw new IllegalStateException(
-                        "Campo obrigatório ausente: estado (registro "
-                                + id + ")");
+            if (estado == null || estado.toString().isBlank()) {
+                propertyArea.rejeitar("OBRIGATORIO", "estado",
+                        "Estado ausente", feature);
+                continue;
             }
 
-            String estadoNormalizado =
-                    Normalizer.normalize(
-                            estado.toString().trim(),
-                            Normalizer.Form.NFD)
-                            .replaceAll("\\p{M}", "")
-                            .toUpperCase();
+            String estadoNormalizado = Normalizer.normalize(
+                    estado.toString().trim(),
+                    Normalizer.Form.NFD)
+                    .replaceAll("\\p{M}", "")
+                    .toUpperCase();
 
             if (!"PARANA".equals(estadoNormalizado)
                     && !"PR".equals(estadoNormalizado)) {
-
-                throw new IllegalStateException(
-                        "Registro fora do escopo (estado != Paraná): "
-                                + estado
-                                + " (registro "
-                                + id + ")");
+                propertyArea.rejeitar("DOMINIO", "estado",
+                        "Estado diferente de Paraná: " + estado, feature);
+                continue;
             }
+
+            validFeatures.add(feature);
         }
 
-        propertyArea.setState(
-                new DuplicityValidationState());
+        propertyArea.setFeatures(validFeatures);
+
+        propertyArea.registrarTransformacao(
+                "VALIDACAO_CAMPOS",
+                entrada,
+                validFeatures.size(),
+                "rejeitadas=" + (entrada - validFeatures.size()));
+
+        propertyArea.setState(new DuplicityValidationState());
     }
 }

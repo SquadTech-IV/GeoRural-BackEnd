@@ -15,28 +15,26 @@ public class TransformacaoService {
 
     private final TransformacaoRepository repository;
 
-   public void registrar(
-        ExecucaoPipeline execucao,
-        Integer ordem,
-        String tipo,
-        String descricao) {
+    public void registrar(
+            ExecucaoPipeline execucao,
+            Integer ordem,   // ignorado: a ordem é calculada no banco
+            String tipo,
+            String descricao) {
 
-    if (execucao == null) {
-        return;
+        if (execucao == null) {
+            return;
+        }
+
+        int ordemReal = (int) repository.maxOrdem(execucao.getId()) + 1;
+
+        Transformacao transformacao = new Transformacao();
+
+        transformacao.setExecucao(execucao);
+        transformacao.setOrdem(ordemReal);
+        transformacao.setTipo(tipo);
+        transformacao.setDescricao(descricao);
+        transformacao.setData(LocalDateTime.now());
+
+        repository.save(transformacao);
     }
-
-    System.out.println(
-            "TIPO TRANSFORMACAO = " + tipo);
-
-    Transformacao transformacao =
-            new Transformacao();
-
-    transformacao.setExecucao(execucao);
-    transformacao.setOrdem(ordem);
-    transformacao.setTipo(tipo);
-    transformacao.setDescricao(descricao);
-    transformacao.setData(LocalDateTime.now());
-
-    repository.save(transformacao);
-}
 }

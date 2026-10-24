@@ -1,89 +1,70 @@
 package br.com.fatec.georural.controller;
 
-import jakarta.persistence.EntityManager;
-import lombok.RequiredArgsConstructor;
-
 import java.io.File;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
-import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import br.com.fatec.georural.service.treatment.embargo.EmbargoTreatment;
+import br.com.fatec.georural.service.treatment.property_area.PropertyAreaTreatment;
 
+/**
+ * Dispara os dois fluxos de tratamento. Só para teste: remova depois.
+ *
+ * POST /api/teste/embargo?arquivo=/workspaces/georural/test-files/embargo.shp
+ * POST /api/teste/imovel?arquivo=/workspaces/georural/test-files/Area_do_Imovel.shp
+ */
 @RestController
 @RequestMapping("/api/teste")
 public class TesteController {
 
+    // AJUSTE: arquivo de EMBARGO (o Area_do_Imovel.shp é do fluxo de imóvel)
+    private static final String EMBARGO_PADRAO = "/workspaces/georural/test-files/limite_estadual_pr.shp";
+
+    private static final String IMOVEL_PADRAO = "/workspaces/georural/test-files/Area_do_Imovel_Sujo.shp";
+
     @PostMapping("/embargo")
-    public String embargo() {
+    public Map<String, Object> embargo(
+            @RequestParam(defaultValue = EMBARGO_PADRAO) String arquivo) {
 
-        EmbargoTreatment tratamento =
-                new EmbargoTreatment(
-                        new File(
-                                "/workspaces/georural/test-files/Area_do_Imovel.shp"));
+        EmbargoTreatment tratamento = new EmbargoTreatment(new File(arquivo));
 
-        tratamento.execute();
-
-        return "OK";
+        return executar(tratamento::execute, arquivo);
     }
 
-    @RestController
-@RequestMapping("/api/teste")
-@RequiredArgsConstructor
-public class SqlTesteController {
+    @PostMapping("/imovel")
+    public Map<String, Object> imovel(
+            @RequestParam(defaultValue = IMOVEL_PADRAO) String arquivo) {
 
-    private final EntityManager entityManager;
+        PropertyAreaTreatment tratamento = new PropertyAreaTreatment(new File(arquivo));
 
-    @GetMapping("/execucao")
-    public Object execucao() {
-        return entityManager.createNativeQuery("""
-            SELECT EXE_ID,
-                   EXE_ETAPA,
-                   EXE_STATUS,
-                   EXE_INICIO,
-                   EXE_FIM
-            FROM EXECUCAO_PIPELINE
-            ORDER BY EXE_ID DESC
-        """).getResultList();
+        return executar(tratamento::execute, arquivo);
     }
 
-    @GetMapping("/transformacao")
-    public Object transformacao() {
-        return entityManager.createNativeQuery("""
-            SELECT TRA_ID,
-                   EXE_ID,
-                   TRA_ORDEM,
-                   TRA_TIPO,
-                   TRA_DESCRICAO
-            FROM TRANSFORMACAO
-            ORDER BY TRA_ID DESC
-        """).getResultList();
-    }
+    private Map<String, Object> executar(Runnable fluxo, String arquivo) {
 
-    @GetMapping("/movimentacao")
-    public Object movimentacao() {
-        return entityManager.createNativeQuery("""
-            SELECT MOV_ID,
-                   MOV_ZONA,
-                   MOV_STATUS,
-                   MOV_DATA
-            FROM MOVIMENTACAO_ZONA
-            ORDER BY MOV_ID DESC
-        """).getResultList();
-    }
+        Map<String, Object> resposta = new LinkedHashMap<>();
+        resposta.put("arquivo", arquivo);
 
-    @GetMapping("/versao")
-    public Object versao() {
-        return entityManager.createNativeQuery("""
-            SELECT VER_ID,
-                   VER_SITUACAO,
-                   VER_EXE_ID,
-                   VER_NUMERO
-            FROM VERSAO
-            ORDER BY VER_ID DESC
-        """).getResultList();
+        long inicio = System.currentTimeMillis();
+
+        try {
+            fluxo.run();
+            resposta.put("status", "OK");
+        } catch (Exception e) {
+            resposta.put("status", "ERRO");
+            resposta.put("erro", e.toString());
+            Throwable causa = e.getCause();
+            if (causa != null) {
+                resposta.put("causa", causa.toString());
+            }
+        }
+
+        resposta.put("duracaoMs", System.currentTimeMillis() - inicio);
+        return resposta;
     }
 }
-};

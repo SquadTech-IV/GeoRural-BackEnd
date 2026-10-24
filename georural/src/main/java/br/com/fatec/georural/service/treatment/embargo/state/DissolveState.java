@@ -9,8 +9,6 @@ import org.geotools.api.feature.simple.SimpleFeature;
 import org.locationtech.jts.geom.Geometry;
 import org.locationtech.jts.operation.union.UnaryUnionOp;
 
-import br.com.fatec.georural.config.SpringContextHolder;
-import br.com.fatec.georural.service.treatment.audit.TransformacaoService;
 import br.com.fatec.georural.service.treatment.core.BaseTreatment;
 import br.com.fatec.georural.service.treatment.core.TreatmentState;
 
@@ -31,6 +29,8 @@ public class DissolveState implements TreatmentState {
     public void execute(BaseTreatment context) {
 
         Map<String, List<SimpleFeature>> grupos = new LinkedHashMap<>();
+
+        int entrada = context.getFeatures().size();
 
         for (SimpleFeature feature : context.getFeatures()) {
 
@@ -67,22 +67,17 @@ public class DissolveState implements TreatmentState {
             resultado.add(base);
         }
 
-        System.out.println("[Dissolve] " + context.getFeatures().size() + " feições em "
+        System.out.println("[Dissolve] " + entrada + " feições em "
                 + resultado.size() + " embargos (" + unidos + " com partes unidas).");
 
         context.setFeatures(resultado);
 
-        SpringContextHolder
-        .getBean(
-                TransformacaoService.class)
-        .registrar(
-                context.getExecucaoPipeline(),
-                4,
+        // Correção: "entrada" é capturada ANTES do setFeatures (antes registrava a saída nos dois)
+        context.registrarTransformacao(
                 "DISSOLVER",
-                "Entrada="
-                        + context.getFeatures().size()
-                        + ", saída="
-                        + resultado.size());
+                entrada,
+                resultado.size(),
+                "embargos com partes unidas=" + unidos);
 
         context.setState(new StandardizationState());
     }
