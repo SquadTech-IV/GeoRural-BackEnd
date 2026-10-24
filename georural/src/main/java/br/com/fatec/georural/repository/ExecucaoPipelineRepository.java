@@ -7,4 +7,6 @@ import java.util.List;
 
 public interface ExecucaoPipelineRepository extends JpaRepository<ExecucaoPipeline, Long> {
     List<ExecucaoPipeline> findByConjunto_IdOrderByInicioAsc(Long conjuntoId);
+
+    List<ExecucaoPipeline> findByDagRunIdOrderByInicioAsc(String dagRunId);
 }

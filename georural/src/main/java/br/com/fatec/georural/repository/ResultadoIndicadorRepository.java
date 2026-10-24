@@ -29,7 +29,32 @@ public interface ResultadoIndicadorRepository extends JpaRepository<ResultadoInd
            """)
     List<ResultadoIndicador> buscarVigentesDoImovel(@Param("imovelId") Long imovelId);
 
-    /** Indicadores e regras de calculo por versao */
+    @Query("""
+       SELECT DISTINCT i
+       FROM ResultadoIndicador r
+       JOIN r.indicador i
+       WHERE r.execucao.id IN (:execucaoIds)
+          OR r.execucao.id IN (
+               SELECT ent.execucao.id FROM EntradaExecucao ent
+               WHERE ent.versao.id IN (
+                   SELECT ex.versaoGerada.id FROM ExecucaoPipeline ex
+                   WHERE ex.id IN (:execucaoIds) AND ex.versaoGerada IS NOT NULL))
+       ORDER BY i.sigla
+       """)
+    List<Indicador> buscarIndicadoresGeradosPorExecucoes(@Param("execucaoIds") Collection<Long> execucaoIds);
+
+    @Query("""
+       SELECT r FROM ResultadoIndicador r
+       JOIN FETCH r.indicador i
+       JOIN FETCH r.imovel im
+       JOIN FETCH r.versao v
+       WHERE v.situacao IN ('VIGENTE', 'ANTERIOR')
+         AND (:indicador = '' OR i.sigla = :indicador)
+         AND LOWER(im.codigoCar) LIKE :busca
+       ORDER BY r.dataCalculo DESC
+       """)
+    List<ResultadoIndicador> buscarPublicados(@Param("indicador") String indicador,
+                                              @Param("busca") String busca);
     @Query("""
            SELECT DISTINCT r.versao.id, i.sigla, i.nome, COALESCE(rc.descricao, rc.versao)
            FROM ResultadoIndicador r

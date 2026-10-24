@@ -1,9 +1,20 @@
 package br.com.fatec.georural.entity;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.Table;
+
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+
 import java.time.LocalDateTime;
 
 @Entity
@@ -18,16 +29,16 @@ public class FonteDoDado {
     @Column(name = "fon_id")
     private Long id;
 
-    @Column(name = "fon_nome", nullable = false)
+    @Column(name = "fon_nome", nullable = false, length = 120)
     private String nome;
 
-    @Column(name = "fon_sigla")
+    @Column(name = "fon_sigla", length = 20)
     private String sigla;
 
-    @Column(name = "fon_esfera")
+    @Column(name = "fon_esfera", length = 20)
     private String esfera;
 
-    @Column(name = "fon_status", nullable = false)
+    @Column(name = "fon_status", nullable = false, length = 1)
     private String status = "S";
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -36,4 +47,15 @@ public class FonteDoDado {
 
     @Column(name = "fon_data_cadastro", nullable = false)
     private LocalDateTime dataCadastro;
+
+    @PrePersist
+    void prepararCadastro() {
+        if (dataCadastro == null) {
+            dataCadastro = LocalDateTime.now();
+        }
+
+        if (status == null || status.isBlank()) {
+            status = "S";
+        }
+    }
 }
