@@ -14,17 +14,7 @@ import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
-import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.dao.PessimisticLockingFailureException;
-import org.springframework.http.converter.HttpMessageNotReadableException;
-import org.springframework.orm.ObjectOptimisticLockingFailureException;
-import org.springframework.web.bind.MethodArgumentNotValidException;
-import org.springframework.web.bind.MissingServletRequestParameterException;
-import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.MultipartException;
-import org.springframework.web.multipart.support.MissingServletRequestPartException;
-
-import java.util.stream.Collectors;import org.springframework.web.multipart.MultipartException;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
 
 import java.util.stream.Collectors;
@@ -147,7 +137,7 @@ public ResponseEntity<ErroResponse> tratarUploadMuitoGrande(
     HttpServletRequest request
 ) {
     return montar(
-        HttpStatus.PAYLOAD_TOO_LARGE,
+        HttpStatus.CONTENT_TOO_LARGE,
         "O upload excedeu o tamanho máximo permitido.",
         request
     );

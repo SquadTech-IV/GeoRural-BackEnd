@@ -16,6 +16,8 @@ public interface ArquivoBrutoRepository extends JpaRepository<ArquivoBruto, Long
 
     Optional<ArquivoBruto> findArquivoBruto(@Param("conId") Long conId, @Param("hash") String hash);
 
+    Optional<ArquivoBruto> findByHash(String hash);
+
     /** ja existe um arquivo com esse nome nesse conjunto? */
     boolean existsByConjunto_IdAndNome(Long conjuntoId, String nome);
 
