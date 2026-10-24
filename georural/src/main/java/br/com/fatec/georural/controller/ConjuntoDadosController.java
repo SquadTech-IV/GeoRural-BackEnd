@@ -19,7 +19,7 @@ public class ConjuntoDadosController {
         this.trajetoriaService = trajetoriaService;
     }
 
-    @GetMapping
+    @GetMapping("/resumo")
     public List<ConjuntoResumoResponse> listar() {
         return trajetoriaService.listarConjuntos();
     }
