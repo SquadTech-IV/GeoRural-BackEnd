@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
 import java.util.Optional;
 
 /**
- * Bloqueia o recebimento de arquivo com hash idêntico a um já registrado para o mesmo conjunto.
+ * Bloqueia o recebimento de arquivo com hash idêntico a um já registrado globalmente.
  *
  * <p>Esta verificação rejeita o caso comum cedo e com mensagem clara. A garantia contra envios
  * simultâneos é o índice único {@code uk_arq_con_hash} do banco: quem grava o registro deve tratar a
@@ -50,7 +50,8 @@ public class VerificadorDuplicidade {
         if (ativo.isEmpty()) {
             return Optional.empty();
         }
-        if (estaAbandonado(ativo.get())) {
+        ArquivoBruto arquivo = ativo.get();
+        if (pertenceAoConjunto(arquivo, conjuntoId) && estaAbandonado(arquivo)) {
             return ativo;
         }
         throw new ArquivoDuplicadoException(conjuntoId, hashNormalizado);
@@ -60,5 +61,9 @@ public class VerificadorDuplicidade {
         return SituacaoArquivoBruto.RECEBENDO.equals(arquivo.getStatus())
                 && arquivo.getDataUpload() != null
                 && arquivo.getDataUpload().isBefore(LocalDateTime.now().minusMinutes(prazoAbandonoMinutos));
+    }
+
+    private boolean pertenceAoConjunto(ArquivoBruto arquivo, Long conjuntoId) {
+        return arquivo.getConjunto() != null && conjuntoId.equals(arquivo.getConjunto().getId());
     }
 }
