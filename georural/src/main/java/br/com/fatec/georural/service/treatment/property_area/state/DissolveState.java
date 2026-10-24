@@ -8,10 +8,11 @@ import java.util.Map;
 import org.geotools.api.feature.simple.SimpleFeature;
 import org.locationtech.jts.geom.Geometry;
 import org.locationtech.jts.operation.union.UnaryUnionOp;
-
 import br.com.fatec.georural.service.treatment.core.BaseTreatment;
 import br.com.fatec.georural.service.treatment.core.TreatmentState;
 import br.com.fatec.georural.service.treatment.property_area.PropertyAreaTreatment;
+import br.com.fatec.georural.config.SpringContextHolder;
+import br.com.fatec.georural.service.treatment.audit.TransformacaoService;
 
 public class DissolveState implements TreatmentState {
 
@@ -64,6 +65,16 @@ public class DissolveState implements TreatmentState {
                     item.getKey(),
                     uniao);
         }
+
+        SpringContextHolder
+        .getBean(
+                TransformacaoService.class)
+        .registrar(
+                propertyArea.getExecucaoPipeline(),
+                4,
+                "DISSOLVER",
+                "Recibos dissolvidos="
+                        + dissolvidas.size());
 
         propertyArea.setDissolvedGeometries(
                 dissolvidas);

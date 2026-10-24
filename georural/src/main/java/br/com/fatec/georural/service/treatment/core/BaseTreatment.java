@@ -7,6 +7,7 @@ import org.geotools.api.feature.simple.SimpleFeature;
 import org.geotools.api.referencing.crs.CoordinateReferenceSystem;
 
 import br.com.fatec.georural.entity.ArquivoBruto;
+import br.com.fatec.georural.entity.ExecucaoPipeline;
 import br.com.fatec.georural.entity.Versao;
 import lombok.Getter;
 import lombok.Setter;
@@ -23,6 +24,8 @@ public abstract class BaseTreatment {
 
     private Versao versao;
 
+    private ExecucaoPipeline execucaoPipeline;
+
     private File file;
 
     private CoordinateReferenceSystem targetCRS;
@@ -35,18 +38,12 @@ public abstract class BaseTreatment {
 
             atual.execute(this);
 
-            // Estados compartilhados (common.state) não sabem quem vem depois.
-            // Se o estado não escolheu o próximo, quem decide é o tratamento.
-            // Sem isso o mesmo estado seria executado para sempre.
             if (state == atual) {
                 state = proximoApos(atual);
             }
         }
     }
 
-    /**
-     * Próximo estado para quem não define o seu próprio.
-     * Retornar null encerra o pipeline.
-     */
-    protected abstract TreatmentState proximoApos(TreatmentState atual);
+    protected abstract TreatmentState proximoApos(
+            TreatmentState atual);
 }

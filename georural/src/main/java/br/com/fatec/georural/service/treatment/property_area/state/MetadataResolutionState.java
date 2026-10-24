@@ -30,6 +30,8 @@ import br.com.fatec.georural.service.treatment.common.state.GeometryValidationSt
 import br.com.fatec.georural.service.treatment.core.BaseTreatment;
 import br.com.fatec.georural.service.treatment.core.TreatmentState;
 import br.com.fatec.georural.service.treatment.property_area.PropertyAreaTreatment;
+import br.com.fatec.georural.entity.ExecucaoPipeline;
+import br.com.fatec.georural.service.treatment.audit.ExecucaoPipelineService;
 
 public class MetadataResolutionState implements TreatmentState {
 
@@ -118,6 +120,13 @@ public class MetadataResolutionState implements TreatmentState {
                 .orElse(1L);
 
         Versao versao = new Versao();
+        ExecucaoPipeline execucao = SpringContextHolder
+        .getBean(
+                ExecucaoPipelineService.class)
+        .iniciar(
+                conjunto,
+                "TRATAMENTO");
+        propertyArea.setExecucaoPipeline(execucao);
         versao.setConjunto(conjunto);
         versao.setNumero(proximoNumero);
         versao.setHash(hash);

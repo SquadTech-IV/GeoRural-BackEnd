@@ -10,6 +10,7 @@ import br.com.fatec.georural.service.treatment.common.state.GeometryValidationSt
 import br.com.fatec.georural.service.treatment.common.state.ReprojectionState;
 import br.com.fatec.georural.service.treatment.core.BaseTreatment;
 import br.com.fatec.georural.service.treatment.core.TreatmentState;
+import br.com.fatec.georural.service.treatment.property_area.state.ClipState;
 import br.com.fatec.georural.service.treatment.property_area.state.DissolveState;
 import br.com.fatec.georural.service.treatment.property_area.state.FieldsValidationState;
 import br.com.fatec.georural.service.treatment.property_area.state.MetadataResolutionState;
@@ -27,9 +28,7 @@ public class PropertyAreaTreatment extends BaseTreatment {
     private Map<String, ProcessedProperty> processedProperties;
 
     public PropertyAreaTreatment(File propertyAreaFile) {
-
         this.propertyAreaFile = propertyAreaFile;
-
         this.setState(new MetadataResolutionState());
     }
 
@@ -41,6 +40,10 @@ public class PropertyAreaTreatment extends BaseTreatment {
         }
 
         if (atual instanceof ReprojectionState) {
+            return new ClipState();
+        }
+
+        if (atual instanceof ClipState) {
             return new DissolveState();
         }
 

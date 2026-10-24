@@ -8,8 +8,9 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+
 @RestController
-@RequestMapping("/api/conjuntos")
+@RequestMapping("/api/trajetoria-conjuntos")
 public class ConjuntoDadosController {
 
     private final TrajetoriaConjuntoService trajetoriaService;

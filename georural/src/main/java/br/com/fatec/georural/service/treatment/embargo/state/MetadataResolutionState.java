@@ -21,6 +21,7 @@ import org.locationtech.jts.geom.Geometry;
 import br.com.fatec.georural.config.SpringContextHolder;
 import br.com.fatec.georural.entity.ArquivoBruto;
 import br.com.fatec.georural.entity.ConjuntoDados;
+import br.com.fatec.georural.entity.ExecucaoPipeline;
 import br.com.fatec.georural.entity.FonteDoDado;
 import br.com.fatec.georural.entity.Versao;
 import br.com.fatec.georural.repository.ArquivoBrutoRepository;
@@ -28,6 +29,7 @@ import br.com.fatec.georural.repository.ConjuntoDadosRepository;
 import br.com.fatec.georural.repository.FonteDoDadoRepository;
 import br.com.fatec.georural.repository.TipoConjuntoRepository;
 import br.com.fatec.georural.repository.VersaoRepository;
+import br.com.fatec.georural.service.treatment.audit.ExecucaoPipelineService;
 import br.com.fatec.georural.service.treatment.common.state.ReprojectionState;
 import br.com.fatec.georural.service.treatment.core.BaseTreatment;
 import br.com.fatec.georural.service.treatment.core.TreatmentState;
@@ -40,36 +42,28 @@ public class MetadataResolutionState implements TreatmentState {
     private static final String NOME_CONJUNTO = "Embargos Ambientais Federais";
     private static final String TIPO_CAMADA = "EMBARGO";
 
-    private static final String LIMITE_PARANA_PATH =
-            "src/main/resources/shapefiles/limite_estadual_pr.shp";
+    private static final String LIMITE_PARANA_PATH = "src/main/resources/shapefiles/limite_estadual_pr.shp";
 
     @Override
     public void execute(BaseTreatment baseContext) {
         EmbargoTreatment context = (EmbargoTreatment) baseContext;
 
         System.out.println(
-                "[0/8] Resolvendo metadados do arquivo de embargos..."
-        );
+                "[0/8] Resolvendo metadados do arquivo de embargos...");
 
-        FonteDoDadoRepository fonteRepository =
-                SpringContextHolder.getBean(FonteDoDadoRepository.class);
+        FonteDoDadoRepository fonteRepository = SpringContextHolder.getBean(FonteDoDadoRepository.class);
 
-        ConjuntoDadosRepository conjuntoRepository =
-                SpringContextHolder.getBean(ConjuntoDadosRepository.class);
+        ConjuntoDadosRepository conjuntoRepository = SpringContextHolder.getBean(ConjuntoDadosRepository.class);
 
-        ArquivoBrutoRepository arquivoRepository =
-                SpringContextHolder.getBean(ArquivoBrutoRepository.class);
+        ArquivoBrutoRepository arquivoRepository = SpringContextHolder.getBean(ArquivoBrutoRepository.class);
 
-        VersaoRepository versaoRepository =
-                SpringContextHolder.getBean(VersaoRepository.class);
+        VersaoRepository versaoRepository = SpringContextHolder.getBean(VersaoRepository.class);
 
-        TipoConjuntoRepository tipos =
-                SpringContextHolder.getBean(TipoConjuntoRepository.class);
+        TipoConjuntoRepository tipos = SpringContextHolder.getBean(TipoConjuntoRepository.class);
 
         var tipo = tipos.findByCodigoIgnoreCase(TIPO_CAMADA)
                 .orElseThrow(() -> new IllegalStateException(
-                        "Tipo não cadastrado em TIPO_CONJUNTO: " + TIPO_CAMADA
-                ));
+                        "Tipo não cadastrado em TIPO_CONJUNTO: " + TIPO_CAMADA));
 
         FonteDoDado fonte = fonteRepository.findByNome(NOME_FONTE)
                 .orElseGet(() -> {
@@ -85,15 +79,14 @@ public class MetadataResolutionState implements TreatmentState {
         ConjuntoDados conjunto = conjuntoRepository
                 .findByFonteIdAndTipoConjuntoId(
                         fonte.getId(),
-                        tipo.getId()
-                )
+                        tipo.getId())
                 .orElseGet(() -> {
                     ConjuntoDados novo = new ConjuntoDados();
                     novo.setFonte(fonte);
                     novo.setNome(NOME_CONJUNTO);
                     novo.setTipoConjunto(tipo); // relacionamento com TIPO_CONJUNTO
                     novo.setSituacao("RASCUNHO"); // precisa ser setado explicitamente — Hibernate valida
-                                                   // nullable=false ANTES do DEFAULT do banco entrar em ação
+                                                  // nullable=false ANTES do DEFAULT do banco entrar em ação
                     novo.setDataCadastro(LocalDateTime.now());
 
                     return conjuntoRepository.save(novo);
@@ -109,8 +102,7 @@ public class MetadataResolutionState implements TreatmentState {
                     novo.setNome(context.getEmbargoFile().getName());
                     novo.setFormato("SHP");
                     novo.setPathArmazenamento(
-                            context.getEmbargoFile().getAbsolutePath()
-                    );
+                            context.getEmbargoFile().getAbsolutePath());
                     novo.setTamanhoBytes(context.getEmbargoFile().length());
                     novo.setStatus("RECEBIDO"); // CHECK: valor válido
                     novo.setHash(hash);
@@ -125,6 +117,15 @@ public class MetadataResolutionState implements TreatmentState {
                 .orElse(1L);
 
         Versao versao = new Versao();
+        ExecucaoPipeline execucao = SpringContextHolder
+        .getBean(
+                ExecucaoPipelineService.class)
+        .iniciar(
+                conjunto,
+                "TRATAMENTO");
+
+        context.setExecucaoPipeline(
+                execucao);
         versao.setConjunto(conjunto);
         versao.setNumero(proximoNumero);
         versao.setHash(hash);
@@ -135,16 +136,12 @@ public class MetadataResolutionState implements TreatmentState {
         context.setArquivoBruto(arquivoBruto);
         context.setVersao(versao);
 
-        // --- Área de corte: carregada de um caminho fixo dentro do projeto
-        //     (NÃO derivada do banco, já que MUNICIPIO.mun_geometria ainda
-        //     está vazio, e NÃO exigida no construtor do Embargo) ---
         File limiteParanaFile = new File(LIMITE_PARANA_PATH);
 
         if (!limiteParanaFile.exists()) {
             throw new IllegalStateException(
                     "Shapefile de limite do Paraná não encontrado em: "
-                            + LIMITE_PARANA_PATH
-            );
+                            + LIMITE_PARANA_PATH);
         }
 
         Geometry areaDeCorte = carregarGeometriaUnica(limiteParanaFile);
@@ -156,14 +153,12 @@ public class MetadataResolutionState implements TreatmentState {
             limiteStore = abrirShapefile(limiteParanaFile);
 
             context.setAreaDeCorteCRS(
-                    limiteStore.getSchema().getCoordinateReferenceSystem()
-            );
+                    limiteStore.getSchema().getCoordinateReferenceSystem());
         } catch (IOException e) {
             throw new RuntimeException(
                     "Erro ao ler o CRS do shapefile de limite do Paraná: "
                             + e.getMessage(),
-                    e
-            );
+                    e);
         } finally {
             if (limiteStore != null) {
                 limiteStore.dispose();
@@ -171,8 +166,7 @@ public class MetadataResolutionState implements TreatmentState {
         }
 
         context.setFeatures(
-                carregarFeatures(context.getEmbargoFile())
-        );
+                carregarFeatures(context.getEmbargoFile()));
 
         context.setState(new ReprojectionState());
     }
@@ -183,8 +177,7 @@ public class MetadataResolutionState implements TreatmentState {
         if (store == null) {
             throw new IOException(
                     "Não foi possível abrir o shapefile: "
-                            + file.getAbsolutePath()
-            );
+                            + file.getAbsolutePath());
         }
 
         return store;
@@ -196,8 +189,7 @@ public class MetadataResolutionState implements TreatmentState {
         try {
             store = abrirShapefile(shapefile);
 
-            SimpleFeatureCollection collection =
-                    store.getFeatureSource().getFeatures();
+            SimpleFeatureCollection collection = store.getFeatureSource().getFeatures();
 
             List<SimpleFeature> features = new ArrayList<>();
 
@@ -211,8 +203,7 @@ public class MetadataResolutionState implements TreatmentState {
         } catch (IOException e) {
             throw new RuntimeException(
                     "Erro ao carregar feições do embargo: " + e.getMessage(),
-                    e
-            );
+                    e);
         } finally {
             if (store != null) {
                 store.dispose();
@@ -226,15 +217,13 @@ public class MetadataResolutionState implements TreatmentState {
         try {
             store = abrirShapefile(file);
 
-            SimpleFeatureCollection collection =
-                    store.getFeatureSource().getFeatures();
+            SimpleFeatureCollection collection = store.getFeatureSource().getFeatures();
 
             Geometry uniao = null;
 
             try (SimpleFeatureIterator iterator = collection.features()) {
                 while (iterator.hasNext()) {
-                    Geometry geom =
-                            (Geometry) iterator.next().getDefaultGeometry();
+                    Geometry geom = (Geometry) iterator.next().getDefaultGeometry();
 
                     if (geom != null) {
                         uniao = uniao == null
@@ -246,8 +235,7 @@ public class MetadataResolutionState implements TreatmentState {
 
             if (uniao == null || uniao.isEmpty()) {
                 throw new IllegalStateException(
-                        "Shapefile de limite do Paraná não contém nenhuma geometria válida para o recorte."
-                );
+                        "Shapefile de limite do Paraná não contém nenhuma geometria válida para o recorte.");
             }
 
             return uniao;
@@ -255,8 +243,7 @@ public class MetadataResolutionState implements TreatmentState {
             throw new RuntimeException(
                     "Erro ao ler shapefile de limite do Paraná: "
                             + e.getMessage(),
-                    e
-            );
+                    e);
         } finally {
             if (store != null) {
                 store.dispose();
@@ -266,13 +253,11 @@ public class MetadataResolutionState implements TreatmentState {
 
     private String calcularHash(File file) {
         try {
-            MessageDigest digest =
-                    MessageDigest.getInstance("SHA-256");
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
 
             try (
                     InputStream is = Files.newInputStream(file.toPath());
-                    DigestInputStream dis = new DigestInputStream(is, digest)
-            ) {
+                    DigestInputStream dis = new DigestInputStream(is, digest)) {
                 byte[] buffer = new byte[8192];
 
                 while (dis.read(buffer) != -1) {
@@ -290,8 +275,7 @@ public class MetadataResolutionState implements TreatmentState {
         } catch (NoSuchAlgorithmException | IOException e) {
             throw new RuntimeException(
                     "Erro ao calcular hash do arquivo: " + e.getMessage(),
-                    e
-            );
+                    e);
         }
     }
 }

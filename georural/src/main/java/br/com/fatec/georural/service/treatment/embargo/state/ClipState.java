@@ -12,6 +12,8 @@ import org.locationtech.jts.geom.Geometry;
 import org.locationtech.jts.geom.prep.PreparedGeometry;
 import org.locationtech.jts.geom.prep.PreparedGeometryFactory;
 
+import br.com.fatec.georural.config.SpringContextHolder;
+import br.com.fatec.georural.service.treatment.audit.TransformacaoService;
 import br.com.fatec.georural.service.treatment.core.BaseTreatment;
 import br.com.fatec.georural.service.treatment.core.TreatmentState;
 import br.com.fatec.georural.service.treatment.embargo.EmbargoTreatment;
@@ -23,45 +25,70 @@ public class ClipState implements TreatmentState {
     @Override
     public void execute(BaseTreatment baseContext) {
 
-        EmbargoTreatment context = (EmbargoTreatment) baseContext;
+        EmbargoTreatment context =
+                (EmbargoTreatment) baseContext;
 
-        System.out.println("[Clip] Recortando pelo limite do Paraná...");
+        Geometry estadoParana =
+                context.getAreaDeCorte();
 
-        Geometry estadoParana = context.getAreaDeCorte();
-
-        // Sem limite não existe recorte correto. Falhar é melhor do que gravar o Brasil inteiro.
         if (estadoParana == null) {
             throw new IllegalStateException(
-                    "Limite do Paraná não carregado: não é possível recortar os embargos.");
+                    "Limite do Paraná não carregado");
         }
 
         try {
 
-            // O limite vem de outro shapefile; garante que está no mesmo CRS das feições
-            CoordinateReferenceSystem alvo = CRS.decode("EPSG:4674", true);
-            CoordinateReferenceSystem origem = context.getAreaDeCorteCRS();
+            CoordinateReferenceSystem alvo =
+                    CRS.decode("EPSG:4674", true);
 
-            if (origem != null && !CRS.equalsIgnoreMetadata(origem, alvo)) {
-                MathTransform transform = CRS.findMathTransform(origem, alvo, true);
-                estadoParana = JTS.transform(estadoParana, transform);
+            CoordinateReferenceSystem origem =
+                    context.getAreaDeCorteCRS();
+
+            if (origem != null &&
+                    !CRS.equalsIgnoreMetadata(
+                            origem,
+                            alvo)) {
+
+                MathTransform transform =
+                        CRS.findMathTransform(
+                                origem,
+                                alvo,
+                                true);
+
+                estadoParana =
+                        JTS.transform(
+                                estadoParana,
+                                transform);
             }
 
-            estadoParana.setSRID(SRID_SIRGAS_2000);
+            estadoParana.setSRID(
+                    SRID_SIRGAS_2000);
 
-            // Geometria "preparada": o intersects() fica muito mais rápido com um polígono grande
-            PreparedGeometry limite = PreparedGeometryFactory.prepare(estadoParana);
+            PreparedGeometry limite =
+                    PreparedGeometryFactory.prepare(
+                            estadoParana);
 
-            List<SimpleFeature> recortadas = new ArrayList<>();
+            List<SimpleFeature> recortadas =
+                    new ArrayList<>();
 
-            for (SimpleFeature feature : context.getFeatures()) {
+            int entrada =
+                    context.getFeatures().size();
 
-                Geometry geom = (Geometry) feature.getDefaultGeometry();
+            for (SimpleFeature feature :
+                    context.getFeatures()) {
 
-                if (geom == null || !limite.intersects(geom)) {
+                Geometry geom =
+                        (Geometry) feature
+                                .getDefaultGeometry();
+
+                if (geom == null ||
+                        !limite.intersects(geom)) {
                     continue;
                 }
 
-                Geometry recorte = geom.intersection(estadoParana);
+                Geometry recorte =
+                        geom.intersection(
+                                estadoParana);
 
                 if (recorte.isEmpty()) {
                     continue;
@@ -71,24 +98,38 @@ public class ClipState implements TreatmentState {
                     recorte = recorte.buffer(0);
                 }
 
-                recorte.setSRID(SRID_SIRGAS_2000);
+                recorte.setSRID(
+                        SRID_SIRGAS_2000);
 
-                feature.setDefaultGeometry(recorte);
+                feature.setDefaultGeometry(
+                        recorte);
 
                 recortadas.add(feature);
             }
 
-            System.out.println("[Clip] Feições dentro do Paraná: "
-                    + recortadas.size() + " de " + context.getFeatures().size());
+            context.setFeatures(
+                    recortadas);
 
-            context.setFeatures(recortadas);
+            SpringContextHolder
+                    .getBean(
+                            TransformacaoService.class)
+                    .registrar(
+                            context.getExecucaoPipeline(),
+                            3,
+                            "CRUZAMENTO",
+                            "Entrada="
+                                    + entrada
+                                    + ", saída="
+                                    + recortadas.size());
 
         } catch (Exception e) {
 
-            // Antes o erro era engolido e o pipeline seguia com os dados SEM recorte
-            throw new RuntimeException("Erro ao recortar pelo limite do Paraná: " + e.getMessage(), e);
+            throw new RuntimeException(
+                    "Erro ao recortar pelo limite do Paraná",
+                    e);
         }
 
-        context.setState(new DissolveState());
+        context.setState(
+                new DissolveState());
     }
 }

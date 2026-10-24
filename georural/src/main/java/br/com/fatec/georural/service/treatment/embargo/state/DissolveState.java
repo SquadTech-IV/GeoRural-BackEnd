@@ -9,6 +9,8 @@ import org.geotools.api.feature.simple.SimpleFeature;
 import org.locationtech.jts.geom.Geometry;
 import org.locationtech.jts.operation.union.UnaryUnionOp;
 
+import br.com.fatec.georural.config.SpringContextHolder;
+import br.com.fatec.georural.service.treatment.audit.TransformacaoService;
 import br.com.fatec.georural.service.treatment.core.BaseTreatment;
 import br.com.fatec.georural.service.treatment.core.TreatmentState;
 
@@ -69,6 +71,18 @@ public class DissolveState implements TreatmentState {
                 + resultado.size() + " embargos (" + unidos + " com partes unidas).");
 
         context.setFeatures(resultado);
+
+        SpringContextHolder
+        .getBean(
+                TransformacaoService.class)
+        .registrar(
+                context.getExecucaoPipeline(),
+                4,
+                "DISSOLVER",
+                "Entrada="
+                        + context.getFeatures().size()
+                        + ", saída="
+                        + resultado.size());
 
         context.setState(new StandardizationState());
     }
