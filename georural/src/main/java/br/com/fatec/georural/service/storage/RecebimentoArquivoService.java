@@ -3,11 +3,11 @@ package br.com.fatec.georural.service.storage;
 import br.com.fatec.georural.entity.ArquivoBruto;
 import br.com.fatec.georural.entity.ConjuntoDados;
 import br.com.fatec.georural.exception.ArquivoDuplicadoException;
+import br.com.fatec.georural.exception.ObjetoJaExisteException;
 import br.com.fatec.georural.exception.RecursoNaoEncontradoException;
 import br.com.fatec.georural.exception.RequisicaoInvalidaException;
 import br.com.fatec.georural.repository.ArquivoBrutoRepository;
 import br.com.fatec.georural.repository.UsuarioRepository;
-import com.oracle.bmc.model.BmcException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -51,7 +51,7 @@ public class RecebimentoArquivoService {
     private final UsuarioRepository usuarioRepository;
     private final ArquivoBrutoRepository arquivoRepository;
     private final VerificadorDuplicidade verificadorDuplicidade;
-    private final ArmazenamentoZonaBrutaService armazenamento;
+    private final ArmazenamentoZonaPort armazenamento;
     private final ValidadorConjuntoDados validadorConjuntoDados;
     private final ValidadorFormatoArquivo validadorFormatoArquivo;
 
@@ -115,7 +115,7 @@ public class RecebimentoArquivoService {
             // Na retomada, o caminho e a data gravados no primeiro envio são reaproveitados; nunca recalculados.
             // Nesse caso o responsável gravado no objeto é o de quem reenviou, e o do registro continua o original.
             Map<String, String> metadados = montarMetadados(hash, conjuntoId, usuarioId);
-            boolean jaPromovido = retomada && armazenamento.verificarExistenciaObjeto(registro.getPathArmazenamento());
+            boolean jaPromovido = retomada && armazenamento.existe(Zona.BRUTA, registro.getPathArmazenamento());
             if (!jaPromovido) {
                 promover(registro, temporario, tamanho, metadados);
             }
@@ -166,12 +166,9 @@ public class RecebimentoArquivoService {
     private void promover(ArquivoBruto registro, Path temporario, long tamanho, Map<String, String> metadados) {
         String caminho = registro.getPathArmazenamento();
         try (InputStream entrada = Files.newInputStream(temporario)) {
-            armazenamento.armazenarObjetoBruto(caminho, entrada, tamanho, metadados);
-        } catch (BmcException e) {
-            if (PoliticaZonaBruta.ehConflitoPorObjetoJaExistente(e)) {
-                return; // o objeto já está na zona bruta: segue para concluir o registro
-            }
-            resolverFalhaNaPromocao(registro, caminho, e);
+            armazenamento.gravar(Zona.BRUTA, caminho, entrada, tamanho, metadados);
+        } catch (ObjetoJaExisteException e) {
+            return; // o objeto já está na zona bruta: segue para concluir o registro
         } catch (IOException | RuntimeException e) {
             resolverFalhaNaPromocao(registro, caminho, e);
         }
@@ -179,12 +176,12 @@ public class RecebimentoArquivoService {
 
     /**
      * A promoção lançou erro, mas o objeto pode ter sido gravado (por exemplo, timeout depois do envio).
-     * Só marca FALHA quando é certo que o objeto não existe.
+     * Só descarta o registro quando é certo que o objeto não existe.
      */
     private void resolverFalhaNaPromocao(ArquivoBruto registro, String caminho, Exception causa) {
         boolean existe;
         try {
-            existe = armazenamento.verificarExistenciaObjeto(caminho);
+            existe = armazenamento.existe(Zona.BRUTA, caminho);
         } catch (RuntimeException verificacao) {
             causa.addSuppressed(verificacao);
             throw new IllegalStateException(

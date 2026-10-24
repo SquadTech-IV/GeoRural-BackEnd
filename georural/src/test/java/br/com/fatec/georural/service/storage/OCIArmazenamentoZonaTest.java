@@ -1,6 +1,7 @@
 package br.com.fatec.georural.service.storage;
 
 import br.com.fatec.georural.config.DataLakeProperties;
+import br.com.fatec.georural.exception.ObjetoJaExisteException;
 import com.oracle.bmc.model.BmcException;
 import com.oracle.bmc.objectstorage.ObjectStorage;
 import com.oracle.bmc.objectstorage.requests.DeleteObjectRequest;
@@ -32,10 +33,10 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-class ArmazenamentoZonaBrutaServiceTest {
+class OCIArmazenamentoZonaTest {
 
     private ObjectStorage cliente;
-    private ArmazenamentoZonaBrutaService armazenamento;
+    private OCIArmazenamentoZona armazenamento;
 
     @BeforeEach
     void setUp() {
@@ -46,14 +47,14 @@ class ArmazenamentoZonaBrutaServiceTest {
                 new DataLakeProperties.Bucket("bucket-bruta", "bucket-quarentena", "bucket-tratada", "bucket-publicada"),
                 null,
                 null);
-        armazenamento = new ArmazenamentoZonaBrutaService(cliente, propriedades);
+        armazenamento = new OCIArmazenamentoZona(cliente, propriedades);
     }
 
     @Test
-    void armazenarObjetoBruto_deveGravarNoBucketDaZonaBrutaSemSobrescrever() {
+    void gravar_deveGravarNoBucketDaZonaBrutaSemSobrescrever() {
         Map<String, String> metadados = Map.of("hash-sha256", "abc");
 
-        armazenamento.armazenarObjetoBruto("conjuntos/1/a.csv", new ByteArrayInputStream(new byte[] {1, 2, 3}), 3L, metadados);
+        armazenamento.gravar(Zona.BRUTA, "conjuntos/1/a.csv", new ByteArrayInputStream(new byte[] {1, 2, 3}), 3L, metadados);
 
         ArgumentCaptor<PutObjectRequest> captor = ArgumentCaptor.forClass(PutObjectRequest.class);
         verify(cliente).putObject(captor.capture());
@@ -66,22 +67,23 @@ class ArmazenamentoZonaBrutaServiceTest {
     }
 
     @Test
-    void armazenarObjetoBruto_objetoJaExistente_devePropagarOConflito412() {
+    void gravar_objetoJaExistente_deveLancarObjetoJaExiste() {
         when(cliente.putObject(any(PutObjectRequest.class)))
                 .thenThrow(new BmcException(412, "NoSuchBucket", "objeto já existe", "opc-teste"));
 
-        BmcException erro = assertThrows(BmcException.class, () -> armazenamento.armazenarObjetoBruto(
+        ObjetoJaExisteException erro = assertThrows(ObjetoJaExisteException.class, () -> armazenamento.gravar(Zona.BRUTA,
                 "a.csv", new ByteArrayInputStream(new byte[] {1}), 1L, null));
 
-        assertTrue(PoliticaZonaBruta.ehConflitoPorObjetoJaExistente(erro));
+        assertEquals("a.csv", erro.getCaminho());
+        assertTrue(erro.getCause() instanceof BmcException);
     }
 
     @Test
-    void verificarExistenciaObjeto_deveConsultarOBucketDaZonaBruta() {
+    void existe_deveConsultarOBucketDaZonaBruta() {
         when(cliente.headObject(any(HeadObjectRequest.class)))
                 .thenThrow(new BmcException(404, "NotFound", "não existe", "opc-teste"));
 
-        boolean existe = armazenamento.verificarExistenciaObjeto("conjuntos/1/a.csv");
+        boolean existe = armazenamento.existe(Zona.BRUTA, "conjuntos/1/a.csv");
 
         assertFalse(existe);
         ArgumentCaptor<HeadObjectRequest> captor = ArgumentCaptor.forClass(HeadObjectRequest.class);
@@ -92,13 +94,13 @@ class ArmazenamentoZonaBrutaServiceTest {
     }
 
     @Test
-    void obterObjetoBruto_deveDevolverOConteudoDoObjetoDoBucketDaZonaBruta() throws IOException {
+    void ler_deveDevolverOConteudoDoObjetoDoBucketDaZonaBruta() throws IOException {
         byte[] conteudo = "abc".getBytes(StandardCharsets.UTF_8);
         GetObjectResponse resposta = Mockito.mock(GetObjectResponse.class);
         when(resposta.getInputStream()).thenReturn(new ByteArrayInputStream(conteudo));
         when(cliente.getObject(any(GetObjectRequest.class))).thenReturn(resposta);
 
-        try (InputStream lido = armazenamento.obterObjetoBruto("conjuntos/1/a.csv")) {
+        try (InputStream lido = armazenamento.ler(Zona.BRUTA, "conjuntos/1/a.csv")) {
             assertArrayEquals(conteudo, lido.readAllBytes());
         }
 
@@ -110,9 +112,9 @@ class ArmazenamentoZonaBrutaServiceTest {
     }
 
     @Test
-    void obterObjetoBruto_caminhoEmBranco_deveLancarIllegalArgument() {
-        assertThrows(IllegalArgumentException.class, () -> armazenamento.obterObjetoBruto(" "));
-        assertThrows(IllegalArgumentException.class, () -> armazenamento.obterObjetoBruto(null));
+    void ler_caminhoEmBranco_deveLancarIllegalArgument() {
+        assertThrows(IllegalArgumentException.class, () -> armazenamento.ler(Zona.BRUTA, " "));
+        assertThrows(IllegalArgumentException.class, () -> armazenamento.ler(Zona.BRUTA, null));
     }
 
     @Test
@@ -120,21 +122,23 @@ class ArmazenamentoZonaBrutaServiceTest {
         when(cliente.headObject(any(HeadObjectRequest.class)))
                 .thenThrow(new BmcException(404, "NotFound", "não existe", "opc-teste"));
 
-        armazenamento.armazenarObjetoBruto("a.csv", new ByteArrayInputStream(new byte[] {1}), 1L, null);
-        armazenamento.verificarExistenciaObjeto("a.csv");
+        armazenamento.gravar(Zona.BRUTA, "a.csv", new ByteArrayInputStream(new byte[] {1}), 1L, null);
+        armazenamento.existe(Zona.BRUTA, "a.csv");
 
         verify(cliente, never()).deleteObject(any(DeleteObjectRequest.class));
     }
 
     @Test
-    void classe_naoDeveExporMetodosDeApagarOuAlterar() {
-        for (Method metodo : ArmazenamentoZonaBrutaService.class.getDeclaredMethods()) {
-            if (!Modifier.isPublic(metodo.getModifiers())) {
-                continue;
-            }
-            String nome = metodo.getName().toLowerCase(Locale.ROOT);
-            for (String proibido : new String[] {"delete", "apagar", "remover", "excluir", "atualizar", "alterar", "sobrescrever", "update"}) {
-                assertFalse(nome.contains(proibido), "Método proibido na zona bruta: " + metodo.getName());
+    void classeEInterface_naoDevemExporMetodosDeApagarOuAlterar() {
+        for (Class<?> tipo : new Class<?>[] {OCIArmazenamentoZona.class, ArmazenamentoZonaPort.class}) {
+            for (Method metodo : tipo.getDeclaredMethods()) {
+                if (!Modifier.isPublic(metodo.getModifiers())) {
+                    continue;
+                }
+                String nome = metodo.getName().toLowerCase(Locale.ROOT);
+                for (String proibido : new String[] {"delete", "apagar", "remover", "excluir", "atualizar", "alterar", "sobrescrever", "update"}) {
+                    assertFalse(nome.contains(proibido), "Método proibido na zona bruta: " + tipo.getSimpleName() + "." + metodo.getName());
+                }
             }
         }
     }
