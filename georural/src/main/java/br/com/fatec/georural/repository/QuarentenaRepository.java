@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 package br.com.fatec.georural.repository;
 
 import br.com.fatec.georural.entity.Quarentena;
@@ -22,3 +23,15 @@ public interface QuarentenaRepository extends JpaRepository<Quarentena, Long> {
             "order by count(q) desc")
     List<Object[]> agruparRegrasVioladas(@Param("exeId") Long exeId, @Param("situacao") String situacao);
 }
+=======
+package br.com.fatec.georural.repository;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import br.com.fatec.georural.entity.Quarentena;
+import java.util.List;
+
+public interface QuarentenaRepository extends JpaRepository<Quarentena, Long> {
+    List<Quarentena> findByValidacao_Id(Long validacaoId);
+}
+>>>>>>> 00e592e (chore(US#07): Commit em devcontainer)

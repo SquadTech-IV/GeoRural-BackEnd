@@ -2,12 +2,9 @@ package br.com.fatec.georural.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 
@@ -40,10 +37,6 @@ public class FonteDoDado {
 
     @Column(name = "fon_status", nullable = false, length = 1)
     private String status = "S";
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "usu_id")
-    private Usuario usuario;
 
     @Column(name = "fon_data_cadastro", nullable = false)
     private LocalDateTime dataCadastro;

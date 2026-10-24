@@ -18,7 +18,6 @@ import lombok.Setter;
 @NoArgsConstructor
 @Table(name = "TIPO_CONJUNTO")
 public class TipoConjunto {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "tip_id")
