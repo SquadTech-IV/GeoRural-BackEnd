@@ -27,6 +27,9 @@ class IAEControllerTest {
     private CalculoIAEService calculoService;
     private MockMvc mockMvc;
 
+    private static final Long IMOVEL_ID = 41L;
+    private static final Long EMBARGO_VERSAO_NUMERO = 1L;
+
     @BeforeEach
     void setUp() {
         consultaService = Mockito.mock(ConsultaIAEService.class);
@@ -50,20 +53,29 @@ class IAEControllerTest {
 
     @Test
     void calcular_deveRetornar201EResultado() throws Exception {
-        IAEResponse resposta = new IAEResponse(41L, "IAE", null, null, null, null, List.of());
-        when(calculoService.calcularSobreposicaoEmbargo(41L)).thenReturn(resposta);
+        IAEResponse resposta = new IAEResponse(
+                IMOVEL_ID, 
+                null, 
+                null, 
+                "IAE", 
+                null, 
+                null, 
+                null, 
+                null, 
+                List.of());
+        when(calculoService.calcularSobreposicaoEmbargo(IMOVEL_ID, EMBARGO_VERSAO_NUMERO)).thenReturn(resposta);
 
-        mockMvc.perform(post("/api/indicadores/iae/41"))
+        mockMvc.perform(post("/api/indicadores/iae/" + IMOVEL_ID))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.imovelId").value(41));
+                .andExpect(jsonPath("$.imovelId").value(IMOVEL_ID));
     }
 
     @Test
     void calcular_deveRetornar409_quandoJaCalculado() throws Exception {
-        when(calculoService.calcularSobreposicaoEmbargo(41L))
-                .thenThrow(new ConflitoException("IAE já calculado para o imóvel 41"));
+        when(calculoService.calcularSobreposicaoEmbargo(IMOVEL_ID, EMBARGO_VERSAO_NUMERO))
+                .thenThrow(new ConflitoException("IAE já calculado para o imóvel " + IMOVEL_ID));
 
-        mockMvc.perform(post("/api/indicadores/iae/41"))
+        mockMvc.perform(post("/api/indicadores/iae/" + IMOVEL_ID))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.status").value(409));
     }

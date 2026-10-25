@@ -75,6 +75,8 @@ public class CalculoIRLGeoService {
 
         return new IRLResponse(
                 salvo.getImovel().getId(),
+                imovel.getMunicipio().getNome(),
+                imovel.getCodigoCar(),
                 indicador.getSigla(),
                 salvo.getValorPercentual(),
                 salvo.getValorHectares(),
