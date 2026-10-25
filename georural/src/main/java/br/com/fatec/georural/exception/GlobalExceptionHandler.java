@@ -131,18 +131,6 @@ public ResponseEntity<ErroResponse> tratarParteAusente(
     );
 }
 
-@ExceptionHandler(MaxUploadSizeExceededException.class)
-public ResponseEntity<ErroResponse> tratarUploadMuitoGrande(
-    MaxUploadSizeExceededException erro,
-    HttpServletRequest request
-) {
-    return montar(
-        HttpStatus.CONTENT_TOO_LARGE,
-        "O upload excedeu o tamanho máximo permitido.",
-        request
-    );
-}
-
 @ExceptionHandler(MultipartException.class)
 public ResponseEntity<ErroResponse> tratarUploadInvalido(
     MultipartException erro,
