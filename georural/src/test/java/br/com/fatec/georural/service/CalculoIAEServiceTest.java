@@ -4,7 +4,6 @@ import br.com.fatec.georural.dto.response.indicador.IAEResponse;
 import br.com.fatec.georural.entity.*;
 import br.com.fatec.georural.exception.EstadoInconsistenteException;
 import br.com.fatec.georural.exception.RecursoNaoEncontradoException;
-import br.com.fatec.georural.exception.ConflitoException;
 import br.com.fatec.georural.mapper.IAEMapper;
 import br.com.fatec.georural.repository.*;
 import org.junit.jupiter.api.Test;
@@ -12,9 +11,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.assertj.core.api.Assertions.within;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -56,16 +52,24 @@ class CalculoIAEServiceTest {
         when(imovelRuralRepository.findById(1L)).thenReturn(Optional.of(imovelExemplo()));
         when(indicadorRepository.findBySigla("IAE")).thenReturn(Optional.of(indicadorExemplo()));
         when(regraCalculoRepository.findByIndicadorAndVigente(any(), any())).thenReturn(Optional.of(new RegraCalculo()));
-        when(imovelRuralRepository.calcularAreaEmbargadaAgregada(1L))
-                .thenReturn(new Object[]{null, new BigDecimal("1000")});
+        when(imovelRuralRepository.calcularAreaEmbargadaAgregada(1L, 1L))
+            .thenReturn(List.<Object[]>of(new Object[]{null, new BigDecimal("1000")}));
         when(imovelRuralRepository.buscarEmbargosGeoJson(1L)).thenReturn(null);
         when(resultadoIndicadorService.salvarComoVigente(any())).thenAnswer(inv -> inv.getArgument(0));
         when(imovelRuralRepository.encontrarEmbargosIntersectantes(1L)).thenReturn(List.of());
         when(mapper.toResponse(any(), any())).thenAnswer(inv -> {
-            ResultadoIndicador r = inv.getArgument(0);
-            return new IAEResponse(1L, "IAE", r.getValorPercentual(), r.getValorHectares(),
-                    r.getValorAbsoluto(), r.getDataCalculo(), List.of());
-        });
+    ResultadoIndicador r = inv.getArgument(0);
+    return new IAEResponse(
+            1L,
+            null,
+            null,
+            "IAE",
+            r.getValorPercentual(),
+            r.getValorHectares(),
+            r.getValorAbsoluto(),
+            r.getDataCalculo(),
+            List.of());
+});
     }
 
     @Test
@@ -77,7 +81,7 @@ class CalculoIAEServiceTest {
                         new Object[]{null, new BigDecimal("1472.88")}
                     ));
 
-        IAEResponse resposta = service.calcularSobreposicaoEmbargo(1L);
+        IAEResponse resposta = service.calcularSobreposicaoEmbargo(1L, 61L);
 
         assertThat(resposta.getValorPercentual()).isEqualByComparingTo(BigDecimal.ZERO);
         assertThat(resposta.getEmbargosIntersectantes()).isEmpty();
@@ -88,8 +92,8 @@ class CalculoIAEServiceTest {
         when(imovelRuralRepository.findById(1L)).thenReturn(Optional.of(imovelExemplo()));
         when(indicadorRepository.findBySigla("IAE")).thenReturn(Optional.of(indicadorExemplo()));
         when(regraCalculoRepository.findByIndicadorAndVigente(any(), any())).thenReturn(Optional.of(new RegraCalculo()));
-        when(imovelRuralRepository.calcularAreaEmbargadaAgregada(1L))
-                .thenReturn(new Object[]{null, new BigDecimal("1000")});
+        when(imovelRuralRepository.calcularAreaEmbargadaAgregada(1L, 61L))
+                .thenReturn(List.<Object[]>of(new Object[]{null, new BigDecimal("1000")}));
         when(imovelRuralRepository.buscarEmbargosGeoJson(1L)).thenReturn(null);
         when(resultadoIndicadorService.salvarComoVigente(any())).thenAnswer(inv -> inv.getArgument(0));
         when(imovelRuralRepository.encontrarEmbargosIntersectantes(1L)).thenReturn(List.of());
@@ -97,18 +101,26 @@ class CalculoIAEServiceTest {
             ResultadoIndicador r = inv.getArgument(0);
             // confirma a classificacao gravada no resultado antes de mapear
             assertThat(r.getSituacao()).isEqualTo("ok");
-            return new IAEResponse(1L, "IAE", r.getValorPercentual(), r.getValorHectares(),
-                    r.getValorAbsoluto(), r.getDataCalculo(), List.of());
+            return new IAEResponse(
+                1L,                         // imovelId
+                null,                       // municipio
+                null,                       // codigoCar
+                "IAE",                      // indicadorSigla
+                r.getValorPercentual(),
+                r.getValorHectares(),
+                r.getValorAbsoluto(),
+                r.getDataCalculo(),
+                List.of()
+            );
         });
-
-        service.calcularSobreposicaoEmbargo(1L);
+        service.calcularSobreposicaoEmbargo(1L, 61L);
     }
 
     @Test
     void calcular_deveLancarNaoEncontrado_quandoImovelNaoExiste() {
         when(imovelRuralRepository.findById(99L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.calcularSobreposicaoEmbargo(99L))
+        assertThatThrownBy(() -> service.calcularSobreposicaoEmbargo(99L, 1L))
                 .isInstanceOf(RecursoNaoEncontradoException.class)
                 .hasMessageContaining("99");
     }
@@ -118,7 +130,7 @@ class CalculoIAEServiceTest {
         when(imovelRuralRepository.findById(1L)).thenReturn(Optional.of(imovelExemplo()));
         when(indicadorRepository.findBySigla("IAE")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.calcularSobreposicaoEmbargo(1L))
+        assertThatThrownBy(() -> service.calcularSobreposicaoEmbargo(1L, 61L))
                 .isInstanceOf(EstadoInconsistenteException.class);
     }
 
@@ -128,7 +140,7 @@ class CalculoIAEServiceTest {
         when(indicadorRepository.findBySigla("IAE")).thenReturn(Optional.of(indicadorExemplo()));
         when(regraCalculoRepository.findByIndicadorAndVigente(any(), any())).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.calcularSobreposicaoEmbargo(1L))
+        assertThatThrownBy(() -> service.calcularSobreposicaoEmbargo(1L, 61L))
                 .isInstanceOf(EstadoInconsistenteException.class);
     }
 }

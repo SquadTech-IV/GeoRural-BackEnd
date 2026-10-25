@@ -32,7 +32,19 @@ class IRLControllerTest {
 
     @Test
     void recalcular_deveRetornar200EResultado() throws Exception {
-        IRLResponse resposta = new IRLResponse(1L, "IRL", null, null, null, null, "ruim", null, null, "v1");
+        IRLResponse resposta = new IRLResponse(
+        1L,
+        null,
+        null,
+        "IRL",
+        null,
+        null,
+        null,
+        null,
+        "ruim",
+        null,
+        null,
+        "v1");
         when(calculoService.calcularReservaLegal(1L)).thenReturn(resposta);
 
         mockMvc.perform(post("/api/indicadores/irl/1/recalcular"))

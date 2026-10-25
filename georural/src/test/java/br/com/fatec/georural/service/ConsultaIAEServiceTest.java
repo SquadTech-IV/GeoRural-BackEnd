@@ -63,9 +63,18 @@ class ConsultaIAEServiceTest {
         when(resultadoIndicadorRepository.findTopByImovelIdAndIndicadorOrderByDataCalculoDesc(1L, ind))
                 .thenReturn(Optional.of(salvo));
         when(versaoEmbargoService.resolverId()).thenReturn(61L);
-        when(imovelRuralRepository.encontrarEmbargosIntersectantes(1L, 61L)).thenReturn(List.of());
+        when(imovelRuralRepository.encontrarEmbargosIntersectantes(1L)).thenReturn(List.of());
         when(mapper.toResponse(any(), any())).thenReturn(
-                new IAEResponse(1L, "IAE", null, null, null, null, List.of()));
+                new IAEResponse(
+                1L,          // imovelId
+                null,        // municipio
+                null,        // codigoCar
+                "IAE",       // indicadorSigla
+                null,        // valorPercentual
+                null,        // valorHectares
+                null,        // valorAbsoluto
+                null,        // dataCalculo
+                List.of())); // embargos
 
         IAEResponse resposta = service.consultarPorImovel(1L);
 

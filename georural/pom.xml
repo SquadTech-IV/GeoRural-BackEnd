@@ -56,6 +56,11 @@
             <artifactId>gt-epsg-hsql</artifactId>
             <version>31.1</version>
         </dependency>
+        <dependency>
+            <groupId>org.geotools</groupId>
+            <artifactId>gt-geojson</artifactId>
+            <version>31.1</version>
+        </dependency>
 
         <!-- Web / API REST -->
         <dependency>

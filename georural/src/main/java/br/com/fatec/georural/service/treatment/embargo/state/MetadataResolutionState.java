@@ -90,9 +90,7 @@ public class MetadataResolutionState implements TreatmentState {
                     novo.setDataCadastro(LocalDateTime.now());
 
                     return conjuntoRepository.save(novo);
-                });
-
-        log.info("CALCULANDO HASH");        
+                });      
 
         String hash = calcularHash(context.getEmbargoFile());
 
