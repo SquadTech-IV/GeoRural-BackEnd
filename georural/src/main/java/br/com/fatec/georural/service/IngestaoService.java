@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 package br.com.fatec.georural.service;
 
 import br.com.fatec.georural.dto.response.ArquivoValidacaoResponse;
@@ -208,45 +207,7 @@ public class IngestaoService {
 
         return nome;
     }
-
-    private String mapearFormato(String extensao) {
-        return switch (extensao) {
-            case "csv" -> "CSV";
-            case "json", "geojson" -> "GEOJSON";
-            case "shp", "zip" -> "SHAPEFILE";
-            case "gpkg" -> "GEOPACKAGE";
-            case "tif" -> "TIFF";
-            default -> "OUTRO";
-        };
-    }
-=======
-package br.com.fatec.georural.service;
-
-import br.com.fatec.georural.dto.response.ArquivoValidacaoResponse;
-import br.com.fatec.georural.entity.ArquivoDatalake;
-import br.com.fatec.georural.entity.ArquivoDatalakeConteudo;
-import br.com.fatec.georural.repository.ArquivoDatalakeConteudoRepository;
-import br.com.fatec.georural.repository.ArquivoDatalakeRepository;
-import org.springframework.stereotype.Service;
-import org.springframework.web.multipart.MultipartFile;
-
-import java.io.IOException;
-
-@Service
-public class IngestaoService {
-
-    private final IdentificadorFormatoService identificador;
-    private final ArquivoDatalakeRepository arquivoRepository;
-    private final ArquivoDatalakeConteudoRepository conteudoRepository;
-
-    public IngestaoService(IdentificadorFormatoService identificador,
-                           ArquivoDatalakeRepository arquivoRepository,
-                           ArquivoDatalakeConteudoRepository conteudoRepository) {
-        this.identificador = identificador;
-        this.arquivoRepository = arquivoRepository;
-        this.conteudoRepository = conteudoRepository;
-    }
-
+    
     public ArquivoValidacaoResponse ingerir(MultipartFile arquivo) {
         String extensao = identificador.extrairExtensao(arquivo);
         String mime = identificador.detectarMimeType(arquivo);
@@ -304,5 +265,4 @@ public class IngestaoService {
             default                -> "OUTRO";
         };
     }
->>>>>>> 00e592e (chore(US#07): Commit em devcontainer)
 }

@@ -5,7 +5,6 @@ import br.com.fatec.georural.dto.response.cadastro.FonteResponse;
 import br.com.fatec.georural.entity.FonteDoDado;
 import br.com.fatec.georural.exception.ConflitoException;
 import br.com.fatec.georural.exception.RecursoNaoEncontradoException;
-import br.com.fatec.georural.exception.RequisicaoInvalidaException;
 import br.com.fatec.georural.repository.ConjuntoDadosRepository;
 import br.com.fatec.georural.repository.FonteDoDadoRepository;
 
@@ -13,11 +12,9 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
-import java.util.Set;
 
 @Service
 @Transactional(readOnly = true)
