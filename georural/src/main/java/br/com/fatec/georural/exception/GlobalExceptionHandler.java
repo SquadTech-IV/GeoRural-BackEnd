@@ -137,7 +137,7 @@ public ResponseEntity<ErroResponse> tratarUploadMuitoGrande(
     HttpServletRequest request
 ) {
     return montar(
-        HttpStatus.PAYLOAD_TOO_LARGE,
+        HttpStatus.CONTENT_TOO_LARGE,
         "O upload excedeu o tamanho máximo permitido.",
         request
     );
@@ -186,6 +186,11 @@ public ResponseEntity<ErroResponse> tratarConcorrencia(
         request
     );
 }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ErroResponse> tratarArquivoGrande(MaxUploadSizeExceededException ex, HttpServletRequest req) {
+        return montar(HttpStatus.CONTENT_TOO_LARGE, "O arquivo excede o tamanho máximo permitido.", req);
+    }
 
     private ResponseEntity<ErroResponse> montar(
             HttpStatus status, String mensagem, HttpServletRequest req) {
