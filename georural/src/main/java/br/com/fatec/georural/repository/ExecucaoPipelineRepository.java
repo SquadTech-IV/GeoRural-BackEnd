@@ -6,7 +6,12 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.List;
 
 public interface ExecucaoPipelineRepository extends JpaRepository<ExecucaoPipeline, Long> {
+
     List<ExecucaoPipeline> findByConjunto_IdOrderByInicioAsc(Long conjuntoId);
 
     List<ExecucaoPipeline> findByDagRunIdOrderByInicioAsc(String dagRunId);
+
+    List<ExecucaoPipeline> findByArquivoBruto_IdOrderByInicioDesc(Long arquivoBrutoId);
+
+    List<ExecucaoPipeline> findByArquivoBruto_IdAndEtapaOrderByInicioDesc(Long arquivoBrutoId, String etapa);
 }
