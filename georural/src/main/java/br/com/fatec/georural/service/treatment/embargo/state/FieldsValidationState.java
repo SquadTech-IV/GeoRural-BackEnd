@@ -1,36 +1,52 @@
 package br.com.fatec.georural.service.treatment.embargo.state;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import org.geotools.api.feature.simple.SimpleFeature;
-import org.geotools.data.simple.SimpleFeatureCollection;
-import org.geotools.data.simple.SimpleFeatureIterator;
-import org.geotools.feature.DefaultFeatureCollection;
 
-import br.com.fatec.georural.service.treatment.embargo.Embargo;
+import br.com.fatec.georural.service.treatment.core.BaseTreatment;
+import br.com.fatec.georural.service.treatment.core.TreatmentState;
 
-public class FieldsValidationState implements EmbargoState {
+public class FieldsValidationState
+        implements TreatmentState {
 
     @Override
-    public void execute(Embargo context) {
-        System.out.println("[3/8] Executando Validação de Campos...");
-        SimpleFeatureCollection inputCollection = context.getCurrentFeatures();
-        DefaultFeatureCollection validatedFieldsCollection = new DefaultFeatureCollection();
+    public void execute(BaseTreatment context) {
 
-        try (SimpleFeatureIterator iterator = inputCollection.features()) {
-            while (iterator.hasNext()) {
-                SimpleFeature feature = iterator.next();
+        List<SimpleFeature> validatedFeatures = new ArrayList<>();
 
-                Object numTad = feature.getAttribute("num_tad");
-                Object geometry = feature.getDefaultGeometry();
+        int entrada = context.getFeatures().size();
 
-                if (numTad != null && geometry != null) {
-                    validatedFieldsCollection.add(feature);
-                }
+        for (SimpleFeature feature : context.getFeatures()) {
+
+            Object numTad = feature.getAttribute("num_tad");
+
+            if (numTad == null || numTad.toString().isBlank()) {
+                context.rejeitar("OBRIGATORIO", "num_tad",
+                        "Número do TAD ausente", feature);
+                continue;
             }
-        } catch (Exception e) {
-            throw new RuntimeException("Erro na validação de campos: " + e.getMessage(), e);
+
+            Object geometry = feature.getDefaultGeometry();
+
+            if (geometry == null) {
+                context.rejeitar("GEOMETRIA", "the_geom",
+                        "Geometria ausente", feature);
+                continue;
+            }
+
+            validatedFeatures.add(feature);
         }
 
-        context.setCurrentFeatures(validatedFieldsCollection);
+        context.setFeatures(validatedFeatures);
+
+        context.registrarTransformacao(
+                "VALIDACAO_CAMPOS",
+                entrada,
+                validatedFeatures.size(),
+                "rejeitadas=" + (entrada - validatedFeatures.size()));
+
         context.setState(new DuplicityValidationState());
     }
 }

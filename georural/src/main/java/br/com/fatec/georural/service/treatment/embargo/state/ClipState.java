@@ -1,58 +1,135 @@
 package br.com.fatec.georural.service.treatment.embargo.state;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import org.geotools.api.feature.simple.SimpleFeature;
-import org.geotools.data.simple.SimpleFeatureCollection;
-import org.geotools.data.simple.SimpleFeatureIterator;
-import org.geotools.feature.DefaultFeatureCollection;
+import org.geotools.api.referencing.crs.CoordinateReferenceSystem;
+import org.geotools.api.referencing.operation.MathTransform;
+import org.geotools.geometry.jts.JTS;
+import org.geotools.referencing.CRS;
 import org.locationtech.jts.geom.Geometry;
+import org.locationtech.jts.geom.prep.PreparedGeometry;
+import org.locationtech.jts.geom.prep.PreparedGeometryFactory;
 
-import br.com.fatec.georural.service.treatment.embargo.Embargo;
+import br.com.fatec.georural.config.SpringContextHolder;
+import br.com.fatec.georural.service.treatment.audit.TransformacaoService;
+import br.com.fatec.georural.service.treatment.core.BaseTreatment;
+import br.com.fatec.georural.service.treatment.core.TreatmentState;
+import br.com.fatec.georural.service.treatment.embargo.EmbargoTreatment;
 
-public class ClipState implements EmbargoState {
+public class ClipState implements TreatmentState {
 
     private static final int SRID_SIRGAS_2000 = 4674;
 
     @Override
-    public void execute(Embargo context) {
-        System.out.println("[5/8] Executando Recorte (Clip para Estado do Paraná)...");
-        Geometry estadoParana = context.getAreaDeCorte();
-        SimpleFeatureCollection inputCollection = context.getCurrentFeatures();
-        DefaultFeatureCollection clippedCollection = new DefaultFeatureCollection();
+    public void execute(BaseTreatment baseContext) {
 
-        if (inputCollection == null || inputCollection.isEmpty()) {
-            System.out.println("Aviso: Nenhuma feição recebida no ClipState.");
-            context.setState(new DissolveState());
-            return;
+        EmbargoTreatment context =
+                (EmbargoTreatment) baseContext;
+
+        Geometry estadoParana =
+                context.getAreaDeCorte();
+
+        if (estadoParana == null) {
+            throw new IllegalStateException(
+                    "Limite do Paraná não carregado");
         }
 
-        try (SimpleFeatureIterator iterator = inputCollection.features()) {
-            while (iterator.hasNext()) {
-                SimpleFeature feature = iterator.next();
-                Geometry geom = (Geometry) feature.getDefaultGeometry();
+        try {
 
-                if (geom != null) {
-                    // Se não tiver área de corte ou se interceptar o estado do Paraná
-                    if (estadoParana == null || geom.intersects(estadoParana)) {
-                        Geometry clippedGeom = (estadoParana != null) ? geom.intersection(estadoParana) : geom;
+            CoordinateReferenceSystem alvo =
+                    CRS.decode("EPSG:4674", true);
 
-                        if (clippedGeom != null && !clippedGeom.isEmpty()) {
-                            if (!clippedGeom.isValid()) {
-                                clippedGeom = clippedGeom.buffer(0);
-                            }
-                            clippedGeom.setSRID(SRID_SIRGAS_2000);
-                            feature.setDefaultGeometry(clippedGeom);
-                            clippedCollection.add(feature);
-                        }
-                    }
-                }
+            CoordinateReferenceSystem origem =
+                    context.getAreaDeCorteCRS();
+
+            if (origem != null &&
+                    !CRS.equalsIgnoreMetadata(
+                            origem,
+                            alvo)) {
+
+                MathTransform transform =
+                        CRS.findMathTransform(
+                                origem,
+                                alvo,
+                                true);
+
+                estadoParana =
+                        JTS.transform(
+                                estadoParana,
+                                transform);
             }
+
+            estadoParana.setSRID(
+                    SRID_SIRGAS_2000);
+
+            PreparedGeometry limite =
+                    PreparedGeometryFactory.prepare(
+                            estadoParana);
+
+            List<SimpleFeature> recortadas =
+                    new ArrayList<>();
+
+            int entrada =
+                    context.getFeatures().size();
+
+            for (SimpleFeature feature :
+                    context.getFeatures()) {
+
+                Geometry geom =
+                        (Geometry) feature
+                                .getDefaultGeometry();
+
+                if (geom == null ||
+                        !limite.intersects(geom)) {
+                    continue;
+                }
+
+                Geometry recorte =
+                        geom.intersection(
+                                estadoParana);
+
+                if (recorte.isEmpty()) {
+                    continue;
+                }
+
+                if (!recorte.isValid()) {
+                    recorte = recorte.buffer(0);
+                }
+
+                recorte.setSRID(
+                        SRID_SIRGAS_2000);
+
+                feature.setDefaultGeometry(
+                        recorte);
+
+                recortadas.add(feature);
+            }
+
+            context.setFeatures(
+                    recortadas);
+
+            SpringContextHolder
+                    .getBean(
+                            TransformacaoService.class)
+                    .registrar(
+                            context.getExecucaoPipeline(),
+                            3,
+                            "CRUZAMENTO",
+                            "Entrada="
+                                    + entrada
+                                    + ", saída="
+                                    + recortadas.size());
+
         } catch (Exception e) {
-            System.err.println("Erro no Clip: " + e.getMessage() + ". Prosseguindo com coleção original.");
-            clippedCollection = (DefaultFeatureCollection) inputCollection;
+
+            throw new RuntimeException(
+                    "Erro ao recortar pelo limite do Paraná",
+                    e);
         }
 
-        System.out.println("Feições restantes após Clip: " + clippedCollection.size());
-        context.setCurrentFeatures(clippedCollection);
-        context.setState(new DissolveState());
+        context.setState(
+                new DissolveState());
     }
 }

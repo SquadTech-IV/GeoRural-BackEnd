@@ -3,75 +3,94 @@ package br.com.fatec.georural.service.treatment.embargo.state;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 import org.geotools.api.data.FileDataStore;
 import org.geotools.api.data.FileDataStoreFinder;
 import org.geotools.api.feature.simple.SimpleFeature;
+import org.geotools.data.shapefile.ShapefileDataStore;
 import org.geotools.data.simple.SimpleFeatureCollection;
 import org.geotools.data.simple.SimpleFeatureIterator;
-import org.geotools.feature.DefaultFeatureCollection;
-import org.locationtech.jts.geom.Geometry;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import br.com.fatec.georural.config.SpringContextHolder;
 import br.com.fatec.georural.entity.ArquivoBruto;
 import br.com.fatec.georural.entity.ConjuntoDados;
+import br.com.fatec.georural.entity.ExecucaoPipeline;
 import br.com.fatec.georural.entity.FonteDoDado;
 import br.com.fatec.georural.entity.Versao;
 import br.com.fatec.georural.repository.ArquivoBrutoRepository;
 import br.com.fatec.georural.repository.ConjuntoDadosRepository;
 import br.com.fatec.georural.repository.FonteDoDadoRepository;
+import br.com.fatec.georural.repository.TipoConjuntoRepository;
 import br.com.fatec.georural.repository.VersaoRepository;
-import br.com.fatec.georural.service.treatment.embargo.Embargo;
+import br.com.fatec.georural.service.treatment.audit.ExecucaoPipelineService;
+import br.com.fatec.georural.service.treatment.audit.QuarentenaService;
+import br.com.fatec.georural.service.treatment.common.LimiteParanaProvider;
+import br.com.fatec.georural.service.treatment.common.LimiteParanaProvider.LimiteParana;
+import br.com.fatec.georural.service.treatment.common.state.ReprojectionState;
+import br.com.fatec.georural.service.treatment.core.BaseTreatment;
+import br.com.fatec.georural.service.treatment.core.TreatmentState;
+import br.com.fatec.georural.service.treatment.embargo.EmbargoTreatment;
 
-public class MetadataResolutionState implements EmbargoState {
+public class MetadataResolutionState implements TreatmentState {
 
     private static final String NOME_FONTE = "IBAMA/ICMBio - Embargos Ambientais";
-    private static final String ORGAO_FONTE = "IBAMA / ICMBio";
     private static final String NOME_CONJUNTO = "Embargos Ambientais Federais";
     private static final String TIPO_CAMADA = "EMBARGO";
 
-    private static final Logger log = LoggerFactory.getLogger(MetadataResolutionState.class);
-
-    // Caminho fixo do shapefile com o limite do estado do Paraná (recorte
-    // do shapefile de limites estaduais do IBGE, filtrado só pro PR).
-    // Coloque o arquivo (.shp + .shx + .dbf + .prj) nesse local uma única vez.
-    private static final String LIMITE_PARANA_PATH = "src/main/resources/shapefiles/limite_estadual_pr.shp";
-
     @Override
-    public void execute(Embargo context) {
-        System.out.println("[0/8] Resolvendo metadados do arquivo de embargos...");
+    public void execute(BaseTreatment baseContext) {
+        EmbargoTreatment context = (EmbargoTreatment) baseContext;
+
+        System.out.println(
+                "[0/8] Resolvendo metadados do arquivo de embargos...");
 
         FonteDoDadoRepository fonteRepository = SpringContextHolder.getBean(FonteDoDadoRepository.class);
+
         ConjuntoDadosRepository conjuntoRepository = SpringContextHolder.getBean(ConjuntoDadosRepository.class);
+
         ArquivoBrutoRepository arquivoRepository = SpringContextHolder.getBean(ArquivoBrutoRepository.class);
+
         VersaoRepository versaoRepository = SpringContextHolder.getBean(VersaoRepository.class);
 
-        FonteDoDado fonte = fonteRepository.findByNome(NOME_FONTE).orElseGet(() -> {
-            FonteDoDado nova = new FonteDoDado();
-            nova.setNome(NOME_FONTE);
-            nova.setOrgao(ORGAO_FONTE);
-            nova.setStatus("S"); // CHECK (fon_status IN ('S','N'))
-            nova.setDataCadastro(LocalDateTime.now());
-            return fonteRepository.save(nova);
-        });
+        TipoConjuntoRepository tipos = SpringContextHolder.getBean(TipoConjuntoRepository.class);
 
-        ConjuntoDados conjunto = conjuntoRepository.findByNome(NOME_CONJUNTO).orElseGet(() -> {
-            ConjuntoDados novo = new ConjuntoDados();
-            novo.setFonte(fonte);
-            novo.setNome(NOME_CONJUNTO);
-            novo.setTipoCamada(TIPO_CAMADA); // CHECK: precisa ser um dos valores do enum
-            novo.setSituacao("RASCUNHO"); // precisa ser setado explicitamente — Hibernate valida
-                                           // nullable=false ANTES do DEFAULT do banco entrar em ação
-            novo.setDataCadastro(LocalDateTime.now());
-            return conjuntoRepository.save(novo);
-        });
+        var tipo = tipos.findByCodigoIgnoreCase(TIPO_CAMADA)
+                .orElseThrow(() -> new IllegalStateException(
+                        "Tipo não cadastrado em TIPO_CONJUNTO: " + TIPO_CAMADA));
+
+        FonteDoDado fonte = fonteRepository.findByNome(NOME_FONTE)
+                .orElseGet(() -> {
+                    FonteDoDado nova = new FonteDoDado();
+                    nova.setNome(NOME_FONTE);
+                    nova.setSigla("IBAMA/ICMBio");
+                    nova.setStatus("S"); // CHECK (fon_status IN ('S','N'))
+                    nova.setDataCadastro(LocalDateTime.now());
+
+                    return fonteRepository.save(nova);
+                });
+
+        ConjuntoDados conjunto = conjuntoRepository
+                .findByFonteIdAndTipoConjuntoId(
+                        fonte.getId(),
+                        tipo.getId())
+                .orElseGet(() -> {
+                    ConjuntoDados novo = new ConjuntoDados();
+                    novo.setFonte(fonte);
+                    novo.setNome(NOME_CONJUNTO);
+                    novo.setTipoConjunto(tipo);
+                    novo.setSituacao("RASCUNHO"); // Hibernate valida nullable=false ANTES do DEFAULT do banco
+                    novo.setDataCadastro(LocalDateTime.now());
+
+                    return conjuntoRepository.save(novo);
+                });
 
         log.info("CALCULANDO HASH");        
 
@@ -80,99 +99,127 @@ public class MetadataResolutionState implements EmbargoState {
         System.out.println("HASH CALCULADO: " + hash);
 
         // arq_hash é UNIQUE — reaproveita se o mesmo arquivo já foi processado antes
-        ArquivoBruto arquivoBruto = arquivoRepository.findByHash(hash).orElseGet(() -> {
-            ArquivoBruto novo = new ArquivoBruto();
-            novo.setConjunto(conjunto);
-            novo.setNome(context.getEmbargoFile().getName());
-            novo.setFormato("SHP");
-            novo.setPathArmazenamento(context.getEmbargoFile().getAbsolutePath());
-            novo.setTamanhoBytes(context.getEmbargoFile().length());
-            novo.setStatus("RECEBIDO"); // CHECK: valor válido
-            novo.setHash(hash);
-            novo.setDataUpload(LocalDateTime.now());
-            return arquivoRepository.save(novo);
-        });
-        long proximoNumero = versaoRepository.findTopByConjuntoOrderByNumeroDesc(conjunto)
+        ArquivoBruto arquivoBruto = arquivoRepository.findByHash(hash)
+                .orElseGet(() -> {
+                    ArquivoBruto novo = new ArquivoBruto();
+                    novo.setConjunto(conjunto);
+                    novo.setNome(context.getEmbargoFile().getName());
+                    novo.setFormato("SHP");
+                    novo.setPathArmazenamento(
+                            context.getEmbargoFile().getAbsolutePath());
+                    novo.setTamanhoBytes(context.getEmbargoFile().length());
+                    novo.setStatus("RECEBIDO");
+                    novo.setHash(hash);
+                    novo.setDataUpload(LocalDateTime.now());
+
+                    return arquivoRepository.save(novo);
+                });
+
+        long proximoNumero = versaoRepository
+                .findTopByConjuntoOrderByNumeroDesc(conjunto)
                 .map(v -> v.getNumero() + 1)
                 .orElse(1L);
+
+        ExecucaoPipeline execucao = SpringContextHolder
+                .getBean(ExecucaoPipelineService.class)
+                .iniciar(conjunto, "TRATAMENTO");
+
+        context.setExecucaoPipeline(execucao);
 
         Versao versao = new Versao();
         versao.setConjunto(conjunto);
         versao.setNumero(proximoNumero);
         versao.setHash(hash);
-        versao.setSituacao("RASCUNHO"); // idem — não confiar no DEFAULT do banco
+        versao.setSituacao("RASCUNHO");
         versao.setDataCriacao(LocalDateTime.now());
         versao = versaoRepository.save(versao);
 
         context.setArquivoBruto(arquivoBruto);
         context.setVersao(versao);
 
-        // --- Área de corte: carregada de um caminho fixo dentro do projeto
-        //     (NÃO derivada do banco, já que MUNICIPIO.mun_geometria ainda
-        //     está vazio, e NÃO exigida no construtor do Embargo) ---
-        File limiteParanaFile = new File(LIMITE_PARANA_PATH);
-        if (!limiteParanaFile.exists()) {
-            throw new IllegalStateException(
-                    "Shapefile de limite do Paraná não encontrado em: " + LIMITE_PARANA_PATH
-                            + " — coloque o arquivo (.shp/.shx/.dbf/.prj) nesse caminho antes de processar embargos.");
-        }
+        // Validação desta execução: a ela ficam ligados os registros da QUARENTENA
+        context.setValidacao(
+                SpringContextHolder
+                        .getBean(QuarentenaService.class)
+                        .iniciarValidacao(arquivoBruto));
 
-        Geometry areaDeCorte = carregarGeometriaUnica(limiteParanaFile);
-        context.setAreaDeCorte(areaDeCorte);
+        // Limite do Paraná: agora vem do provider compartilhado com o fluxo de imóvel
+        LimiteParana limite = SpringContextHolder
+                .getBean(LimiteParanaProvider.class)
+                .carregar();
 
-        try {
-            FileDataStore store = FileDataStoreFinder.getDataStore(limiteParanaFile);
-            context.setAreaDeCorteCRS(store.getSchema().getCoordinateReferenceSystem());
-            store.dispose();
-        } catch (IOException e) {
-            throw new RuntimeException("Erro ao ler o CRS do shapefile de limite do Paraná: " + e.getMessage(), e);
-        }
+        context.setAreaDeCorte(limite.geometria());
+        context.setAreaDeCorteCRS(limite.crs());
+
+        List<SimpleFeature> features = carregarFeatures(context.getEmbargoFile());
+
+        context.setFeatures(features);
+
+        context.registrarTransformacao(
+                "CARGA",
+                features.size(),
+                features.size(),
+                "arquivo=" + context.getEmbargoFile().getName());
 
         context.setState(new ReprojectionState());
     }
 
-    private Geometry carregarGeometriaUnica(File file) {
+    private List<SimpleFeature> carregarFeatures(File shapefile) {
+        FileDataStore store = null;
+
         try {
-            FileDataStore store = FileDataStoreFinder.getDataStore(file);
+            store = FileDataStoreFinder.getDataStore(shapefile);
+
+            if (store instanceof ShapefileDataStore shp) {
+                shp.setCharset(StandardCharsets.UTF_8);
+            }
+
             SimpleFeatureCollection collection = store.getFeatureSource().getFeatures();
 
-            Geometry uniao = null;
+            List<SimpleFeature> features = new ArrayList<>();
+
             try (SimpleFeatureIterator iterator = collection.features()) {
                 while (iterator.hasNext()) {
-                    SimpleFeature feature = iterator.next();
-                    Geometry geom = (Geometry) feature.getDefaultGeometry();
-                    uniao = (uniao == null) ? geom : uniao.union(geom);
+                    features.add(iterator.next());
                 }
             }
-            store.dispose();
 
-            if (uniao == null) {
-                throw new IllegalStateException("Shapefile de limite do Paraná não contém nenhuma geometria.");
-            }
-            return uniao;
-
+            return features;
         } catch (IOException e) {
-            throw new RuntimeException("Erro ao ler shapefile de limite do Paraná: " + e.getMessage(), e);
+            throw new RuntimeException(
+                    "Erro ao carregar feições do embargo: " + e.getMessage(),
+                    e);
+        } finally {
+            if (store != null) {
+                store.dispose();
+            }
         }
     }
 
     private String calcularHash(File file) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
+
             try (InputStream is = Files.newInputStream(file.toPath());
-                 DigestInputStream dis = new DigestInputStream(is, digest)) {
+                    DigestInputStream dis = new DigestInputStream(is, digest)) {
                 byte[] buffer = new byte[8192];
+
                 while (dis.read(buffer) != -1) {
                     // apenas consome o stream
                 }
             }
+
             StringBuilder sb = new StringBuilder();
+
             for (byte b : digest.digest()) {
                 sb.append(String.format("%02x", b));
             }
+
             return sb.toString();
         } catch (NoSuchAlgorithmException | IOException e) {
-            throw new RuntimeException("Erro ao calcular hash do arquivo: " + e.getMessage(), e);
+            throw new RuntimeException(
+                    "Erro ao calcular hash do arquivo: " + e.getMessage(),
+                    e);
         }
     }
 }
