@@ -41,7 +41,7 @@ public class ArquivoBruto {
     @Column(name = "arq_status")
     private String status;
 
-    @Column(name = "arq_hash", nullable = false)
+    @Column(name = "arq_hash", nullable = false, unique = true)
     private String hash;
 
     @Column(name = "arq_data_upload", nullable = false)

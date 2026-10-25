@@ -1,0 +1,95 @@
+[INFO] Scanning for projects...
+[INFO] 
+[INFO] -----------------------< br.com.fatec:georural >------------------------
+[INFO] Building  0.0.1-SNAPSHOT
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- resources:3.5.0:resources (default-resources) @ georural ---
+[INFO] Copying 1 resource from src/main/resources to target/classes
+[INFO] Copying 4 resources from src/main/resources to target/classes
+[INFO] 
+[INFO] --- compiler:3.15.0:compile (default-compile) @ georural ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.5.0:testResources (default-testResources) @ georural ---
+[INFO] skip non existing resourceDirectory /workspaces/georural/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.15.0:testCompile (default-testCompile) @ georural ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- surefire:3.5.6:test (default-test) @ georural ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running br.com.fatec.georural.service.CalculoIAEServiceIntegrationTest
+13:00:37.314 [main] INFO org.springframework.test.context.support.AnnotationConfigContextLoaderUtils -- Could not detect default configuration classes for test class [br.com.fatec.georural.service.CalculoIAEServiceIntegrationTest]: CalculoIAEServiceIntegrationTest does not declare any static, non-private, non-final, nested classes annotated with @Configuration.
+13:00:38.305 [main] INFO org.springframework.boot.test.context.SpringBootTestContextBootstrapper -- Found @SpringBootConfiguration br.com.fatec.georural.GeoruralApplication for test class br.com.fatec.georural.service.CalculoIAEServiceIntegrationTest
+13:00:38.906 [main] INFO org.springframework.test.context.support.AnnotationConfigContextLoaderUtils -- Could not detect default configuration classes for test class [br.com.fatec.georural.service.CalculoIAEServiceIntegrationTest]: CalculoIAEServiceIntegrationTest does not declare any static, non-private, non-final, nested classes annotated with @Configuration.
+13:00:38.912 [main] INFO org.springframework.boot.test.context.SpringBootTestContextBootstrapper -- Found @SpringBootConfiguration br.com.fatec.georural.GeoruralApplication for test class br.com.fatec.georural.service.CalculoIAEServiceIntegrationTest
+13:00:39.374 [main] INFO org.springframework.boot.devtools.restart.RestartApplicationListener -- Restart disabled due to context in which it is running
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+
+ :: Spring Boot ::                (v4.1.1)
+
+2026-09-29T13:00:40.727Z  INFO 36849 --- [georural] [           main] c.f.g.s.CalculoIAEServiceIntegrationTest : Starting CalculoIAEServiceIntegrationTest using Java 21.0.12.1 with PID 36849 (started by vscode in /workspaces/georural)
+2026-09-29T13:00:40.733Z  INFO 36849 --- [georural] [           main] c.f.g.s.CalculoIAEServiceIntegrationTest : No active profile set, falling back to 1 default profile: "default"
+2026-09-29T13:00:46.888Z  INFO 36849 --- [georural] [           main] .s.d.r.c.RepositoryConfigurationDelegate : Bootstrapping Spring Data JPA repositories in DEFAULT mode.
+2026-09-29T13:00:49.193Z  INFO 36849 --- [georural] [           main] .s.d.r.c.RepositoryConfigurationDelegate : Finished Spring Data repository scanning in 2259 ms. Found 31 JPA repository interfaces.
+2026-09-29T13:00:53.444Z  INFO 36849 --- [georural] [           main] org.hibernate.orm.jpa                    : HHH008540: Processing PersistenceUnitInfo [name: default]
+2026-09-29T13:00:54.116Z  INFO 36849 --- [georural] [           main] org.hibernate.orm.core                   : HHH000001: Hibernate ORM core version 7.4.5.Final
+2026-09-29T13:00:54.199Z  INFO 36849 --- [georural] [           main] o.h.spatial.integration.SpatialService   : HHH80000001: Hibernate Spatial integration enabled: true
+2026-09-29T13:00:57.113Z  INFO 36849 --- [georural] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Starting...
+2026-09-29T13:00:59.922Z  INFO 36849 --- [georural] [           main] com.zaxxer.hikari.pool.HikariPool        : HikariPool-1 - Added connection oracle.jdbc.driver.T4CConnection@65da4a5d
+2026-09-29T13:00:59.933Z  INFO 36849 --- [georural] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Start completed.
+2026-09-29T13:01:02.903Z  WARN 36849 --- [georural] [           main] org.hibernate.orm.deprecation            : HHH90000025: OracleDialect does not need to be specified explicitly using 'hibernate.dialect' (remove the property setting and it will be selected by default)
+2026-09-29T13:01:03.198Z  INFO 36849 --- [georural] [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [jdbc:oracle:thin:@georural_tp]
+	Database driver: Oracle JDBC driver
+	Database dialect: OracleDialect
+	Database version: 23.26.3
+	Default catalog/schema: undefined/ADMIN
+	Autocommit mode: undefined/unknown
+	Isolation level: READ_COMMITTED [default READ_COMMITTED]
+	JDBC fetch size: 100
+	Pool: DataSourceConnectionProvider
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-09-29T13:01:05.498Z  INFO 36849 --- [georural] [           main] o.s.o.j.p.SpringPersistenceUnitInfo      : No LoadTimeWeaver setup: ignoring JPA class transformer
+2026-09-29T13:01:19.991Z  INFO 36849 --- [georural] [           main] org.hibernate.orm.core                   : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+2026-09-29T13:01:20.025Z  INFO 36849 --- [georural] [           main] org.hibernate.orm.jdbc.batch             : HHH100501: Automatic JDBC statement batching enabled (maximum batch size 1000)
+2026-09-29T13:01:20.049Z  INFO 36849 --- [georural] [           main] j.LocalContainerEntityManagerFactoryBean : Initialized JPA EntityManagerFactory for persistence unit 'default'
+2026-09-29T13:01:20.692Z  INFO 36849 --- [georural] [           main] o.s.d.j.r.query.QueryEnhancerFactories   : Hibernate is in classpath; If applicable, HQL parser will be used.
+2026-09-29T13:01:28.016Z  WARN 36849 --- [georural] [           main] JpaBaseConfiguration$JpaWebConfiguration : spring.jpa.open-in-view is enabled by default. Therefore, database queries may be performed during view rendering. Explicitly configure spring.jpa.open-in-view to disable this warning
+2026-09-29T13:01:30.989Z  INFO 36849 --- [georural] [           main] c.f.g.s.CalculoIAEServiceIntegrationTest : Started CalculoIAEServiceIntegrationTest in 51.69 seconds (process running for 57.171)
+Mockito is currently self-attaching to enable the inline-mock-maker. This will no longer work in future releases of the JDK. Please add Mockito as an agent to your build as described in Mockito's documentation: https://javadoc.io/doc/org.mockito/mockito-core/latest/org.mockito/org/mockito/Mockito.html#0.3
+WARNING: A Java agent has been loaded dynamically (/home/vscode/.m2/repository/net/bytebuddy/byte-buddy-agent/1.18.11/byte-buddy-agent-1.18.11.jar)
+WARNING: If a serviceability tool is in use, please run with -XX:+EnableDynamicAgentLoading to hide this warning
+WARNING: If a serviceability tool is not in use, please run with -Djdk.instrument.traceUsage for more information
+WARNING: Dynamic loading of agents will be disallowed by default in a future release
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+Tamanho de agregado: 2
+Tipo: java.math.BigDecimal
+Valor: 914998.7649
+Tipo: java.math.BigDecimal
+Valor: 1472.8816
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 62.35 s -- in br.com.fatec.georural.service.CalculoIAEServiceIntegrationTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  01:17 min
+[INFO] Finished at: 2026-09-29T13:01:39Z
+[INFO] ------------------------------------------------------------------------

@@ -1,16 +1,20 @@
 package br.com.fatec.georural.repository;
 
+import br.com.fatec.georural.dto.response.indicador.ResultadoIndicadorResponse;
 import br.com.fatec.georural.entity.ImovelRural;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
 public interface ImovelRuralRepository extends JpaRepository<ImovelRural, Long> {
 
     Optional<ImovelRural> findByCodigoCar(String codigoCar);
+
+    List<ImovelRural> findByCodigoCarIn(Collection<String> codigos);
 
     @Query(value = "SELECT SDO_UTIL.TO_GEOJSON(i.imo_geometria) FROM imovel_rural i WHERE i.imo_id = :id",
             nativeQuery = true)
@@ -29,7 +33,7 @@ public interface ImovelRuralRepository extends JpaRepository<ImovelRural, Long> 
 
     @Query(value = """
         SELECT
-            SDO_GEOM.SDO_AREA(
+            CAST(SDO_GEOM.SDO_AREA(
                 SDO_GEOM.SDO_INTERSECTION(
                     i.imo_geometria,
                     (SELECT SDO_AGGR_UNION(SDOAGGRTYPE(e.emb_geometria, 0.5))
@@ -37,12 +41,13 @@ public interface ImovelRuralRepository extends JpaRepository<ImovelRural, Long> 
                     WHERE SDO_RELATE(i.imo_geometria, e.emb_geometria, 'mask=ANYINTERACT') = 'TRUE'),
                     0.5
                 ), 0.5
-            ) AS areaEmbargadaM2,
-            i.imo_area_total AS areaTotalM2
+            ) AS NUMBER(18,4)) AS areaEmbargadaM2,
+            i.imo_area_total AS areaTotalHa
         FROM IMOVEL_RURAL i
         WHERE i.imo_id = :imovelId
         """, nativeQuery = true)
-    Object[] calcularAreaEmbargadaAgregada(@Param("imovelId") Long imovelId);
+    List<Object[]> calcularAreaEmbargadaAgregada(@Param("imovelId") Long imovelId,
+                                        @Param("versaoEmbargoId") Long versaoEmbargoId);
 
     @Query(value = """
         SELECT
@@ -52,8 +57,7 @@ public interface ImovelRuralRepository extends JpaRepository<ImovelRural, Long> 
             SDO_GEOM.SDO_AREA(
                 SDO_GEOM.SDO_INTERSECTION(i.imo_geometria, e.emb_geometria, 0.5),
                 0.5
-            ) AS areaSobrepostaM2,
-            i.imo_area_total AS areaTotalM2
+            ) AS areaSobrepostaM2
         FROM IMOVEL_RURAL i
         JOIN EMBARGO e
             ON SDO_RELATE(i.imo_geometria, e.emb_geometria, 'mask=ANYINTERACT') = 'TRUE'

@@ -6,61 +6,67 @@ import java.util.List;
 import org.geotools.api.feature.simple.SimpleFeature;
 import org.locationtech.jts.geom.Geometry;
 
+import br.com.fatec.georural.config.SpringContextHolder;
+import br.com.fatec.georural.service.treatment.audit.TransformacaoService;
 import br.com.fatec.georural.service.treatment.core.BaseTreatment;
 import br.com.fatec.georural.service.treatment.core.TreatmentState;
 
-public class GeometryValidationState implements TreatmentState {
+public class GeometryValidationState
+        implements TreatmentState {
 
     @Override
     public void execute(BaseTreatment context) {
 
-        System.out.println(
-                "[GeometryValidationState] Validando geometrias..."
-        );
-
         List<SimpleFeature> validFeatures =
                 new ArrayList<>();
 
-        try {
+        int entrada =
+                context.getFeatures().size();
 
-            for (SimpleFeature feature :
-                    context.getFeatures()) {
+        for (SimpleFeature feature :
+                context.getFeatures()) {
 
-                Geometry geometry =
-                        (Geometry) feature.getDefaultGeometry();
+            Geometry geometry =
+                    (Geometry) feature
+                            .getDefaultGeometry();
 
-                if (geometry == null) {
-                    continue;
-                }
-
-                if (!geometry.isValid()) {
-                    geometry = geometry.buffer(0);
-                }
-
-                if (geometry.isEmpty()) {
-                    continue;
-                }
-
-                if (!geometry.isValid()) {
-                    throw new IllegalStateException(
-                            "Geometria inválida encontrada no registro: "
-                                    + feature.getID());
-                }
-
-                feature.setDefaultGeometry(
-                        geometry);
-
-                validFeatures.add(feature);
+            if (geometry == null) {
+                continue;
             }
 
-        } catch (Exception e) {
+            if (!geometry.isValid()) {
+                geometry =
+                        geometry.buffer(0);
+            }
 
-            throw new RuntimeException(
-                    "Erro na validação de geometria: "
-                            + e.getMessage(),
-                    e);
+            if (geometry.isEmpty()) {
+                continue;
+            }
+
+            if (!geometry.isValid()) {
+                continue;
+            }
+
+            feature.setDefaultGeometry(
+                    geometry);
+
+            validFeatures.add(
+                    feature);
         }
 
-        context.setFeatures(validFeatures);
+        context.setFeatures(
+                validFeatures);
+
+        SpringContextHolder
+                .getBean(
+                        TransformacaoService.class)
+                .registrar(
+                        context.getExecucaoPipeline(),
+                        1,
+                        "VALIDACAO",
+                        "Entrada="
+                                + entrada
+                                + ", saída="
+                                + validFeatures.size());
     }
 }

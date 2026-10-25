@@ -1,4 +1,6 @@
 HELP.md
+test-files/
+zona-tratada/
 target/
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/

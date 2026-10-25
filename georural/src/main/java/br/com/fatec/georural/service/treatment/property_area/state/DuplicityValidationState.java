@@ -1,11 +1,12 @@
 package br.com.fatec.georural.service.treatment.property_area.state;
 
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 import org.geotools.api.feature.simple.SimpleFeature;
 
-import br.com.fatec.georural.service.treatment.common.state.ReprojectionState;
 import br.com.fatec.georural.service.treatment.core.BaseTreatment;
 import br.com.fatec.georural.service.treatment.core.TreatmentState;
 import br.com.fatec.georural.service.treatment.property_area.PropertyAreaTreatment;
@@ -16,38 +17,40 @@ public class DuplicityValidationState
     @Override
     public void execute(BaseTreatment baseContext) {
 
-        PropertyAreaTreatment propertyArea =
-                (PropertyAreaTreatment) baseContext;
+        PropertyAreaTreatment propertyArea = (PropertyAreaTreatment) baseContext;
 
-        Set<String> chavesVistas =
-                new HashSet<>();
+        Set<String> chavesVistas = new HashSet<>();
 
-        for (SimpleFeature feature :
-                propertyArea.getFeatures()) {
+        // Lista (e não Set) para preservar a ordem original das feições
+        List<SimpleFeature> featuresValidas = new ArrayList<>();
 
-            String recibo =
-                    (String) feature.getAttribute("recibo");
+        int entrada = propertyArea.getFeatures().size();
 
-            String tema =
-                    (String) feature.getAttribute("tema");
+        for (SimpleFeature feature : propertyArea.getFeatures()) {
 
-            String chave =
-                    recibo + "|" + tema;
+            String recibo = (String) feature.getAttribute("recibo");
+
+            String tema = (String) feature.getAttribute("tema");
+
+            String chave = recibo + "|" + tema;
 
             if (!chavesVistas.add(chave)) {
-
-                throw new IllegalStateException(
-                        "Registro duplicado: recibo="
-                                + recibo
-                                + ", tema="
-                                + tema
-                                + " (registro "
-                                + feature.getID()
-                                + ")");
+                propertyArea.rejeitar("DUPLICIDADE", "recibo,tema",
+                        "Registro duplicado: " + chave, feature);
+                continue;
             }
+
+            featuresValidas.add(feature);
         }
 
-        propertyArea.setState(
-                new ReprojectionState());
+        propertyArea.setFeatures(featuresValidas);
+
+        propertyArea.registrarTransformacao(
+                "VALIDACAO_DUPLICIDADE",
+                entrada,
+                featuresValidas.size(),
+                "duplicadas=" + (entrada - featuresValidas.size()));
+
+        propertyArea.setState(new StandardizationState());
     }
 }

@@ -1,9 +1,9 @@
 package br.com.fatec.georural.service.treatment.property_area.state;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 import org.geotools.api.feature.simple.SimpleFeature;
 import org.locationtech.jts.geom.Geometry;
@@ -15,60 +15,75 @@ import br.com.fatec.georural.service.treatment.property_area.PropertyAreaTreatme
 
 public class DissolveState implements TreatmentState {
 
+    private static final String TEMA_AREA_BRUTA = "Área do Imóvel";
+
+    private static final int SRID_SIRGAS_2000 = 4674;
+
     @Override
     public void execute(BaseTreatment baseContext) {
 
-        PropertyAreaTreatment propertyArea =
-                (PropertyAreaTreatment) baseContext;
+        PropertyAreaTreatment propertyArea = (PropertyAreaTreatment) baseContext;
 
-        Map<String, List<Geometry>> agrupadas =
-                new HashMap<>();
+        // TreeMap: ordem estável por recibo (saída determinística, US09.06)
+        Map<String, List<Geometry>> agrupadas = new TreeMap<>();
 
-        for (SimpleFeature feature :
-                propertyArea.getFeatures()) {
+        Map<String, String> municipios = new TreeMap<>();
 
-            String tema =
-                    (String) feature.getAttribute("tema");
+        int entrada = 0;
 
-            if (!"Área do Imóvel"
-                    .equalsIgnoreCase(tema)) {
+        for (SimpleFeature feature : propertyArea.getFeatures()) {
+
+            String tema = (String) feature.getAttribute("tema");
+
+            if (!TEMA_AREA_BRUTA.equalsIgnoreCase(tema)) {
                 continue;
             }
 
-            String recibo =
-                    ((String) feature.getAttribute("recibo"))
-                            .trim()
-                            .toUpperCase();
+            entrada++;
 
-            Geometry geom =
-                    (Geometry) feature.getDefaultGeometry();
+            Geometry geom = (Geometry) feature.getDefaultGeometry();
+
+            if (geom == null || geom.isEmpty()) {
+                propertyArea.rejeitar("GEOMETRIA", "the_geom",
+                        "Geometria vazia na dissolução", feature);
+                continue;
+            }
+
+            String recibo = ((String) feature.getAttribute("recibo"))
+                    .trim()
+                    .toUpperCase();
 
             agrupadas
-                    .computeIfAbsent(
-                            recibo,
-                            k -> new ArrayList<>())
+                    .computeIfAbsent(recibo, k -> new ArrayList<>())
                     .add(geom);
+
+            municipios.putIfAbsent(
+                    recibo,
+                    (String) feature.getAttribute("municipio"));
         }
 
-        Map<String, Geometry> dissolvidas =
-                new HashMap<>();
+        Map<String, Geometry> dissolvidas = new TreeMap<>();
 
-        for (Map.Entry<String, List<Geometry>> item :
-                agrupadas.entrySet()) {
+        for (Map.Entry<String, List<Geometry>> item : agrupadas.entrySet()) {
 
-            Geometry uniao =
-                    UnaryUnionOp.union(
-                            item.getValue());
+            Geometry uniao = UnaryUnionOp.union(item.getValue());
 
-            dissolvidas.put(
-                    item.getKey(),
-                    uniao);
+            // o JTS devolve a união com SRID 0; o índice espacial exige 4674
+            uniao.setSRID(SRID_SIRGAS_2000);
+
+            dissolvidas.put(item.getKey(), uniao);
         }
 
-        propertyArea.setDissolvedGeometries(
-                dissolvidas);
+        propertyArea.registrarTransformacao(
+                "DISSOLVER",
+                entrada,
+                dissolvidas.size(),
+                "recibos dissolvidos=" + dissolvidas.size());
 
-        propertyArea.setState(
-                new AreaCalculationState());
+        propertyArea.setDissolvedGeometries(dissolvidas);
+
+        propertyArea.setMunicipiosPorRecibo(municipios);
+
+        propertyArea.setState(new AreaCalculationState());
     }
 }

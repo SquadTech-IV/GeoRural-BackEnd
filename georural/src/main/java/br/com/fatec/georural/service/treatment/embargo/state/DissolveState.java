@@ -30,6 +30,8 @@ public class DissolveState implements TreatmentState {
 
         Map<String, List<SimpleFeature>> grupos = new LinkedHashMap<>();
 
+        int entrada = context.getFeatures().size();
+
         for (SimpleFeature feature : context.getFeatures()) {
 
             String chave = String.valueOf(feature.getAttribute("num_tad"));
@@ -65,10 +67,17 @@ public class DissolveState implements TreatmentState {
             resultado.add(base);
         }
 
-        System.out.println("[Dissolve] " + context.getFeatures().size() + " feições em "
+        System.out.println("[Dissolve] " + entrada + " feições em "
                 + resultado.size() + " embargos (" + unidos + " com partes unidas).");
 
         context.setFeatures(resultado);
+
+        // Correção: "entrada" é capturada ANTES do setFeatures (antes registrava a saída nos dois)
+        context.registrarTransformacao(
+                "DISSOLVER",
+                entrada,
+                resultado.size(),
+                "embargos com partes unidas=" + unidos);
 
         context.setState(new StandardizationState());
     }

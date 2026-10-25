@@ -32,7 +32,7 @@ public class ImovelRural {
     @JoinColumn(name = "ver_id")
     private Versao versao;
 
-    @Column(name = "imo_codigo_car", nullable = false)
+    @Column(name = "imo_codigo_car", nullable = false, unique = true)
     private String codigoCar;
 
     @Column(name = "imo_geometria")
