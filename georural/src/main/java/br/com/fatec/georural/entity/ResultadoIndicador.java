@@ -48,6 +48,20 @@ public class ResultadoIndicador {
     @Column(name = "rin_valor_absoluto")
     private BigDecimal valorAbsoluto;
 
+    @Column(name = "rin_situacao")
+    private String situacao;
+
+    @Column(name = "rin_vigente", nullable = false)
+    private String vigente = "S";
+
     @Column(name = "rin_data_calculo", nullable = false)
     private LocalDateTime dataCalculo;
+
+    @Lob
+    @Column(name = "rin_features")
+    private String features;
+
+    @Lob
+    @Column(name = "rin_detalhes")
+    private String detalhes;
 }

@@ -25,13 +25,16 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class CalculoIAEService {
 
+    private static final BigDecimal M2_POR_HECTARE = BigDecimal.valueOf(10000);
+
     private final ImovelRuralRepository imovelRuralRepository;
     private final ResultadoIndicadorRepository resultadoIndicadorRepository;
     private final IndicadorRepository indicadorRepository;
     private final RegraCalculoRepository regraCalculoRepository;
+    private final ResultadoIndicadorService resultadoIndicadorService;
     private final IAEMapper mapper;
 
-    public IAEResponse calcularSobreposicaoEmbargo(Long imovelId) {
+    public IAEResponse calcularSobreposicaoEmbargo(Long imovelId, Long versaoEmbargoId) {
         ImovelRural imovel = imovelRuralRepository.findById(imovelId)
                 .orElseThrow(() -> new RecursoNaoEncontradoException(
                         "Imóvel não encontrado: " + imovelId));
@@ -42,33 +45,45 @@ public class CalculoIAEService {
         RegraCalculo regra = regraCalculoRepository.findByIndicadorAndVigente(indicador, "S")
                 .orElseThrow(() -> new EstadoInconsistenteException("Nenhuma regra vigente para IAE"));
 
-        Object[] resultadoAgregado = imovelRuralRepository.calcularAreaEmbargadaAgregada(imovelId);
+        Object[] resultadoAgregado = imovelRuralRepository.calcularAreaEmbargadaAgregada(imovelId, versaoEmbargoId)
+                .stream()
+                .findFirst()
+                .orElseThrow(() -> new EstadoInconsistenteException(
+                        "Falha ao calcular a área embargada agregada para o imóvel: " + imovelId));
 
-        // Query nativa com uma linha pode vir como Object[]{ Object[]{a, b} }
         if (resultadoAgregado.length == 1 && resultadoAgregado[0] instanceof Object[] linha) {
             resultadoAgregado = linha;
         }
 
-        BigDecimal areaEmbargada = toBigDecimal(resultadoAgregado[0]);
-        BigDecimal areaTotal = toBigDecimal(resultadoAgregado[1]);
+        BigDecimal areaEmbargadaM2 = toBigDecimal(resultadoAgregado[0]);
+        // area total do imovel esta em HECTARES (imo_area_total)
+        BigDecimal areaTotalHa = toBigDecimal(resultadoAgregado[1]);
 
-        BigDecimal percentual = areaTotal.compareTo(BigDecimal.ZERO) > 0
-                ? areaEmbargada.divide(areaTotal, 10, RoundingMode.HALF_UP)
+        BigDecimal areaEmbargadaHa = areaEmbargadaM2.divide(M2_POR_HECTARE, 4, RoundingMode.HALF_UP);
+
+        BigDecimal percentual = areaTotalHa.compareTo(BigDecimal.ZERO) > 0
+                ? areaEmbargadaHa.divide(areaTotalHa, 10, RoundingMode.HALF_UP)
                 .multiply(BigDecimal.valueOf(100))
                 .setScale(4, RoundingMode.HALF_UP)
                 : BigDecimal.ZERO;
 
-        ResultadoIndicador entidade = new ResultadoIndicador();
+        ResultadoIndicador entidade = resultadoIndicadorRepository
+                .findByImovelIdAndIndicadorAndVersao(imovel.getId(), indicador, imovel.getVersao())
+                .orElseGet(ResultadoIndicador::new);
+
         entidade.setImovel(imovel);
         entidade.setIndicador(indicador);
         entidade.setVersao(imovel.getVersao());
         entidade.setRegraCalculo(regra);
-        entidade.setValorAbsoluto(areaEmbargada);
-        entidade.setValorPercentual(percentual);
-        entidade.setValorHectares(areaEmbargada.divide(BigDecimal.valueOf(10000), 4, RoundingMode.HALF_UP));
+        entidade.setValorAbsoluto(areaEmbargadaM2);        // area embargada em m²
+        entidade.setValorPercentual(percentual);           // % da area do imovel sob embargo
+        entidade.setValorHectares(areaEmbargadaHa);        // area embargada em hectares
         entidade.setDataCalculo(LocalDateTime.now());
 
-        ResultadoIndicador salvo = resultadoIndicadorRepository.save(entidade);
+        entidade.setSituacao(areaEmbargadaHa.compareTo(BigDecimal.ZERO) > 0 ? "ruim" : "ok");
+        entidade.setFeatures(toTexto(imovelRuralRepository.buscarEmbargosGeoJson(imovelId)));
+
+        ResultadoIndicador salvo = resultadoIndicadorService.salvarComoVigente(entidade);
 
         List<Object[]> embargosRaw = imovelRuralRepository.encontrarEmbargosIntersectantes(imovelId);
         return mapper.toResponse(salvo, embargosRaw);
@@ -96,5 +111,24 @@ public class CalculoIAEService {
             throw new EstadoInconsistenteException(
                     "Valor numérico inválido: '" + valor + "' (tipo " + valor.getClass().getName() + ")");
         }
+    }
+
+    // Converte o retorno do SDO_UTIL.TO_GEOJSON (CLOB ou String) em texto
+    private String toTexto(Object valor) {
+        if (valor == null) {
+            return null;
+        }
+        if (valor instanceof String s) {
+            return s;
+        }
+        if (valor instanceof java.sql.Clob clob) {
+            try {
+                return clob.getSubString(1, (int) clob.length());
+            } catch (java.sql.SQLException e) {
+                throw new EstadoInconsistenteException(
+                        "Falha ao ler o GeoJSON dos embargos: " + e.getMessage());
+            }
+        }
+        return valor.toString();
     }
 }

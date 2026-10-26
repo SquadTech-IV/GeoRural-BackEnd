@@ -1,10 +1,20 @@
 package br.com.fatec.georural.entity;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.Table;
+
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import java.time.LocalDate;
+
 import java.time.LocalDateTime;
 
 @Entity
@@ -19,31 +29,33 @@ public class FonteDoDado {
     @Column(name = "fon_id")
     private Long id;
 
-    @Column(name = "fon_nome", nullable = false)
+    @Column(name = "fon_nome", nullable = false, length = 120)
     private String nome;
 
-    @Column(name = "fon_orgao")
-    private String orgao;
+    @Column(name = "fon_sigla", length = 20)
+    private String sigla;
 
-    @Lob
-    @Column(name = "fon_esquema_tecnico")
-    private String esquemaTecnico;
+    @Column(name = "fon_esfera", length = 20)
+    private String esfera;
 
-    @Column(name = "fon_crs_origem")
-    private Integer crsOrigem;
+    @Column(name = "fon_status", nullable = false, length = 1)
+    private String status = "S";
 
-    @Column(name = "fon_competencia")
-    private String competencia;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "usu_id")
+    private Usuario usuario;
 
-    @Column(name = "fon_data_cadastro")
+    @Column(name = "fon_data_cadastro", nullable = false)
     private LocalDateTime dataCadastro;
 
-    @Column(name = "fon_status", nullable = false)
-    private String status;
+    @PrePersist
+    void prepararCadastro() {
+        if (dataCadastro == null) {
+            dataCadastro = LocalDateTime.now();
+        }
 
-    @Column(name = "fon_cobertura_temporal_inicio")
-    private LocalDate coberturaTemporalInicio;
-
-    @Column(name = "fon_cobertura_temporal_fim")
-    private LocalDate coberturaTemporalFim;
+        if (status == null || status.isBlank()) {
+            status = "S";
+        }
+    }
 }

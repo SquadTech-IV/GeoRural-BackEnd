@@ -22,6 +22,8 @@ public class IAEMapper {
 
         return new IAEResponse(
                 resultado.getImovel().getId(),
+                resultado.getImovel().getMunicipio().getNome(),
+                resultado.getImovel().getCodigoCar(),
                 resultado.getIndicador().getSigla(),
                 resultado.getValorPercentual(),
                 resultado.getValorHectares(),

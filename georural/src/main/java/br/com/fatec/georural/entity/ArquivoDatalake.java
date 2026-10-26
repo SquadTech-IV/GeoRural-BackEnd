@@ -18,6 +18,10 @@ public class ArquivoDatalake {
     @Column(name = "id")
     private Long id;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "con_id")
+    private ConjuntoDados conjunto;
+
     @Column(name = "nome", nullable = false)
     private String nome;
 
@@ -32,6 +36,12 @@ public class ArquivoDatalake {
 
     @Column(name = "srid")
     private Integer srid;
+
+    @Column(name = "competencia_origem", length = 40)
+    private String competenciaOrigem;
+
+    @Column(name = "cobertura_origem", length = 30)
+    private String coberturaOrigem;
 
     @Column(name = "tamanho_bytes", nullable = false)
     private Long tamanhoBytes;
@@ -54,3 +64,8 @@ public class ArquivoDatalake {
     @Column(name = "tipo_camada")
     private String tipoCamada;
 }
+
+
+
+
+

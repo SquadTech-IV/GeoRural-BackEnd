@@ -23,6 +23,10 @@ public class ExecucaoPipeline {
     private ConjuntoDados conjunto;
 
     @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "arq_bruto_id")
+    private ArquivoBruto arquivoBruto;
+
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "usu_id")
     private Usuario usuario;
 
@@ -34,6 +38,12 @@ public class ExecucaoPipeline {
 
     @Column(name = "exe_status", nullable = false)
     private String status;
+
+    @Column(name = "exe_registros_recebidos")
+    private Long registrosRecebidos;
+
+    @Column(name = "exe_registros_aprovados")
+    private Long registrosAprovados;
 
     @Column(name = "exe_registros_processados")
     private Long registrosProcessados;

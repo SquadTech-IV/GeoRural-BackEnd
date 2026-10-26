@@ -34,6 +34,17 @@ public class ResultadoMunicipio {
     @Column(name = "rmu_valor_agregado")
     private BigDecimal valorAgregado;
 
+    // espelha o RESULTADO_INDICADOR: situacao/vigente/detalhes (US12.01)
+    @Column(name = "rmu_situacao")
+    private String situacao;
+
+    @Column(name = "rmu_vigente", nullable = false)
+    private String vigente = "S";
+
     @Column(name = "rmu_data_calculo", nullable = false)
     private LocalDateTime dataCalculo;
+
+    @Lob
+    @Column(name = "rmu_detalhes")
+    private String detalhes;
 }

@@ -5,14 +5,27 @@ import java.time.LocalDateTime;
 
 public class ResultadoIndicadorResponse {
     private final Long imovelId;
+    private final String municipio;
+    private final String codigoCar;
     private final String indicadorSigla;
     private final BigDecimal valorPercentual;
     private final BigDecimal valorHectares;
     private final BigDecimal valorAbsoluto;
     private final LocalDateTime dataCalculo;
 
-    public ResultadoIndicadorResponse(Long imovelId, String indicadorSigla, BigDecimal valorPercentual, BigDecimal valorHectares, BigDecimal valorAbsoluto, LocalDateTime dataCalculo) {
+    public ResultadoIndicadorResponse(
+            Long imovelId, 
+            String municipio,
+            String codigoCar,
+            String indicadorSigla, 
+            BigDecimal valorPercentual, 
+            BigDecimal valorHectares, 
+            BigDecimal valorAbsoluto, 
+            LocalDateTime dataCalculo
+    ) {
         this.imovelId = imovelId;
+        this.municipio = municipio;
+        this.codigoCar = codigoCar;
         this.indicadorSigla = indicadorSigla;
         this.valorPercentual = valorPercentual;
         this.valorHectares = valorHectares;
@@ -22,6 +35,14 @@ public class ResultadoIndicadorResponse {
 
     public Long getImovelId() {
         return imovelId;
+    }
+
+    public String getMunicipio() {
+        return municipio;
+    }
+
+    public String getCodigoCar() {
+        return codigoCar;
     }
 
     public String getIndicadorSigla() {

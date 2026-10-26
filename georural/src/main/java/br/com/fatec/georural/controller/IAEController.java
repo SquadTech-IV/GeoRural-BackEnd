@@ -3,7 +3,10 @@ package br.com.fatec.georural.controller;
 import br.com.fatec.georural.dto.response.indicador.IAEResponse;
 import br.com.fatec.georural.service.CalculoIAEService;
 import br.com.fatec.georural.service.ConsultaIAEService;
+
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
 
 @RestController
 @RequestMapping("/api/indicadores/iae")
@@ -24,8 +27,9 @@ public class IAEController {
         return consultaService.consultarPorImovel(imovelId);
     }
 
-    @PostMapping("/{imovelId}/recalcular")
-    public IAEResponse recalcular(@PathVariable Long imovelId) {
-        return calculoService.calcularSobreposicaoEmbargo(imovelId);
-    }
+    @PostMapping("/{imovelId}")
+    @ResponseStatus(HttpStatus.CREATED)
+    public IAEResponse calcular(@PathVariable Long imovelId, @RequestParam Long versaoEmbargoId) {
+        return calculoService.calcularSobreposicaoEmbargo(imovelId, versaoEmbargoId);
+    }    
 }
