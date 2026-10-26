@@ -63,4 +63,14 @@ public interface ResultadoIndicadorRepository extends JpaRepository<ResultadoInd
            WHERE r.versao.id IN :versaoIds
            """)
     List<Object[]> listarIndicadoresPorVersoes(@Param("versaoIds") Collection<Long> versaoIds);
+
+    /** Todos os resultados de uma versao, com imovel e indicador carregados (artefato da zona PUBLICADA). */
+    @Query("""
+           SELECT r FROM ResultadoIndicador r
+           JOIN FETCH r.imovel im
+           JOIN FETCH r.indicador i
+           WHERE r.versao.id = :versaoId
+           ORDER BY im.codigoCar, i.sigla
+           """)
+    List<ResultadoIndicador> buscarPorVersao(@Param("versaoId") Long versaoId);
 }

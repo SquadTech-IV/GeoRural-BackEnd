@@ -10,10 +10,13 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
+/**
+ * Arquivos recebidos no data lake (zona BRUTA). Lista, detalha, baixa e dispara o
+ * processamento, tudo a partir de ARQUIVO_BRUTO + armazenamento de objetos.
+ */
 @RestController
 @RequestMapping("/api/arquivos")
 public class ArquivoDatalakeController {
@@ -44,14 +47,6 @@ public class ArquivoDatalakeController {
                         "attachment; filename=\"" + d.nomeArquivo() + "\"")
                 .contentType(MediaType.parseMediaType(d.contentType()))
                 .body(d.conteudo());
-    }
-
-    @PostMapping("/{id}/conteudo")
-    public ResponseEntity<Void> subirConteudo(
-            @PathVariable Long id,
-            @RequestParam("arquivo") MultipartFile arquivo) {
-        service.salvarConteudo(id, arquivo);
-        return ResponseEntity.ok().build();
     }
 
     @PostMapping("/{id}/processar")

@@ -2,15 +2,18 @@ package br.com.fatec.georural.service;
 
 import br.com.fatec.georural.dto.response.qualidade.QualidadeResponse;
 import br.com.fatec.georural.dto.response.versao.VersaoResponse;
+import br.com.fatec.georural.entity.ArquivoBruto;
 import br.com.fatec.georural.entity.Auditoria;
 import br.com.fatec.georural.entity.ConjuntoDados;
 import br.com.fatec.georural.entity.ExecucaoPipeline;
+import br.com.fatec.georural.entity.MovimentacaoZona;
 import br.com.fatec.georural.entity.SituacaoVersao;
 import br.com.fatec.georural.entity.Versao;
 import br.com.fatec.georural.exception.ConflitoException;
 import br.com.fatec.georural.exception.RecursoNaoEncontradoException;
 import br.com.fatec.georural.repository.AuditoriaRepository;
 import br.com.fatec.georural.repository.ConjuntoDadosRepository;
+import br.com.fatec.georural.repository.MovimentacaoZonaRepository;
 import br.com.fatec.georural.repository.VersaoRepository;
 import br.com.fatec.georural.service.qualidade.QualidadeService;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +31,8 @@ public class PublicacaoService {
     private final ConjuntoDadosRepository conjuntoDadosRepository;
     private final AuditoriaRepository auditoriaRepository;
     private final QualidadeService qualidadeService;
+    private final MovimentacaoZonaRepository movimentacaoZonaRepository;
+    private final PublicacaoZonaService publicacaoZonaService;
 
     @Transactional
     public VersaoResponse publicar(Long versaoId, String justificativa) {
@@ -80,6 +85,23 @@ public class PublicacaoService {
         // aponta a vigente do conjunto para esta versao
         conjunto.setVersaoVigente(versao);
         conjuntoDadosRepository.save(conjunto);
+
+        // registra a passagem pela zona PUBLICADA na trilha de movimentacao (trajetoria)
+        ArquivoBruto arquivoPublicado = execucao.getArquivoBruto();
+        if (arquivoPublicado != null) {
+            MovimentacaoZona movPublicacao = new MovimentacaoZona();
+            movPublicacao.setArquivoBruto(arquivoPublicado);
+            movPublicacao.setExecucao(execucao);
+            movPublicacao.setZona("PUBLICADA");
+            movPublicacao.setStatus("CONCLUIDO");
+            movPublicacao.setObservacao("Versao v" + versao.getNumero() + " publicada"
+                    + (comRessalva ? " com ressalva" : ""));
+            movPublicacao.setData(LocalDateTime.now());
+            movimentacaoZonaRepository.save(movPublicacao);
+        }
+
+        // grava o artefato imutavel da versao na zona PUBLICADA (armazenamento de objetos)
+        publicacaoZonaService.gravarArtefato(versao);
 
         // registra a publicacao na auditoria quando tem justificativa
         if (comRessalva || !justificativaLimpa.isEmpty()) {

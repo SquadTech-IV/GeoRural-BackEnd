@@ -2,135 +2,171 @@ package br.com.fatec.georural.service;
 
 import br.com.fatec.georural.dto.response.ArquivoDetalheResponse;
 import br.com.fatec.georural.dto.response.ArquivoDownload;
+import br.com.fatec.georural.dto.response.ArquivoItemResponse;
 import br.com.fatec.georural.dto.response.ArquivoResumoResponse;
 import br.com.fatec.georural.dto.response.EnvioProcessamentoResponse;
-import br.com.fatec.georural.entity.ArquivoDatalake;
-import br.com.fatec.georural.entity.ArquivoDatalakeConteudo;
-import br.com.fatec.georural.entity.ArquivoDatalakeItem;
+import br.com.fatec.georural.entity.ArquivoBruto;
+import br.com.fatec.georural.entity.ConjuntoDados;
+import br.com.fatec.georural.entity.ExecucaoPipeline;
 import br.com.fatec.georural.exception.ConflitoException;
 import br.com.fatec.georural.exception.RecursoNaoEncontradoException;
-import br.com.fatec.georural.gateway.ProcessamentoGateway;
-import br.com.fatec.georural.mapper.ArquivoDatalakeMapper;
-import br.com.fatec.georural.repository.ArquivoDatalakeConteudoRepository;
-import br.com.fatec.georural.repository.ArquivoDatalakeItemRepository;
-import br.com.fatec.georural.repository.ArquivoDatalakeRepository;
+import br.com.fatec.georural.repository.ArquivoBrutoRepository;
+import br.com.fatec.georural.service.storage.ArmazenamentoZonaPort;
+import br.com.fatec.georural.service.storage.Zona;
+import br.com.fatec.georural.service.treatment.orchestrator.TreatmentOrchestrator;
 import org.springframework.stereotype.Service;
-import org.springframework.web.multipart.MultipartFile;
+import org.springframework.transaction.annotation.Transactional;
+
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.Comparator;
 import java.util.List;
 
+/**
+ * Consulta e processamento de arquivos recebidos, lendo direto da zona BRUTA do data lake
+ * (ARQUIVO_BRUTO + armazenamento de objetos).
+ */
 @Service
 public class ArquivoDatalakeService {
 
-    private static final String TABELA_CONTEUDO = "ARQUIVO_DATALAKE_CONTEUDO";
-    private static final String COLUNA_CONTEUDO = "conteudo";
-    private static final String COLUNA_CHAVE    = "arquivo_id";
+    private final ArquivoBrutoRepository arquivoRepository;
+    private final ArmazenamentoZonaPort armazenamento;
+    private final TreatmentOrchestrator orquestrador;
 
-    private final ArquivoDatalakeRepository repository;
-    private final ArquivoDatalakeItemRepository itemRepository;
-    private final ArquivoDatalakeConteudoRepository conteudoRepository;
-    private final ArquivoDatalakeMapper mapper;
-    private final ProcessamentoGateway processamentoGateway;
-
-    public ArquivoDatalakeService(ArquivoDatalakeRepository repository,
-                                  ArquivoDatalakeItemRepository itemRepository,
-                                  ArquivoDatalakeConteudoRepository conteudoRepository,
-                                  ArquivoDatalakeMapper mapper,
-                                  ProcessamentoGateway processamentoGateway) {
-        this.repository = repository;
-        this.itemRepository = itemRepository;
-        this.conteudoRepository = conteudoRepository;
-        this.mapper = mapper;
-        this.processamentoGateway = processamentoGateway;
+    public ArquivoDatalakeService(ArquivoBrutoRepository arquivoRepository,
+                                  ArmazenamentoZonaPort armazenamento,
+                                  TreatmentOrchestrator orquestrador) {
+        this.arquivoRepository = arquivoRepository;
+        this.armazenamento = armazenamento;
+        this.orquestrador = orquestrador;
     }
 
+    @Transactional(readOnly = true)
     public List<ArquivoResumoResponse> listar(String nome, String situacao) {
-        String filtroNome = (nome != null && !nome.isBlank()) ? nome.trim() : null;
-        String filtroSituacao = (situacao != null && !situacao.isBlank())
-                ? situacao.trim().toUpperCase() : null;
+        String filtroNome = (nome != null && !nome.isBlank()) ? nome.trim().toLowerCase() : null;
+        String filtroSituacao = (situacao != null && !situacao.isBlank()) ? situacao.trim().toUpperCase() : null;
 
-        return repository.buscar(filtroNome, filtroSituacao)
-                .stream()
-                .map(mapper::toResumo)
+        return arquivoRepository.findAll().stream()
+                .filter(a -> filtroNome == null
+                        || (a.getNome() != null && a.getNome().toLowerCase().contains(filtroNome)))
+                .filter(a -> filtroSituacao == null || filtroSituacao.equals(a.getStatus()))
+                .sorted(Comparator.comparing(ArquivoBruto::getDataUpload,
+                        Comparator.nullsLast(Comparator.reverseOrder())))
+                .map(this::toResumo)
                 .toList();
     }
 
+    @Transactional(readOnly = true)
     public ArquivoDetalheResponse detalhe(Long id) {
-        ArquivoDatalake arquivo = buscarArquivo(id);
-        List<ArquivoDatalakeItem> itens = itemRepository.findByArquivo_IdOrderById(id);
-        return mapper.toDetalhe(arquivo, itens);
+        ArquivoBruto arquivo = buscar(id);
+        ArquivoItemResponse item = new ArquivoItemResponse(
+                arquivo.getId(), arquivo.getNome(), arquivo.getFormato(),
+                arquivo.getTamanhoBytes(), null);
+        return new ArquivoDetalheResponse(
+                arquivo.getId(),
+                nomeConjunto(arquivo),
+                arquivo.getNome(),
+                fonte(arquivo),
+                arquivo.getFormato(),
+                srid(arquivo),
+                arquivo.getTamanhoBytes(),
+                1,
+                arquivo.getPathArmazenamento(),
+                arquivo.getStatus(),
+                null,
+                arquivo.getDataUpload(),
+                List.of(item));
     }
 
+    @Transactional(readOnly = true)
     public ArquivoDownload baixar(Long id) {
-        ArquivoDatalake arquivo = buscarArquivo(id);
-
-        ArquivoDatalakeConteudo conteudo = conteudoRepository.findById(id)
-                .orElseThrow(() -> new RecursoNaoEncontradoException(
-                        "Conteudo nao disponivel para o arquivo: " + id));
-
-        return new ArquivoDownload(
-                arquivo.getNomeArquivo(),
-                conteudo.getContentType(),
-                conteudo.getConteudo());
+        ArquivoBruto arquivo = buscar(id);
+        try (InputStream in = armazenamento.ler(Zona.BRUTA, arquivo.getPathArmazenamento())) {
+            byte[] bytes = in.readAllBytes();
+            return new ArquivoDownload(arquivo.getNome(), contentType(arquivo), bytes);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Falha ao ler o arquivo da zona bruta: " + id, e);
+        }
     }
 
-   public void salvarConteudo(Long id, MultipartFile arquivo) {
-    ArquivoDatalake metadata = buscarArquivo(id);
-
-    if (metadata.getConjunto() != null) {
-        throw new ConflitoException(
-            "O conteúdo de um arquivo vinculado não pode ser substituído. " +
-            "Envie um novo upload para preservar a origem."
-        );
-    }
-
-    try {
-        ArquivoDatalakeConteudo conteudo =
-            new ArquivoDatalakeConteudo();
-
-        conteudo.setArquivoId(metadata.getId());
-        conteudo.setContentType(
-            arquivo.getContentType() == null
-                ? "application/octet-stream"
-                : arquivo.getContentType()
-        );
-        conteudo.setConteudo(arquivo.getBytes());
-
-        conteudoRepository.save(conteudo);
-    } catch (IOException erro) {
-        throw new IllegalStateException(
-            "Falha ao ler o arquivo enviado.",
-            erro
-        );
-    }
-}
+    /** Dispara o processamento real (pipeline de validacao/tratamento) do arquivo bruto. */
+    @Transactional
     public EnvioProcessamentoResponse enviarParaProcessamento(Long id) {
-        ArquivoDatalake arquivo = buscarArquivo(id);
+        ArquivoBruto arquivo = buscar(id);
 
-        if (!conteudoRepository.existsById(id)) {
+        if (!armazenamento.existe(Zona.BRUTA, arquivo.getPathArmazenamento())) {
             throw new ConflitoException(
-                    "Arquivo sem conteudo salvo; nao e possivel enviar para processamento: " + id);
+                    "Arquivo sem conteudo na zona bruta; nao e possivel processar: " + id);
         }
 
-        EnvioProcessamentoResponse entrega = new EnvioProcessamentoResponse(
-                arquivo.getId(),
-                arquivo.getNomeArquivo(),
-                arquivo.getFormato(),
-                arquivo.getSrid(),
-                "/api/arquivos/" + id + "/download",
-                TABELA_CONTEUDO,
-                COLUNA_CONTEUDO,
-                COLUNA_CHAVE,
-                arquivo.getCaminho(),
-                "Arquivo pronto para processamento.");
+        Path temporario = null;
+        try {
+            temporario = Files.createTempFile("georural-processamento-", ".tmp");
+            try (InputStream in = armazenamento.ler(Zona.BRUTA, arquivo.getPathArmazenamento())) {
+                Files.copy(in, temporario, StandardCopyOption.REPLACE_EXISTING);
+            }
 
-        processamentoGateway.enviarParaProcessamento(entrega);
-        return entrega;
+            ExecucaoPipeline execucao = orquestrador.processarValidacao(arquivo, temporario.toFile());
+
+            return new EnvioProcessamentoResponse(
+                    arquivo.getId(),
+                    arquivo.getNome(),
+                    arquivo.getFormato(),
+                    srid(arquivo),
+                    "/api/arquivos/" + id + "/download",
+                    null, null, null,
+                    arquivo.getPathArmazenamento(),
+                    "Processamento concluido (execucao " + execucao.getId() + ").");
+        } catch (IOException e) {
+            throw new UncheckedIOException("Falha ao preparar o arquivo para processamento: " + id, e);
+        } finally {
+            if (temporario != null) {
+                try {
+                    Files.deleteIfExists(temporario);
+                } catch (IOException ignorado) {
+                    // arquivo temporario; falha ao apagar nao afeta o resultado
+                }
+            }
+        }
     }
 
-    private ArquivoDatalake buscarArquivo(Long id) {
-        return repository.findById(id)
-                .orElseThrow(() -> new RecursoNaoEncontradoException(
-                        "Arquivo nao encontrado: " + id));
+    private ArquivoResumoResponse toResumo(ArquivoBruto a) {
+        return new ArquivoResumoResponse(
+                a.getId(), nomeConjunto(a), a.getNome(), fonte(a),
+                a.getFormato(), 1, a.getStatus(), a.getDataUpload());
+    }
+
+    private ArquivoBruto buscar(Long id) {
+        return arquivoRepository.findById(id)
+                .orElseThrow(() -> new RecursoNaoEncontradoException("Arquivo nao encontrado: " + id));
+    }
+
+    private static String nomeConjunto(ArquivoBruto a) {
+        return a.getConjunto() != null ? a.getConjunto().getNome() : null;
+    }
+
+    private static String fonte(ArquivoBruto a) {
+        ConjuntoDados c = a.getConjunto();
+        return (c != null && c.getFonte() != null) ? c.getFonte().getNome() : null;
+    }
+
+    private static Integer srid(ArquivoBruto a) {
+        return (a.getConjunto() != null) ? a.getConjunto().getSrs() : null;
+    }
+
+    private static String contentType(ArquivoBruto a) {
+        String f = a.getFormato();
+        if (f == null) {
+            return "application/octet-stream";
+        }
+        return switch (f.toUpperCase()) {
+            case "GEOJSON" -> "application/geo+json";
+            case "CSV" -> "text/csv";
+            default -> "application/octet-stream";
+        };
     }
 }
