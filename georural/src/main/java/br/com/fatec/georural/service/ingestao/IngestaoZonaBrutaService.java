@@ -6,15 +6,22 @@ import br.com.fatec.georural.entity.ArquivoBruto;
 import br.com.fatec.georural.entity.ConjuntoDados;
 import br.com.fatec.georural.entity.MovimentacaoZona;
 import br.com.fatec.georural.entity.Usuario;
+import br.com.fatec.georural.exception.ObjetoJaExisteException;
 import br.com.fatec.georural.repository.ArquivoBrutoRepository;
 import br.com.fatec.georural.repository.MovimentacaoZonaRepository;
+import br.com.fatec.georural.service.storage.ArmazenamentoZonaPort;
+import br.com.fatec.georural.service.storage.CaminhoZonaBrutaHelper;
+import br.com.fatec.georural.service.storage.Zona;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.ByteArrayInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
+import java.util.Map;
+
 
 @Service
 @RequiredArgsConstructor
@@ -22,7 +29,7 @@ public class IngestaoZonaBrutaService {
 
     private final ArquivoBrutoRepository arquivoBrutoRepository;
     private final MovimentacaoZonaRepository movimentacaoZonaRepository;
-    private final ArmazenamentoZonaBruta armazenamento;
+    private final ArmazenamentoZonaPort armazenamento;
 
     @Transactional
     public ArquivoBruto registrar(ConjuntoDados conjunto,
@@ -33,8 +40,23 @@ public class IngestaoZonaBrutaService {
                                   String origem) {
 
         LocalDateTime agora = LocalDateTime.now();
-        String hash = sha256(conteudo.conteudo());
-        String caminho = armazenamento.salvar(conjunto.getId(), nomeArquivo, conteudo.conteudo());
+        byte[] bytes = conteudo.conteudo() == null ? new byte[0] : conteudo.conteudo();
+        String hash = sha256(bytes);
+
+        Long usuarioId = usuario != null ? usuario.getId() : null;
+        String caminho = CaminhoZonaBrutaHelper.gerarCaminho(conjunto.getId(), agora, hash, nomeArquivo);
+        Map<String, String> metadados = Map.of(
+                CaminhoZonaBrutaHelper.META_HASH, hash,
+                CaminhoZonaBrutaHelper.META_CONJUNTO_ID, String.valueOf(conjunto.getId()),
+                CaminhoZonaBrutaHelper.META_USUARIO_ID, String.valueOf(usuarioId));
+
+        // Grava no armazenamento de objetos da zona BRUTA (mesmo bucket/caminho que o upload e o
+        // processamento usam). A zona e imutavel: se o objeto ja existe, seguimos com o registro.
+        try {
+            armazenamento.gravar(Zona.BRUTA, caminho, new ByteArrayInputStream(bytes), bytes.length, metadados);
+        } catch (ObjetoJaExisteException e) {
+            // objeto identico ja esta na zona bruta; mantem o registro apontando para o mesmo caminho
+        }
 
         ArquivoBruto arquivo = new ArquivoBruto();
         arquivo.setConjunto(conjunto);

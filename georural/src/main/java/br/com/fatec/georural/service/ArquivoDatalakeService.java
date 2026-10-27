@@ -26,10 +26,6 @@ import java.nio.file.StandardCopyOption;
 import java.util.Comparator;
 import java.util.List;
 
-/**
- * Consulta e processamento de arquivos recebidos, lendo direto da zona BRUTA do data lake
- * (ARQUIVO_BRUTO + armazenamento de objetos).
- */
 @Service
 public class ArquivoDatalakeService {
 
@@ -105,7 +101,7 @@ public class ArquivoDatalakeService {
 
         Path temporario = null;
         try {
-            temporario = Files.createTempFile("georural-processamento-", ".tmp");
+            temporario = Files.createTempFile("georural-processamento-", sufixoTemporario(arquivo));
             try (InputStream in = armazenamento.ler(Zona.BRUTA, arquivo.getPathArmazenamento())) {
                 Files.copy(in, temporario, StandardCopyOption.REPLACE_EXISTING);
             }
@@ -168,5 +164,20 @@ public class ArquivoDatalakeService {
             case "CSV" -> "text/csv";
             default -> "application/octet-stream";
         };
+    }
+
+    /**
+     * Sufixo do arquivo temporario preservando a extensao original (ex.: ".geojson"). O GeoTools
+     * ({@code FileDataStoreFinder}) escolhe o driver pela extensao, entao um ".tmp" impede a deteccao.
+     */
+    private static String sufixoTemporario(ArquivoBruto a) {
+        String nome = a.getNome();
+        if (nome != null) {
+            int ponto = nome.lastIndexOf('.');
+            if (ponto >= 0 && ponto < nome.length() - 1) {
+                return nome.substring(ponto).toLowerCase();
+            }
+        }
+        return ".tmp";
     }
 }
