@@ -5,6 +5,7 @@ import br.com.fatec.georural.dto.response.ArquivoDownload;
 import br.com.fatec.georural.dto.response.ArquivoResumoResponse;
 import br.com.fatec.georural.dto.response.EnvioProcessamentoResponse;
 import br.com.fatec.georural.service.ArquivoDatalakeService;
+import br.com.fatec.georural.service.IndicadorAutomaticoService;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -22,9 +23,12 @@ import java.util.List;
 public class ArquivoDatalakeController {
 
     private final ArquivoDatalakeService service;
+    private final IndicadorAutomaticoService indicadorAutomaticoService;
 
-    public ArquivoDatalakeController(ArquivoDatalakeService service) {
+    public ArquivoDatalakeController(ArquivoDatalakeService service,
+                                     IndicadorAutomaticoService indicadorAutomaticoService) {
         this.service = service;
+        this.indicadorAutomaticoService = indicadorAutomaticoService;
     }
 
     @GetMapping
@@ -51,6 +55,11 @@ public class ArquivoDatalakeController {
 
     @PostMapping("/{id}/processar")
     public EnvioProcessamentoResponse processar(@PathVariable Long id) {
-        return service.enviarParaProcessamento(id);
+        // 1) processa (e commita) o arquivo bruto
+        EnvioProcessamentoResponse resposta = service.enviarParaProcessamento(id);
+        // 2) recalcula automaticamente os indicadores dos imóveis afetados (IRL agora; IAE quando o
+        //    fluxo de embargo for validado). Roda após o commit, na mesma requisição.
+        indicadorAutomaticoService.recalcularAposProcessamento(id);
+        return resposta;
     }
 }

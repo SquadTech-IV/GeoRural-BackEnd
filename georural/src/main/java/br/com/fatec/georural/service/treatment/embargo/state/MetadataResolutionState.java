@@ -52,82 +52,86 @@ public class MetadataResolutionState implements TreatmentState {
         System.out.println(
                 "[0/8] Resolvendo metadados do arquivo de embargos...");
 
-        FonteDoDadoRepository fonteRepository = SpringContextHolder.getBean(FonteDoDadoRepository.class);
-
-        ConjuntoDadosRepository conjuntoRepository = SpringContextHolder.getBean(ConjuntoDadosRepository.class);
-
-        ArquivoBrutoRepository arquivoRepository = SpringContextHolder.getBean(ArquivoBrutoRepository.class);
-
         VersaoRepository versaoRepository = SpringContextHolder.getBean(VersaoRepository.class);
 
-        TipoConjuntoRepository tipos = SpringContextHolder.getBean(TipoConjuntoRepository.class);
+        File arquivo = context.getEmbargoFile();
 
-        var tipo = tipos.findByCodigoIgnoreCase(TIPO_CAMADA)
-                .orElseThrow(() -> new IllegalStateException(
-                        "Tipo não cadastrado em TIPO_CONJUNTO: " + TIPO_CAMADA));
+        // Reusa o contexto preparado pelo orquestrador (arquivo bruto real da zona bruta, seu conjunto
+        // e a execução em andamento). Nunca cria fonte/conjunto/arquivo paralelos (fantasma com caminho temp).
+        ArquivoBruto arquivoBruto = context.getArquivoBruto();
+        ExecucaoPipeline execucao = context.getExecucaoPipeline();
+        ConjuntoDados conjunto;
 
-        FonteDoDado fonte = fonteRepository.findByNome(NOME_FONTE)
-                .orElseGet(() -> {
-                    FonteDoDado nova = new FonteDoDado();
-                    nova.setNome(NOME_FONTE);
-                    nova.setSigla("IBAMA/ICMBio");
-                    nova.setStatus("S"); // CHECK (fon_status IN ('S','N'))
-                    nova.setDataCadastro(LocalDateTime.now());
+        if (arquivoBruto != null && arquivoBruto.getConjunto() != null) {
+            conjunto = arquivoBruto.getConjunto();
+            if (execucao == null) {
+                execucao = SpringContextHolder.getBean(ExecucaoPipelineService.class)
+                        .iniciar(conjunto, arquivoBruto, "TRATAMENTO");
+                context.setExecucaoPipeline(execucao);
+            }
+        } else {
+            // Fluxo legado/standalone (sem orquestrador): resolve fonte/conjunto/arquivo por conta própria.
+            FonteDoDadoRepository fonteRepository = SpringContextHolder.getBean(FonteDoDadoRepository.class);
+            ConjuntoDadosRepository conjuntoRepository = SpringContextHolder.getBean(ConjuntoDadosRepository.class);
+            ArquivoBrutoRepository arquivoRepository = SpringContextHolder.getBean(ArquivoBrutoRepository.class);
+            TipoConjuntoRepository tipos = SpringContextHolder.getBean(TipoConjuntoRepository.class);
 
-                    return fonteRepository.save(nova);
-                });
+            var tipo = tipos.findByCodigoIgnoreCase(TIPO_CAMADA)
+                    .orElseThrow(() -> new IllegalStateException(
+                            "Tipo não cadastrado em TIPO_CONJUNTO: " + TIPO_CAMADA));
 
-        ConjuntoDados conjunto = conjuntoRepository
-                .findByFonteIdAndTipoConjuntoId(
-                        fonte.getId(),
-                        tipo.getId())
-                .orElseGet(() -> {
-                    ConjuntoDados novo = new ConjuntoDados();
-                    novo.setFonte(fonte);
-                    novo.setNome(NOME_CONJUNTO);
-                    novo.setTipoConjunto(tipo);
-                    novo.setSituacao("RASCUNHO"); // Hibernate valida nullable=false ANTES do DEFAULT do banco
-                    novo.setDataCadastro(LocalDateTime.now());
+            FonteDoDado fonte = fonteRepository.findByNome(NOME_FONTE)
+                    .orElseGet(() -> {
+                        FonteDoDado nova = new FonteDoDado();
+                        nova.setNome(NOME_FONTE);
+                        nova.setSigla("IBAMA/ICMBio");
+                        nova.setStatus("S"); // CHECK (fon_status IN ('S','N'))
+                        nova.setDataCadastro(LocalDateTime.now());
+                        return fonteRepository.save(nova);
+                    });
 
-                    return conjuntoRepository.save(novo);
-                });      
+            ConjuntoDados conjuntoResolvido = conjuntoRepository
+                    .findByFonteIdAndTipoConjuntoId(fonte.getId(), tipo.getId())
+                    .orElseGet(() -> {
+                        ConjuntoDados novo = new ConjuntoDados();
+                        novo.setFonte(fonte);
+                        novo.setNome(NOME_CONJUNTO);
+                        novo.setTipoConjunto(tipo);
+                        novo.setSituacao("RASCUNHO");
+                        novo.setDataCadastro(LocalDateTime.now());
+                        return conjuntoRepository.save(novo);
+                    });
+            conjunto = conjuntoResolvido;
 
-        String hash = calcularHash(context.getEmbargoFile());
+            String hashLegado = calcularHash(arquivo);
+            arquivoBruto = arquivoRepository.findByHash(hashLegado)
+                    .orElseGet(() -> {
+                        ArquivoBruto novo = new ArquivoBruto();
+                        novo.setConjunto(conjuntoResolvido);
+                        novo.setNome(arquivo.getName());
+                        novo.setFormato("SHP");
+                        novo.setPathArmazenamento(arquivo.getAbsolutePath());
+                        novo.setTamanhoBytes(arquivo.length());
+                        novo.setStatus("RECEBIDO");
+                        novo.setHash(hashLegado);
+                        novo.setDataUpload(LocalDateTime.now());
+                        return arquivoRepository.save(novo);
+                    });
 
-        System.out.println("HASH CALCULADO: " + hash);
-
-        // arq_hash é UNIQUE — reaproveita se o mesmo arquivo já foi processado antes
-        ArquivoBruto arquivoBruto = arquivoRepository.findByHash(hash)
-                .orElseGet(() -> {
-                    ArquivoBruto novo = new ArquivoBruto();
-                    novo.setConjunto(conjunto);
-                    novo.setNome(context.getEmbargoFile().getName());
-                    novo.setFormato("SHP");
-                    novo.setPathArmazenamento(
-                            context.getEmbargoFile().getAbsolutePath());
-                    novo.setTamanhoBytes(context.getEmbargoFile().length());
-                    novo.setStatus("RECEBIDO");
-                    novo.setHash(hash);
-                    novo.setDataUpload(LocalDateTime.now());
-
-                    return arquivoRepository.save(novo);
-                });
+            execucao = SpringContextHolder.getBean(ExecucaoPipelineService.class)
+                    .iniciar(conjunto, arquivoBruto, "TRATAMENTO");
+            context.setExecucaoPipeline(execucao);
+        }
 
         long proximoNumero = versaoRepository
                 .findTopByConjuntoOrderByNumeroDesc(conjunto)
                 .map(v -> v.getNumero() + 1)
                 .orElse(1L);
 
-        ExecucaoPipeline execucao = SpringContextHolder
-                .getBean(ExecucaoPipelineService.class)
-                .iniciar(conjunto, "TRATAMENTO");
-
-        context.setExecucaoPipeline(execucao);
-
         Versao versao = new Versao();
         versao.setConjunto(conjunto);
         versao.setNumero(proximoNumero);
-        versao.setHash(hash);
+        versao.setHash(calcularHash(arquivo));
         versao.setSituacao("RASCUNHO");
         versao.setDataCriacao(LocalDateTime.now());
         versao = versaoRepository.save(versao);
@@ -139,7 +143,7 @@ public class MetadataResolutionState implements TreatmentState {
         context.setValidacao(
                 SpringContextHolder
                         .getBean(QuarentenaService.class)
-                        .iniciarValidacao(arquivoBruto));
+                        .iniciarValidacao(arquivoBruto, execucao));
 
         // Limite do Paraná: agora vem do provider compartilhado com o fluxo de imóvel
         LimiteParana limite = SpringContextHolder
@@ -152,6 +156,7 @@ public class MetadataResolutionState implements TreatmentState {
         List<SimpleFeature> features = carregarFeatures(context.getEmbargoFile());
 
         context.setFeatures(features);
+        context.setTotalCarregado(features.size());
 
         context.registrarTransformacao(
                 "CARGA",
@@ -163,6 +168,12 @@ public class MetadataResolutionState implements TreatmentState {
     }
 
     private List<SimpleFeature> carregarFeatures(File shapefile) {
+        String nome = shapefile.getName().toLowerCase();
+        if (nome.endsWith(".geojson") || nome.endsWith(".json")) {
+            // Embargo vindo por API (IBAMA) chega como GeoJSON: lê com FeatureJSON em vez de shapefile.
+            return carregarGeoJson(shapefile);
+        }
+
         FileDataStore store = null;
 
         try {
@@ -191,6 +202,30 @@ public class MetadataResolutionState implements TreatmentState {
             if (store != null) {
                 store.dispose();
             }
+        }
+    }
+
+    /**
+     * Lê um GeoJSON (ex.: embargos do IBAMA vindos por API) com o FeatureJSON do gt-geojson.
+     * As properties viram atributos (num_tad, etc.) e a geometria vira a geometria padrão. O CRS pode vir
+     * nulo; a fixação para EPSG:4674 é feita no ReprojectionState (por isso recomenda-se outSR=4674 na API).
+     */
+    private List<SimpleFeature> carregarGeoJson(File arquivo) {
+        org.geotools.geojson.feature.FeatureJSON featureJSON =
+                new org.geotools.geojson.feature.FeatureJSON();
+        try (InputStream in = Files.newInputStream(arquivo.toPath())) {
+            SimpleFeatureCollection colecao =
+                    (SimpleFeatureCollection) featureJSON.readFeatureCollection(in);
+            List<SimpleFeature> features = new ArrayList<>();
+            try (SimpleFeatureIterator iterator = colecao.features()) {
+                while (iterator.hasNext()) {
+                    features.add(iterator.next());
+                }
+            }
+            return features;
+        } catch (IOException e) {
+            throw new RuntimeException(
+                    "Erro ao carregar feições do GeoJSON de embargo: " + e.getMessage(), e);
         }
     }
 

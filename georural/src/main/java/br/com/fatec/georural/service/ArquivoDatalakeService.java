@@ -13,6 +13,7 @@ import br.com.fatec.georural.exception.RecursoNaoEncontradoException;
 import br.com.fatec.georural.repository.ArquivoBrutoRepository;
 import br.com.fatec.georural.service.storage.ArmazenamentoZonaPort;
 import br.com.fatec.georural.service.storage.Zona;
+import br.com.fatec.georural.service.treatment.PreparadorArquivoProcessamento;
 import br.com.fatec.georural.service.treatment.orchestrator.TreatmentOrchestrator;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,25 +21,28 @@ import org.springframework.transaction.annotation.Transactional;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.Comparator;
 import java.util.List;
 
+/**
+ * Consulta e processamento de arquivos recebidos, lendo direto da zona BRUTA do data lake
+ */
 @Service
 public class ArquivoDatalakeService {
 
     private final ArquivoBrutoRepository arquivoRepository;
     private final ArmazenamentoZonaPort armazenamento;
     private final TreatmentOrchestrator orquestrador;
+    private final PreparadorArquivoProcessamento preparador;
 
     public ArquivoDatalakeService(ArquivoBrutoRepository arquivoRepository,
                                   ArmazenamentoZonaPort armazenamento,
-                                  TreatmentOrchestrator orquestrador) {
+                                  TreatmentOrchestrator orquestrador,
+                                  PreparadorArquivoProcessamento preparador) {
         this.arquivoRepository = arquivoRepository;
         this.armazenamento = armazenamento;
         this.orquestrador = orquestrador;
+        this.preparador = preparador;
     }
 
     @Transactional(readOnly = true)
@@ -99,14 +103,21 @@ public class ArquivoDatalakeService {
                     "Arquivo sem conteudo na zona bruta; nao e possivel processar: " + id);
         }
 
-        Path temporario = null;
-        try {
-            temporario = Files.createTempFile("georural-processamento-", sufixoTemporario(arquivo));
-            try (InputStream in = armazenamento.ler(Zona.BRUTA, arquivo.getPathArmazenamento())) {
-                Files.copy(in, temporario, StandardCopyOption.REPLACE_EXISTING);
-            }
+        byte[] conteudo;
+        try (InputStream in = armazenamento.ler(Zona.BRUTA, arquivo.getPathArmazenamento())) {
+            conteudo = in.readAllBytes();
+        } catch (IOException e) {
+            throw new UncheckedIOException("Falha ao ler o arquivo da zona bruta: " + id, e);
+        }
 
-            ExecucaoPipeline execucao = orquestrador.processarValidacao(arquivo, temporario.toFile());
+        // Normaliza o arquivo antes do detector/tratamento: descompacta .zip (inclusive zip-dentro-de-zip
+        // do SICAR) e, quando ha varios temas, escolhe o shapefile pelo tipo do conjunto. O diretorio
+        // temporario e apagado ao final.
+        String tipoConjunto = arquivo.getConjunto() != null ? arquivo.getConjunto().getTipoCamada() : null;
+        PreparadorArquivoProcessamento.Preparacao preparacao =
+                preparador.preparar(conteudo, arquivo.getNome(), tipoConjunto);
+        try {
+            ExecucaoPipeline execucao = orquestrador.processarValidacao(arquivo, preparacao.arquivo());
 
             return new EnvioProcessamentoResponse(
                     arquivo.getId(),
@@ -117,16 +128,8 @@ public class ArquivoDatalakeService {
                     null, null, null,
                     arquivo.getPathArmazenamento(),
                     "Processamento concluido (execucao " + execucao.getId() + ").");
-        } catch (IOException e) {
-            throw new UncheckedIOException("Falha ao preparar o arquivo para processamento: " + id, e);
         } finally {
-            if (temporario != null) {
-                try {
-                    Files.deleteIfExists(temporario);
-                } catch (IOException ignorado) {
-                    // arquivo temporario; falha ao apagar nao afeta o resultado
-                }
-            }
+            preparador.limpar(preparacao.diretorio());
         }
     }
 
@@ -164,20 +167,5 @@ public class ArquivoDatalakeService {
             case "CSV" -> "text/csv";
             default -> "application/octet-stream";
         };
-    }
-
-    /**
-     * Sufixo do arquivo temporario preservando a extensao original (ex.: ".geojson"). O GeoTools
-     * ({@code FileDataStoreFinder}) escolhe o driver pela extensao, entao um ".tmp" impede a deteccao.
-     */
-    private static String sufixoTemporario(ArquivoBruto a) {
-        String nome = a.getNome();
-        if (nome != null) {
-            int ponto = nome.lastIndexOf('.');
-            if (ponto >= 0 && ponto < nome.length() - 1) {
-                return nome.substring(ponto).toLowerCase();
-            }
-        }
-        return ".tmp";
     }
 }

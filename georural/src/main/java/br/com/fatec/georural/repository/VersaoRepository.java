@@ -17,6 +17,19 @@ public interface VersaoRepository extends JpaRepository<Versao, Long> {
     /** Versoes de um conjunto em uma dada situacao. */
     List<Versao> findByConjunto_IdAndSituacao(Long conjuntoId, String situacao);
 
+    /**
+     * Versoes PUBLICADAS geradas a partir de um arquivo bruto (via execucao do pipeline).
+     * Usado pela trajetoria para marcar a zona PUBLICADA como concluida, ja que o pipeline
+     * publica direto (VIGENTE) sem gravar MOVIMENTACAO_ZONA de PUBLICADA. Mais recente primeiro.
+     */
+    @Query("""
+           SELECT v FROM Versao v
+           WHERE v.execucao.arquivoBruto.id = :arquivoId
+             AND v.dataPublicacao IS NOT NULL
+           ORDER BY v.dataPublicacao DESC
+           """)
+    List<Versao> findPublicadasPorArquivo(@Param("arquivoId") Long arquivoId);
+
     /** Fila de versoes com conjunto/usuario/execucao carregados . */
     @Query("""
            SELECT DISTINCT v FROM Versao v

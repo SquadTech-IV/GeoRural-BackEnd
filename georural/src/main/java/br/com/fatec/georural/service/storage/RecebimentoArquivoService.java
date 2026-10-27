@@ -27,20 +27,7 @@ import java.util.HexFormat;
 import java.util.Map;
 import java.util.Optional;
 
-/**
- * Recebe um arquivo, guarda-o sem alteração na zona bruta e registra no Oracle (US#07).
- *
- * <p>Sequência: validação do conjunto e da extensão, área temporária (disco local),
- * verificação do hash, validação do conteúdo (assinatura), verificação de duplicidade,
- * registro RECEBENDO (reserva a vaga), promoção para a zona bruta, registro RECEBIDO.
- *
- * <p>Esta classe NÃO é {@code @Transactional}: o registro RECEBENDO precisa estar confirmado no banco
- * antes da promoção, para que o índice único reserve a vaga. Cada gravação no repositório tem a sua
- * própria transação.
- *
- * <p>A zona bruta é imutável: nada aqui apaga ou altera objeto nela. Por isso, se não for possível saber
- * se a promoção ocorreu, o registro permanece RECEBENDO (e não FALHA) até ser resolvido pela retomada.
- */
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -69,9 +56,8 @@ public class RecebimentoArquivoService {
         if (conjuntoId == null) {
             throw new RequisicaoInvalidaException("Identificador do conjunto é obrigatório.");
         }
-        if (usuarioId == null) {
-            throw new RequisicaoInvalidaException("Identificador do responsável é obrigatório.");
-        }
+        // O responsável é opcional: enquanto não há autenticação (US#13) o conjunto não grava usu_id,
+        // e o canal de API também recebe com responsável nulo. Quando informado, ele é validado abaixo.
         if (conteudo == null) {
             throw new RequisicaoInvalidaException("Conteúdo do arquivo é obrigatório.");
         }
@@ -85,7 +71,9 @@ public class RecebimentoArquivoService {
         // 1. Validar conjunto e extensão antes de criar o arquivo temporário
         ConjuntoDados conjunto = validadorConjuntoDados.validar(conjuntoId);
         String formato = validadorFormatoArquivo.validarExtensao(nome);
-        validarResponsavel(usuarioId);
+        if (usuarioId != null) {
+            validarResponsavel(usuarioId);
+        }
 
         Path temporario = null;
         try {
@@ -141,7 +129,9 @@ public class RecebimentoArquivoService {
 
         ArquivoBruto registro = new ArquivoBruto();
         registro.setConjunto(conjunto);
-        registro.setUsuario(usuarioRepository.getReferenceById(usuarioId));
+        if (usuarioId != null) {
+            registro.setUsuario(usuarioRepository.getReferenceById(usuarioId));
+        }
         registro.setNome(nome);
         registro.setFormato(formato);
         registro.setTamanhoBytes(tamanho);

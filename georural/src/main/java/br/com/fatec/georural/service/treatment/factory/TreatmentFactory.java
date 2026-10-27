@@ -8,6 +8,7 @@ import br.com.fatec.georural.service.treatment.core.BaseTreatment;
 import br.com.fatec.georural.service.treatment.core.GeoDatasetType;
 import br.com.fatec.georural.service.treatment.embargo.EmbargoTreatment;
 import br.com.fatec.georural.service.treatment.property_area.PropertyAreaTreatment;
+import br.com.fatec.georural.service.treatment.reserva_legal.ReservaLegalTreatment;
 
 @Component
 public class TreatmentFactory {
@@ -23,6 +24,9 @@ public class TreatmentFactory {
 
             case IMOVEL ->
                 new PropertyAreaTreatment(file);
+
+            case RESERVA_LEGAL ->
+                new ReservaLegalTreatment(file);
         };
     }
 }

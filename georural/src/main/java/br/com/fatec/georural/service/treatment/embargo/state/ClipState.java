@@ -11,6 +11,8 @@ import org.geotools.referencing.CRS;
 import org.locationtech.jts.geom.Geometry;
 import org.locationtech.jts.geom.prep.PreparedGeometry;
 import org.locationtech.jts.geom.prep.PreparedGeometryFactory;
+import org.locationtech.jts.operation.overlayng.OverlayNG;
+import org.locationtech.jts.operation.overlayng.OverlayNGRobust;
 
 import br.com.fatec.georural.config.SpringContextHolder;
 import br.com.fatec.georural.service.treatment.audit.TransformacaoService;
@@ -68,59 +70,54 @@ public class ClipState implements TreatmentState {
                     PreparedGeometryFactory.prepare(
                             estadoParana);
 
-            List<SimpleFeature> recortadas =
-                    new ArrayList<>();
+            List<SimpleFeature> recortadas = new ArrayList<>();
 
-            int entrada =
-                    context.getFeatures().size();
+            int entrada = context.getFeatures().size();
+            int ignoradas = 0;
 
-            for (SimpleFeature feature :
-                    context.getFeatures()) {
+            for (SimpleFeature feature : context.getFeatures()) {
 
-                Geometry geom =
-                        (Geometry) feature
-                                .getDefaultGeometry();
+                Geometry geom = (Geometry) feature.getDefaultGeometry();
 
-                if (geom == null ||
-                        !limite.intersects(geom)) {
+                if (geom == null) {
                     continue;
                 }
 
-                Geometry recorte =
-                        geom.intersection(
-                                estadoParana);
+                try {
+                    if (!limite.intersects(geom)) {
+                        continue;
+                    }
 
-                if (recorte.isEmpty()) {
-                    continue;
+                    Geometry recorte = interseccao(geom, estadoParana);
+
+                    if (recorte == null || recorte.isEmpty()) {
+                        continue;
+                    }
+
+                    recorte.setSRID(SRID_SIRGAS_2000);
+                    feature.setDefaultGeometry(recorte);
+                    recortadas.add(feature);
+
+                } catch (RuntimeException e) {
+                    // Geometria patológica do IBAMA (auto-interseção/spike): NÃO derruba o lote
+                    // inteiro — ignora só esta feição para o processamento seguir.
+                    ignoradas++;
+                    System.out.println(
+                            "[Recorte] feição ignorada por geometria inválida: " + e.getMessage());
                 }
-
-                if (!recorte.isValid()) {
-                    recorte = recorte.buffer(0);
-                }
-
-                recorte.setSRID(
-                        SRID_SIRGAS_2000);
-
-                feature.setDefaultGeometry(
-                        recorte);
-
-                recortadas.add(feature);
             }
 
-            context.setFeatures(
-                    recortadas);
+            context.setFeatures(recortadas);
 
             SpringContextHolder
-                    .getBean(
-                            TransformacaoService.class)
+                    .getBean(TransformacaoService.class)
                     .registrar(
                             context.getExecucaoPipeline(),
                             3,
                             "CRUZAMENTO",
-                            "Entrada="
-                                    + entrada
-                                    + ", saída="
-                                    + recortadas.size());
+                            "Entrada=" + entrada
+                                    + ", saída=" + recortadas.size()
+                                    + ", ignoradas=" + ignoradas);
 
         } catch (Exception e) {
 
@@ -131,5 +128,21 @@ public class ClipState implements TreatmentState {
 
         context.setState(
                 new DissolveState());
+    }
+
+    /**
+     * Interseção robusta. Os polígonos do IBAMA às vezes vêm com topologia inválida
+     * (auto-interseção / "spike"), o que faz o overlay clássico lançar
+     * TopologyException ("found non-noded intersection"). Usa o OverlayNG robusto do
+     * JTS 1.19 (faz noding + snapping) e, se mesmo assim falhar, conserta a geometria
+     * com buffer(0) e tenta novamente.
+     */
+    private Geometry interseccao(Geometry geom, Geometry limite) {
+        try {
+            return OverlayNGRobust.overlay(geom, limite, OverlayNG.INTERSECTION);
+        } catch (RuntimeException e) {
+            Geometry corrigida = geom.buffer(0);
+            return OverlayNGRobust.overlay(corrigida, limite, OverlayNG.INTERSECTION);
+        }
     }
 }

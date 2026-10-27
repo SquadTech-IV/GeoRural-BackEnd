@@ -47,76 +47,86 @@ public class MetadataResolutionState implements TreatmentState {
     public void execute(BaseTreatment baseContext) {
         PropertyAreaTreatment propertyArea = (PropertyAreaTreatment) baseContext;
 
-        FonteDoDadoRepository fonteRepository = SpringContextHolder.getBean(FonteDoDadoRepository.class);
-
-        ConjuntoDadosRepository conjuntoRepository = SpringContextHolder.getBean(ConjuntoDadosRepository.class);
-
-        ArquivoBrutoRepository arquivoRepository = SpringContextHolder.getBean(ArquivoBrutoRepository.class);
-
         VersaoRepository versaoRepository = SpringContextHolder.getBean(VersaoRepository.class);
-
-        TipoConjuntoRepository tipos = SpringContextHolder.getBean(TipoConjuntoRepository.class);
-
-        var tipo = tipos.findByCodigoIgnoreCase(TIPO_CAMADA)
-                .orElseThrow(() -> new IllegalStateException(
-                        "Tipo não cadastrado em TIPO_CONJUNTO: " + TIPO_CAMADA));
-
-        FonteDoDado fonte = fonteRepository.findByNome(NOME_FONTE)
-                .orElseGet(() -> {
-                    FonteDoDado nova = new FonteDoDado();
-                    nova.setNome(NOME_FONTE);
-                    nova.setSigla("CAR");
-                    nova.setStatus("S"); // CHECK (fon_status IN ('S','N'))
-                    nova.setDataCadastro(LocalDateTime.now());
-
-                    return fonteRepository.save(nova);
-                });
-
-        ConjuntoDados conjunto = conjuntoRepository
-                .findByFonteIdAndTipoConjuntoId(fonte.getId(), tipo.getId())
-                .orElseGet(() -> {
-                    ConjuntoDados novo = new ConjuntoDados();
-                    novo.setFonte(fonte);
-                    novo.setNome(NOME_CONJUNTO);
-                    novo.setTipoConjunto(tipo);
-                    novo.setSituacao("RASCUNHO"); // CHECK (con_situacao IN
-                                                  // ('RASCUNHO','EM_VALIDACAO','PUBLICADO','ARQUIVADO'))
-                    novo.setDataCadastro(LocalDateTime.now());
-
-                    return conjuntoRepository.save(novo);
-                });
 
         File arquivo = propertyArea.getPropertyAreaFile();
 
+        // Contexto já preparado pelo orquestrador: o arquivo bruto REAL (gravado na zona bruta/OCI),
+        // o conjunto dele e a execução já iniciada. O tratamento CONSOME esse contexto, em vez de criar
+        // fonte/conjunto/arquivo bruto paralelos apontando para o arquivo temporário extraído (o que gerava
+        // um ArquivoBruto fantasma com caminho local e desvinculava o upload real do resultado).
+        ArquivoBruto arquivoBruto = propertyArea.getArquivoBruto();
+        ExecucaoPipeline execucao = propertyArea.getExecucaoPipeline();
+        ConjuntoDados conjunto;
+
+        if (arquivoBruto != null && arquivoBruto.getConjunto() != null) {
+            conjunto = arquivoBruto.getConjunto();
+            if (execucao == null) {
+                execucao = SpringContextHolder.getBean(ExecucaoPipelineService.class)
+                        .iniciar(conjunto, arquivoBruto, "TRATAMENTO");
+                propertyArea.setExecucaoPipeline(execucao);
+            }
+        } else {
+            // Fluxo legado/standalone (sem orquestrador): resolve fonte/conjunto/arquivo por conta própria.
+            FonteDoDadoRepository fonteRepository = SpringContextHolder.getBean(FonteDoDadoRepository.class);
+            ConjuntoDadosRepository conjuntoRepository = SpringContextHolder.getBean(ConjuntoDadosRepository.class);
+            ArquivoBrutoRepository arquivoRepository = SpringContextHolder.getBean(ArquivoBrutoRepository.class);
+            TipoConjuntoRepository tipos = SpringContextHolder.getBean(TipoConjuntoRepository.class);
+
+            var tipo = tipos.findByCodigoIgnoreCase(TIPO_CAMADA)
+                    .orElseThrow(() -> new IllegalStateException(
+                            "Tipo não cadastrado em TIPO_CONJUNTO: " + TIPO_CAMADA));
+
+            FonteDoDado fonte = fonteRepository.findByNome(NOME_FONTE)
+                    .orElseGet(() -> {
+                        FonteDoDado nova = new FonteDoDado();
+                        nova.setNome(NOME_FONTE);
+                        nova.setSigla("CAR");
+                        nova.setStatus("S"); // CHECK (fon_status IN ('S','N'))
+                        nova.setDataCadastro(LocalDateTime.now());
+                        return fonteRepository.save(nova);
+                    });
+
+            ConjuntoDados conjuntoResolvido = conjuntoRepository
+                    .findByFonteIdAndTipoConjuntoId(fonte.getId(), tipo.getId())
+                    .orElseGet(() -> {
+                        ConjuntoDados novo = new ConjuntoDados();
+                        novo.setFonte(fonte);
+                        novo.setNome(NOME_CONJUNTO);
+                        novo.setTipoConjunto(tipo);
+                        novo.setSituacao("RASCUNHO"); // CHECK (con_situacao IN
+                                                      // ('RASCUNHO','EM_VALIDACAO','PUBLICADO','ARQUIVADO'))
+                        novo.setDataCadastro(LocalDateTime.now());
+                        return conjuntoRepository.save(novo);
+                    });
+            conjunto = conjuntoResolvido;
+
+            String hashLegado = calcularHash(arquivo);
+            arquivoBruto = arquivoRepository.findByHash(hashLegado)
+                    .orElseGet(() -> {
+                        ArquivoBruto novo = new ArquivoBruto();
+                        novo.setConjunto(conjuntoResolvido);
+                        novo.setNome(arquivo.getName());
+                        novo.setFormato("SHP");
+                        novo.setPathArmazenamento(arquivo.getAbsolutePath());
+                        novo.setTamanhoBytes(arquivo.length());
+                        novo.setStatus("RECEBIDO");
+                        novo.setHash(hashLegado);
+                        novo.setDataUpload(LocalDateTime.now());
+                        return arquivoRepository.save(novo);
+                    });
+
+            execucao = SpringContextHolder.getBean(ExecucaoPipelineService.class)
+                    .iniciar(conjunto, arquivoBruto, "TRATAMENTO");
+            propertyArea.setExecucaoPipeline(execucao);
+        }
+
         String hash = calcularHash(arquivo);
-
-        // arq_hash é UNIQUE — reaproveita se o mesmo arquivo já foi processado antes
-        // (mesmo comportamento do fluxo de embargo)
-        ArquivoBruto arquivoBruto = arquivoRepository.findByHash(hash)
-                .orElseGet(() -> {
-                    ArquivoBruto novo = new ArquivoBruto();
-                    novo.setConjunto(conjunto);
-                    novo.setNome(arquivo.getName());
-                    novo.setFormato("SHP");
-                    novo.setPathArmazenamento(arquivo.getAbsolutePath());
-                    novo.setTamanhoBytes(arquivo.length());
-                    novo.setStatus("RECEBIDO");
-                    novo.setHash(hash);
-                    novo.setDataUpload(LocalDateTime.now());
-
-                    return arquivoRepository.save(novo);
-                });
 
         long proximoNumero = versaoRepository
                 .findTopByConjuntoOrderByNumeroDesc(conjunto)
                 .map(v -> v.getNumero() + 1)
                 .orElse(1L);
-
-        ExecucaoPipeline execucao = SpringContextHolder
-                .getBean(ExecucaoPipelineService.class)
-                .iniciar(conjunto, "TRATAMENTO");
-
-        propertyArea.setExecucaoPipeline(execucao);
 
         Versao versao = new Versao();
         versao.setConjunto(conjunto);

@@ -4,6 +4,8 @@ public enum GeoDatasetType {
 
     EMBARGO,
 
-    IMOVEL
+    IMOVEL,
+
+    RESERVA_LEGAL
 
 }

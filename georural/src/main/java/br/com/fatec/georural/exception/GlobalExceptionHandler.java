@@ -23,21 +23,27 @@ import java.time.LocalDateTime;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    private static final org.slf4j.Logger log =
+            org.slf4j.LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
     @ExceptionHandler(RecursoNaoEncontradoException.class)
     public ResponseEntity<ErroResponse> tratarNaoEncontrado(
             RecursoNaoEncontradoException ex, HttpServletRequest req) {
+        log.warn("404 {} {} -> {}", req.getMethod(), req.getRequestURI(), ex.getMessage());
         return montar(HttpStatus.NOT_FOUND, ex.getMessage(), req);
     }
 
     @ExceptionHandler(ConflitoException.class)
     public ResponseEntity<ErroResponse> tratarConflito(
             ConflitoException ex, HttpServletRequest req) {
+        log.warn("409 {} {} -> {}", req.getMethod(), req.getRequestURI(), ex.getMessage());
         return montar(HttpStatus.CONFLICT, ex.getMessage(), req);
     }
 
     @ExceptionHandler(RequisicaoInvalidaException.class)
     public ResponseEntity<ErroResponse> tratarRequisicaoInvalida(
             RequisicaoInvalidaException ex, HttpServletRequest req) {
+        log.warn("400 {} {} -> {}", req.getMethod(), req.getRequestURI(), ex.getMessage());
         return montar(HttpStatus.BAD_REQUEST, ex.getMessage(), req);
     }
 

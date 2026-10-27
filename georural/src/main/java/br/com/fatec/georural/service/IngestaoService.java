@@ -3,9 +3,11 @@ package br.com.fatec.georural.service;
 import br.com.fatec.georural.dto.response.ArquivoValidacaoResponse;
 import br.com.fatec.georural.entity.ArquivoBruto;
 import br.com.fatec.georural.entity.ConjuntoDados;
+import br.com.fatec.georural.exception.ArquivoDuplicadoException;
 import br.com.fatec.georural.exception.RequisicaoInvalidaException;
 import br.com.fatec.georural.service.storage.RecebimentoArquivoService;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -18,6 +20,7 @@ import java.util.List;
  * Ingestao por upload manual. Grava direto na zona BRUTA do data lake
  * (ARQUIVO_BRUTO + armazenamento de objetos) via RecebimentoArquivoService
  */
+@Slf4j
 @Service
 public class IngestaoService {
 
@@ -50,17 +53,29 @@ public class IngestaoService {
             boolean aceito = identificador.isFormatoAceito(arquivo);
 
             Long arquivoId = null;
-            if (aceito) {
+            if (!aceito) {
+                // Recusa na validacao de formato/MIME, antes de tentar gravar na zona bruta.
+                log.warn("Upload recusado por formato: arquivo='{}', extensao='{}', mime detectado='{}'. "
+                                + "Extensoes aceitas: .zip (shapefile), .geojson, .gpkg, .csv, .tif/.tiff.",
+                        arquivo.getOriginalFilename(), extensao, mime);
+            } else {
                 try (InputStream in = arquivo.getInputStream()) {
                     ArquivoBruto registro = recebimentoService.receber(
                             conjuntoId, usuarioId, arquivo.getOriginalFilename(), in);
                     arquivoId = registro.getId();
                 } catch (IOException e) {
                     throw new IllegalStateException("Nao foi possivel ler o arquivo enviado.", e);
-                } catch (RuntimeException e) {
-                    // formato/conteudo invalido, duplicidade ou conjunto incompativel:
-                    // o arquivo nao entra na zona bruta e e marcado como nao aceito.
+                } catch (ArquivoDuplicadoException e) {
+                    // Conteudo ja recebido antes (arq_hash e unico global): NAO e erro de formato.
                     aceito = false;
+                    log.warn("Upload recusado por DUPLICIDADE: arquivo='{}' ja foi recebido antes "
+                                    + "(mesmo conteudo/hash). {}",
+                            arquivo.getOriginalFilename(), e.getMessage());
+                } catch (RuntimeException e) {
+                    // Conjunto incompativel, responsavel ausente, falha ao gravar na zona bruta (OCI), etc.
+                    aceito = false;
+                    log.warn("Upload recusado ao receber na zona bruta: arquivo='{}', motivo={}: {}",
+                            arquivo.getOriginalFilename(), e.getClass().getSimpleName(), e.getMessage(), e);
                 }
             }
 

@@ -46,7 +46,7 @@ public class TreatmentOrchestrator {
         );
 
         try {
-            GeoDatasetType tipo = detector.detectar(arquivoFisico);
+            GeoDatasetType tipo = resolverTipo(arquivoBruto, arquivoFisico);
             BaseTreatment treatment = factory.create(tipo, arquivoFisico);
 
             treatment.setArquivoBruto(arquivoBruto);
@@ -78,5 +78,31 @@ public class TreatmentOrchestrator {
             execucaoPipelineService.registrarFalhaTecnica(execucao, e);
             throw e;
         }
+    }
+
+    /**
+     * Resolve o tipo do dataset pelo TIPO do conjunto informado na ingestão (IMOVEL, RESERVA_LEGAL,
+     * EMBARGO). Isso evita confundir a Reserva Legal com o Imóvel, já que ambos têm a coluna 'recibo'.
+     * Se o conjunto não tiver um tipo mapeado, cai no detector por coluna do shapefile.
+     */
+    private GeoDatasetType resolverTipo(ArquivoBruto arquivoBruto, File arquivoFisico) {
+        String tipoConjunto = (arquivoBruto != null && arquivoBruto.getConjunto() != null)
+                ? arquivoBruto.getConjunto().getTipoCamada()
+                : null;
+
+        if (tipoConjunto != null) {
+            switch (tipoConjunto.trim().toUpperCase()) {
+                case "IMOVEL":
+                    return GeoDatasetType.IMOVEL;
+                case "RESERVA_LEGAL":
+                    return GeoDatasetType.RESERVA_LEGAL;
+                case "EMBARGO":
+                    return GeoDatasetType.EMBARGO;
+                default:
+                    break; // tipo sem tratamento dedicado: usa o detector por coluna
+            }
+        }
+
+        return detector.detectar(arquivoFisico);
     }
 }

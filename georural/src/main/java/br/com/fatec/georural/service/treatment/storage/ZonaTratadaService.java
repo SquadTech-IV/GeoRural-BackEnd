@@ -30,7 +30,9 @@ public class ZonaTratadaService {
     private final ZonaTratadaStorage storage;
     private final MovimentacaoZonaRepository movimentacaoRepository;
 
-    private final ObjectMapper mapper = new ObjectMapper();
+    // Registra os módulos do classpath (inclui jackson-datatype-jsr310) para serializar datas Java 8
+    // que possam vir nos atributos das feições.
+    private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
 
     public record Resultado(String caminho, String hash) {
     }

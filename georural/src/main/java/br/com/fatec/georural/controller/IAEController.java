@@ -29,7 +29,7 @@ public class IAEController {
 
     @PostMapping("/{imovelId}")
     @ResponseStatus(HttpStatus.CREATED)
-    public IAEResponse calcular(@PathVariable Long imovelId, @RequestParam Long versaoEmbargoId) {
-        return calculoService.calcularSobreposicaoEmbargo(imovelId, versaoEmbargoId);
-    }    
+    public IAEResponse calcular(@PathVariable Long imovelId) {
+        return calculoService.calcularSobreposicaoEmbargo(imovelId);
+    }
 }

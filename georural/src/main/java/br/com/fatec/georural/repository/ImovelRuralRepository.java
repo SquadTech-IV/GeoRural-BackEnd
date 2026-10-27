@@ -16,6 +16,8 @@ public interface ImovelRuralRepository extends JpaRepository<ImovelRural, Long> 
 
     List<ImovelRural> findByCodigoCarIn(Collection<String> codigos);
 
+    List<ImovelRural> findByArquivoBruto_Id(Long arquivoBrutoId);
+
     @Query(value = "SELECT SDO_UTIL.TO_GEOJSON(i.imo_geometria) FROM imovel_rural i WHERE i.imo_id = :id",
             nativeQuery = true)
     Object buscarGeometriaGeoJson(@Param("id") Long id);
@@ -46,8 +48,7 @@ public interface ImovelRuralRepository extends JpaRepository<ImovelRural, Long> 
         FROM IMOVEL_RURAL i
         WHERE i.imo_id = :imovelId
         """, nativeQuery = true)
-    List<Object[]> calcularAreaEmbargadaAgregada(@Param("imovelId") Long imovelId,
-                                        @Param("versaoEmbargoId") Long versaoEmbargoId);
+    List<Object[]> calcularAreaEmbargadaAgregada(@Param("imovelId") Long imovelId);
 
     @Query(value = """
         SELECT

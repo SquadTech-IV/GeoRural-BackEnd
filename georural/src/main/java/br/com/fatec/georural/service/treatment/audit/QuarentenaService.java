@@ -18,6 +18,7 @@ import br.com.fatec.georural.entity.ExecucaoPipeline;
 import br.com.fatec.georural.entity.Quarentena;
 import br.com.fatec.georural.entity.RegraQualidade;
 import br.com.fatec.georural.entity.Validacao;
+import br.com.fatec.georural.exception.ObjetoJaExisteException;
 import br.com.fatec.georural.repository.QuarentenaRepository;
 import br.com.fatec.georural.repository.RegraQualidadeRepository;
 import br.com.fatec.georural.repository.ValidacaoRepository;
@@ -25,8 +26,10 @@ import br.com.fatec.georural.service.storage.ArmazenamentoZonaPort;
 import br.com.fatec.georural.service.storage.Zona;
 import br.com.fatec.georural.service.treatment.common.FeatureMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class QuarentenaService {
 
@@ -35,7 +38,9 @@ public class QuarentenaService {
     private final ValidacaoRepository validacaoRepository;
     private final ArmazenamentoZonaPort armazenamentoZonaPort;
 
-    private final ObjectMapper mapper = new ObjectMapper();
+    // findAndRegisterModules() registra o jackson-datatype-jsr310 (do classpath) para serializar
+    // LocalDateTime/LocalDate etc.; sem isso o writeValueAsString quebra ao gravar a quarentena.
+    private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
 
     private volatile Map<String, RegraQualidade> regrasPorTipo;
 
@@ -156,6 +161,14 @@ public class QuarentenaService {
                     bytes.length,
                     metadados
             );
+        } catch (ObjetoJaExisteException e) {
+            // Idempotente: encerrarValidacao() é chamado pelo SavingState E novamente pelo
+            // orquestrador na mesma execução. Como a zona é imutável (If-None-Match: *), a 2ª
+            // gravação do MESMO JSON retorna 412. Ignoramos: o arquivo de auditoria já está lá.
+            // Sem isso, o 412 derrubava a transação inteira e o rollback apagava as linhas da
+            // QUARENTENA (por isso o motivo da rejeição nunca aparecia no banco).
+            log.info("JSON de quarentena da execução {} já existia; mantido o existente (gravação idempotente).",
+                    execId);
         } catch (Exception e) {
             throw new RuntimeException("Falha ao gravar arquivo JSON na zona de quarentena", e);
         }

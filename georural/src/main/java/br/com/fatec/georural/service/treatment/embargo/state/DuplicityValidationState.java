@@ -25,6 +25,18 @@ public class DuplicityValidationState
         for (SimpleFeature feature : context.getFeatures()) {
 
             Object seqTad = feature.getAttribute("seq_tad");
+            if (seqTad == null) {
+                seqTad = feature.getAttribute("SEQ_TAD");
+            }
+
+            // Sem seq_tad não há como aferir duplicidade. NÃO tratamos null/vazio como chave:
+            // senão a 1ª feição sem seq_tad "consome" o null no Set e TODAS as demais seriam
+            // rejeitadas como duplicadas (zerando o lote). A unicidade real do embargo é o
+            // num_tad, consolidado adiante no DissolveState.
+            if (seqTad == null || seqTad.toString().isBlank()) {
+                uniqueFeatures.add(feature);
+                continue;
+            }
 
             if (!seenSeqTad.add(seqTad)) {
                 context.rejeitar("DUPLICIDADE", "seq_tad",
