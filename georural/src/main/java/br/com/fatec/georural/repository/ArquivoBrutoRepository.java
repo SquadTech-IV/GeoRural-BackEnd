@@ -2,9 +2,11 @@ package br.com.fatec.georural.repository;
 
 import br.com.fatec.georural.entity.ArquivoBruto;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.data.domain.Page;
 
 
 import java.util.List;
@@ -25,4 +27,16 @@ public interface ArquivoBrutoRepository extends JpaRepository<ArquivoBruto, Long
     List<ArquivoBruto> findByConjunto_IdOrderByDataUploadDesc(Long conjuntoId, Pageable pageable);
 
     List<ArquivoBruto> findByConjunto_IdOrderByDataUploadAsc(Long conjuntoId);
+
+    @EntityGraph(attributePaths = {"conjunto", "usuario"})
+    Page<ArquivoBruto> findAllBy(Pageable pageable);
+ 
+    @EntityGraph(attributePaths = {"conjunto", "usuario"})
+    Page<ArquivoBruto> findByConjuntoId(Long conjuntoId, Pageable pageable);
+ 
+    @EntityGraph(attributePaths = {"conjunto", "usuario"})
+    Page<ArquivoBruto> findByStatus(String status, Pageable pageable);
+ 
+    @EntityGraph(attributePaths = {"conjunto", "usuario"})
+    Page<ArquivoBruto> findByConjuntoIdAndStatus(Long conjuntoId, String status, Pageable pageable);
 }
