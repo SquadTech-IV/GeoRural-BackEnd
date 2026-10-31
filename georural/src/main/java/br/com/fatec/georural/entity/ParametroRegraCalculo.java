@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import java.math.BigDecimal;
 
 @Entity
 @Getter
@@ -24,6 +25,9 @@ public class ParametroRegraCalculo {
     @Column(name = "prc_nome", nullable = false)
     private String nome;
 
+    @Column(name = "prc_rotulo", length = 120)
+    private String rotulo;
+
     @Column(name = "prc_tipo", nullable = false)
     private String tipo;
 
@@ -32,4 +36,13 @@ public class ParametroRegraCalculo {
 
     @Column(name = "prc_valor", nullable = false)
     private String valor;
+
+    @Column(name = "prc_editavel", nullable = false)
+    private String editavel = "N";
+
+    @Column(name = "prc_min")
+    private BigDecimal minimo;
+
+    @Column(name = "prc_max")
+    private BigDecimal maximo;
 }

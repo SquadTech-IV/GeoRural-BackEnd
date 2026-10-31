@@ -32,6 +32,15 @@ public class ArquivoBruto {
     @Column(name = "arq_formato")
     private String formato;
 
+    @Column(name = "arq_formato_detectado", length = 15)
+    private String formatoDetectado;
+
+    @Column(name = "arq_srs_declarado")
+    private Integer srsDeclarado;
+
+    @Column(name = "arq_srs_utilizado")
+    private Integer srsUtilizado;
+
     @Column(name = "arq_path_armazenamento", nullable = false)
     private String pathArmazenamento;
 
@@ -41,17 +50,25 @@ public class ArquivoBruto {
     @Column(name = "arq_status")
     private String status;
 
-    @Column(name = "arq_hash", nullable = false, unique = true)
+    @Column(name = "arq_hash", nullable = false)
     private String hash;
 
-    @Column(name = "arq_data_upload", nullable = false)
-    private LocalDateTime dataUpload;
-
-    // Adicionado em decorrência da US#07
     @Column(name = "arq_algoritmo_hash", nullable = false, length = 10)
     private String algoritmoHash = "SHA-256";
- 
+
     @Column(name = "arq_canal_entrada", nullable = false, length = 10)
     private String canalEntrada = "UPLOAD";
 
+    @Column(name = "arq_competencia", nullable = false, length = 20)
+    private String competencia;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "arq_pai_id")
+    private ArquivoBruto pai;
+
+    @Column(name = "arq_caminho_interno", length = 500)
+    private String caminhoInterno;
+
+    @Column(name = "arq_data_upload", nullable = false)
+    private LocalDateTime dataUpload;
 }

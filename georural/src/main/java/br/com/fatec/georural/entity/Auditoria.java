@@ -22,6 +22,9 @@ public class Auditoria {
     @JoinColumn(name = "usu_id")
     private Usuario usuario;
 
+    @Column(name = "aud_usuario_nome", length = 120)
+    private String usuarioNome;
+
     @Column(name = "aud_operacao", nullable = false)
     private String operacao;
 
