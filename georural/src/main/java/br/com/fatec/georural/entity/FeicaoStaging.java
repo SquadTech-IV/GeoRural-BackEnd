@@ -5,9 +5,10 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.locationtech.jts.geom.Geometry;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
-
+// area de pouso das feicoes lidas do arquivo
 @Entity
 @Getter
 @Setter
@@ -24,25 +25,34 @@ public class FeicaoStaging {
     @JoinColumn(name = "exe_id", nullable = false)
     private ExecucaoPipeline execucao;
 
-    /** PIPELINE ou CONFERENCIA. */
+    // camada de onde a feicao veio, dentro do zip
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "stg_arq_bruto_id")
+    private ArquivoBruto arquivoBruto;
+
+    // PIPELINE ou CONFERENCIA
     @Column(name = "stg_origem", nullable = false, length = 12)
     private String origem = "PIPELINE";
 
-    /** Identificador natural da feicao (CAR, codigo do embargo...). */
+    // identificador natural da feicao (CAR, codigo do embargo...)
     @Column(name = "stg_identificador", length = 120)
     private String identificador;
 
-    /** Numero da feicao no arquivo de origem, para apontar o erro na quarentena. */
+    // numero da feicao no arquivo de origem
     @Column(name = "stg_linha")
     private Long linha;
 
-    /** JSON com os atributos como vieram do arquivo, sem padronizacao. */
+    // JSON com os atributos ja padronizados pelo perfil da camada
     @Lob
     @Column(name = "stg_atributos")
     private String atributos;
 
     @Column(name = "stg_geometria")
     private Geometry geometria;
+
+    // area em hectares, calculada uma vez no tratamento
+    @Column(name = "stg_area_ha")
+    private BigDecimal areaHa;
 
     @Column(name = "stg_data", nullable = false)
     private LocalDateTime data;

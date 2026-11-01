@@ -15,6 +15,7 @@ import br.com.fatec.georural.repository.AuditoriaRepository;
 import br.com.fatec.georural.repository.ConjuntoDadosRepository;
 import br.com.fatec.georural.repository.MovimentacaoZonaRepository;
 import br.com.fatec.georural.repository.VersaoRepository;
+import br.com.fatec.georural.service.pipeline.calculo.CalculoOracle;
 import br.com.fatec.georural.service.qualidade.QualidadeService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -33,6 +34,7 @@ public class PublicacaoService {
     private final QualidadeService qualidadeService;
     private final MovimentacaoZonaRepository movimentacaoZonaRepository;
     private final PublicacaoZonaService publicacaoZonaService;
+    private final CalculoOracle calculoOracle;
 
     @Transactional
     public VersaoResponse publicar(Long versaoId, String justificativa) {
@@ -102,6 +104,9 @@ public class PublicacaoService {
 
         // grava o artefato imutavel da versao na zona PUBLICADA (armazenamento de objetos)
         publicacaoZonaService.gravarArtefato(versao);
+
+        // acende a vigencia dos resultados desta versao e apaga a das anteriores
+        calculoOracle.publicar(versaoId);
 
         // registra a publicacao na auditoria quando tem justificativa
         if (comRessalva || !justificativaLimpa.isEmpty()) {

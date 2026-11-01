@@ -8,6 +8,9 @@ import br.com.fatec.georural.entity.MovimentacaoZona;
 import br.com.fatec.georural.entity.Usuario;
 import br.com.fatec.georural.exception.ObjetoJaExisteException;
 import br.com.fatec.georural.repository.ArquivoBrutoRepository;
+import br.com.fatec.georural.service.pipeline.ResolvedorCompetencia;
+import br.com.fatec.georural.service.pipeline.formato.DetectorFormato;
+import br.com.fatec.georural.service.pipeline.formato.FormatoDetectado;
 import br.com.fatec.georural.repository.MovimentacaoZonaRepository;
 import br.com.fatec.georural.service.storage.ArmazenamentoZonaPort;
 import br.com.fatec.georural.service.storage.CaminhoZonaBrutaHelper;
@@ -28,8 +31,11 @@ import java.util.Map;
 public class IngestaoZonaBrutaService {
 
     private final ArquivoBrutoRepository arquivoBrutoRepository;
+    private final ResolvedorCompetencia resolvedorCompetencia;
+    private final DetectorFormato detectorFormato;
     private final MovimentacaoZonaRepository movimentacaoZonaRepository;
     private final ArmazenamentoZonaPort armazenamento;
+
 
     @Transactional
     public ArquivoBruto registrar(ConjuntoDados conjunto,
@@ -38,6 +44,17 @@ public class IngestaoZonaBrutaService {
                                   FormatoRespostaApi formato,
                                   ConteudoRecebido conteudo,
                                   String origem) {
+        return registrar(conjunto, usuario, nomeArquivo, formato, conteudo, origem, null);
+    }
+
+    @Transactional
+    public ArquivoBruto registrar(ConjuntoDados conjunto,
+                                  Usuario usuario,
+                                  String nomeArquivo,
+                                  FormatoRespostaApi formato,
+                                  ConteudoRecebido conteudo,
+                                  String origem,
+                                  String competencia) {
 
         LocalDateTime agora = LocalDateTime.now();
         byte[] bytes = conteudo.conteudo() == null ? new byte[0] : conteudo.conteudo();
@@ -50,8 +67,7 @@ public class IngestaoZonaBrutaService {
                 CaminhoZonaBrutaHelper.META_CONJUNTO_ID, String.valueOf(conjunto.getId()),
                 CaminhoZonaBrutaHelper.META_USUARIO_ID, String.valueOf(usuarioId));
 
-        // Grava no armazenamento de objetos da zona BRUTA (mesmo bucket/caminho que o upload e o
-        // processamento usam). A zona e imutavel: se o objeto ja existe, seguimos com o registro.
+        // Grava no armazenamento de objetos da zona BRUTA
         try {
             armazenamento.gravar(Zona.BRUTA, caminho, new ByteArrayInputStream(bytes), bytes.length, metadados);
         } catch (ObjetoJaExisteException e) {
@@ -68,6 +84,18 @@ public class IngestaoZonaBrutaService {
         arquivo.setStatus("RECEBIDO");
         arquivo.setHash(hash);
         arquivo.setDataUpload(agora);
+
+
+        arquivo.setCompetencia(resolvedorCompetencia.resolver(competencia, nomeArquivo));
+
+        arquivo.setCanalEntrada("API".equalsIgnoreCase(origem) ? "API" : "UPLOAD");
+
+        FormatoDetectado detectado = detectorFormato.detectar(bytes, nomeArquivo);
+        arquivo.setFormatoDetectado(detectado.formato().name());
+        arquivo.setSrsDeclarado(detectado.srsEpsg());
+        arquivo.setSrsUtilizado(detectado.srsEpsg() != null
+                ? detectado.srsEpsg()
+                : (conjunto.getSrs() != null ? conjunto.getSrs().intValue() : 4674));
         arquivo = arquivoBrutoRepository.save(arquivo);
 
         MovimentacaoZona mov = new MovimentacaoZona();
