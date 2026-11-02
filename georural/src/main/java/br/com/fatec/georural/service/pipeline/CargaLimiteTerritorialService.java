@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+// popula LIMITE_TERRITORIAL com o limite do Parana
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -23,7 +24,7 @@ public class CargaLimiteTerritorialService {
     @PersistenceContext
     private EntityManager em;
 
-    /** Quantos municipios do PR ja foram ingeridos. */
+    // quantos municipios do PR ja foram ingeridos
     public long municipiosDisponiveis() {
         Number n = (Number) em.createNativeQuery(
                 "SELECT COUNT(*) FROM MUNICIPIO WHERE mun_uf = 'PR' AND mun_geometria IS NOT NULL")
@@ -35,7 +36,7 @@ public class CargaLimiteTerritorialService {
         return repository.existsByTipoAndCodigo(TIPO, CODIGO);
     }
 
-
+    // deriva o limite do PR pela uniao dos municipios ja ingeridos
     @Transactional
     public LimiteTerritorial derivarDaMalhaMunicipal() {
         long municipios = municipiosDisponiveis();
@@ -46,6 +47,7 @@ public class CargaLimiteTerritorialService {
         repository.findByTipoAndCodigo(TIPO, CODIGO).ifPresent(repository::delete);
         em.flush();
 
+        // INSERT ... VALUES com subconsulta, para nao cair no ORA-12839
         em.createNativeQuery("""
                 INSERT INTO LIMITE_TERRITORIAL (lim_tipo, lim_codigo, lim_nome, lim_geometria)
                 VALUES (?, ?, ?,
@@ -64,10 +66,13 @@ public class CargaLimiteTerritorialService {
 
         log.info("Limite do Parana derivado da uniao de {} municipios (id={}). "
                 + "PKG_GEO.recorte_uf ja pode ser usado.", municipios, salvo.getId());
+        // o PKG_GEO guarda o limite em cache de sessao
+        em.createNativeQuery("BEGIN PKG_GEO.limpar_cache(); END;").executeUpdate();
+
         return salvo;
     }
 
-    /** Carrega se ainda nao existir e se houver malha municipal. */
+    // carrega se ainda nao existir e se houver malha municipal
     @Transactional
     public boolean carregarSeNecessario() {
         if (jaCarregado()) {
@@ -85,7 +90,7 @@ public class CargaLimiteTerritorialService {
         return true;
     }
 
-    /** Falta de dado, nao falha tecnica: a mensagem diz o que fazer. */
+    // falta de dado, nao falha tecnica: a mensagem diz o que fazer
     public static class MalhaMunicipalAusenteException extends RuntimeException {
         public MalhaMunicipalAusenteException() {
             super("Nenhum municipio do PR foi ingerido ainda. Ingira a malha municipal do IBGE "

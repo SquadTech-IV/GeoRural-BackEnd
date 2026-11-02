@@ -29,6 +29,7 @@ public class ValidacaoPipelineExceptionHandler {
         return corpo(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage(), req);
     }
 
+
     @ExceptionHandler(ReprojetorFeicao.ReprojecaoFalhouException.class)
     public ResponseEntity<Map<String, Object>> reprojecaoFalhou(
             ReprojetorFeicao.ReprojecaoFalhouException ex, HttpServletRequest req) {

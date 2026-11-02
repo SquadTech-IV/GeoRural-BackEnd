@@ -38,6 +38,16 @@ public class PerfilEmbargo implements PerfilCamada {
     }
 
     @Override
+    public int ordemNoTratamento() {
+        return 40;
+    }
+
+    @Override
+    public List<String> nomesDeCamada() {
+        return List.of("EMBARGO", "ADM_EMBARGO", "EMBARGOS", "TAD");
+    }
+
+    @Override
     public String campoIdentificador() {
         return "identificador";
     }

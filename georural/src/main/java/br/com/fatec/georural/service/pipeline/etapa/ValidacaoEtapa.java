@@ -25,11 +25,12 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
-// etapa 2 - VALIDACAO: le as feicoes, padroniza pelo perfil da camada,
-// rejeita na quarentena e carrega as aprovadas na FEICAO_STAGING
+// etapa 2 - VALIDACAO: le, padroniza pelo perfil e carrega a area de pouso
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -50,16 +51,14 @@ public class ValidacaoEtapa implements EtapaPipeline {
         return Etapa.VALIDACAO;
     }
 
-    // sem transacao unica de proposito: cada lote fecha a sua, para arquivo
-    // grande nao virar uma transacao gigante. O retry e seguro porque a etapa
-    // limpa a staging da execucao antes de comecar.
+    // sem transacao unica: cada lote de 500 fecha a sua
     @Override
     public ResultadoEtapa executar(ContextoExecucao ctx) {
         Long execucaoId = exigir(ctx.getExecucaoIdAtual(), "execucaoIdAtual");
         Long arquivoId = exigir(ctx.getArquivoBrutoId(), "arquivoBrutoId");
 
         String tipoConjunto = alvosService.tipoConjunto(arquivoId);
-        PerfilCamada perfil = registroPerfis.para(tipoConjunto);
+        Optional<PerfilCamada> perfilDoConjunto = registroPerfis.buscar(tipoConjunto);
 
         List<AlvoValidacao> alvos = alvosService.alvos(arquivoId, idsEscolhidos(ctx));
         if (alvos.isEmpty()) {
@@ -67,21 +66,53 @@ public class ValidacaoEtapa implements EtapaPipeline {
         }
 
         cargaStaging.limpar(execucaoId);
-        ctx.comParametro("perfil", perfil.tipoConjunto());
         ctx.comParametro("camadas", String.valueOf(alvos.size()));
 
         Contagem geral = new Contagem();
         List<String> resumos = new ArrayList<>();
+        Set<String> perfisUsados = new LinkedHashSet<>();
 
         for (AlvoValidacao alvo : alvos) {
-            Contagem daCamada = validarCamada(alvo, perfil, execucaoId);
+            // o nome da camada decide o perfil
+            Optional<PerfilCamada> perfil = registroPerfis.porNomeDeCamada(alvo.nome())
+                    .or(() -> perfilDoConjunto);
+
+            if (perfil.isEmpty()) {
+                geral.somar(semPerfil(alvo, tipoConjunto, execucaoId));
+                resumos.add(alvo.rotulo() + ": sem perfil de camada");
+                continue;
+            }
+
+            perfisUsados.add(perfil.get().tipoConjunto());
+            Contagem daCamada = validarCamada(alvo, perfil.get(), execucaoId);
             geral.somar(daCamada);
-            resumos.add(alvo.rotulo() + ": " + daCamada.aprovados + " aprovada(s), "
-                    + daCamada.rejeitados + " rejeitada(s)");
+            resumos.add(alvo.rotulo() + " (" + perfil.get().tipoConjunto() + "): "
+                    + daCamada.aprovados + " aprovada(s), " + daCamada.rejeitados + " rejeitada(s)");
         }
 
-        return ResultadoEtapa.de(geral.total, geral.rejeitados,
-                perfil.rotulo() + " - " + String.join("; ", resumos));
+        ctx.comParametro("perfis", String.join(",", perfisUsados));
+
+        return ResultadoEtapa.de(geral.total, geral.rejeitados, String.join("; ", resumos));
+    }
+
+    // rejeita a camada que nenhum perfil atende
+    private Contagem semPerfil(AlvoValidacao alvo, String tipoConjunto, Long execucaoId) {
+        Long validacaoId = quarentena.abrirValidacao(alvo.arquivoId(), execucaoId);
+        alvosService.marcarStatus(alvo.arquivoId(), "VALIDANDO");
+
+        quarentena.registrarLote(validacaoId, ETAPA, List.of(new RegistroPendente(
+                alvo.rotulo(), null, null,
+                ProblemaFeicao.erro(RegrasQualidade.FORA_DO_DOMINIO, "camada",
+                        alvo.nome(), String.join(", ", registroPerfis.camadasReconhecidas()),
+                        "Nenhum perfil de camada atende '" + alvo.nome() + "', e o tipo do "
+                                + "conjunto (" + tipoConjunto + ") tambem nao tem perfil. A camada "
+                                + "nao foi validada para nao ser lida com os campos de outra."))));
+
+        Contagem contagem = new Contagem();
+        contagem.total = 1;
+        contagem.rejeitados = 1;
+        encerrarCamada(alvo, validacaoId, contagem);
+        return contagem;
     }
 
     // valida uma camada e devolve as contagens dela
@@ -105,8 +136,7 @@ public class ValidacaoEtapa implements EtapaPipeline {
         }
 
         Set<String> identificadoresVistos = new HashSet<>();
-        // aviso de estrutura (coluna que nao existe no arquivo) e do arquivo, nao
-        // da feicao: registra uma vez por camada em vez de uma vez por feicao
+        // registra aviso de estrutura uma vez por camada, nao por feicao
         Set<String> avisosJaRegistrados = new HashSet<>();
         List<FeicaoPadronizada> loteStaging = new ArrayList<>();
         List<RegistroPendente> loteQuarentena = new ArrayList<>();

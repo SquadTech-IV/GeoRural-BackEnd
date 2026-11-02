@@ -11,6 +11,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Duration;
 import java.time.LocalDateTime;
 
+// grava uma linha por etapa em EXECUCAO_PIPELINE, todas com o mesmo dagRunId
+// as gravacoes usam REQUIRES_NEW: a trilha fica mesmo se a transacao de negocio cair
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -21,9 +23,13 @@ public class AuditoriaEtapaService {
     private final ConjuntoDadosRepository conjuntoRepository;
     private final ArquivoBrutoRepository arquivoRepository;
     private final UsuarioRepository usuarioRepository;
+    private final TravaExecucaoService trava;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public ExecucaoPipeline abrir(Etapa etapa, ContextoExecucao ctx) {
+        // duas rodadas no mesmo conjunto escreveriam na mesma staging
+        trava.conferir(ctx.getConjuntoId(), ctx.getDagRunId());
+
         ConjuntoDados conjunto = conjuntoRepository.findById(ctx.getConjuntoId())
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Conjunto nao encontrado: " + ctx.getConjuntoId()));
@@ -53,8 +59,7 @@ public class AuditoriaEtapaService {
         return execucao;
     }
 
-    /** Os parametros da rodada ficam registrados para a versao poder ser reconstituida. */
-    private void gravarParametros(ExecucaoPipeline execucao, ContextoExecucao ctx) {
+        private void gravarParametros(ExecucaoPipeline execucao, ContextoExecucao ctx) {
         if (ctx.getCompetencia() != null) {
             ctx.getParametros().putIfAbsent("competencia", ctx.getCompetencia());
         }
@@ -72,6 +77,8 @@ public class AuditoriaEtapaService {
         ExecucaoPipeline execucao = execucaoRepository.findById(execucaoId)
                 .orElseThrow(() -> new IllegalArgumentException("Execucao nao encontrada: " + execucaoId));
 
+        // O invariante so faz sentido quando houve feicao. Etapas como PUBLICACAO
+        // nao processam registros e devolvem zeros -- antes isso estourava excecao.
         if (resultado.recebidos() > 0
                 && resultado.aprovados() + resultado.rejeitados() != resultado.recebidos()) {
             log.warn("Execucao id={}: recebidos ({}) != aprovados ({}) + rejeitados ({}).",

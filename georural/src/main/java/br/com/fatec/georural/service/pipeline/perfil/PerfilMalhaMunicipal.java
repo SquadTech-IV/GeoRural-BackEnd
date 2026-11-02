@@ -32,6 +32,17 @@ public class PerfilMalhaMunicipal implements PerfilCamada {
     }
 
     @Override
+    public int ordemNoTratamento() {
+        return 10;
+    }
+
+    @Override
+    public List<String> nomesDeCamada() {
+        return List.of("MUNICIPIO", "MUNICIPIOS", "MALHA_MUNICIPAL", "BR_MUNICIPIOS",
+                "PR_MUNICIPIOS", "LIM_MUNICIPIO");
+    }
+
+    @Override
     public String campoIdentificador() {
         return "municipio_codigo";
     }
@@ -41,7 +52,7 @@ public class PerfilMalhaMunicipal implements PerfilCamada {
         return TipoGeometria.POLIGONO;
     }
 
-    // a malha chega com o Brasil inteiro; o recorte do PR e feito depois, no tratamento
+    // a malha e a propria base territorial: nao e recortada
     @Override
     public boolean exigeDentroDoParana() {
         return false;

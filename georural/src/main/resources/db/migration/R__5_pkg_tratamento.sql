@@ -1,8 +1,4 @@
--- =====================================================================
--- GeoRural DataHub - PKG_TRATAMENTO
--- =====================================================================
-
-
+-- PKG_TRATAMENTO (repetivel): etapa TRATAMENTO em SQL
 CREATE OR REPLACE PACKAGE PKG_TRATAMENTO AS
 
     -- desliga o DML paralelo da sessao (evita ORA-12839 no Autonomous)
@@ -12,7 +8,10 @@ CREATE OR REPLACE PACKAGE PKG_TRATAMENTO AS
 
     PROCEDURE rejeitar_invalidas(p_exe_id NUMBER, p_val_id NUMBER, p_rejeitadas OUT NUMBER);
 
-    PROCEDURE recortar_uf(p_exe_id NUMBER, p_uf VARCHAR2, p_recortadas OUT NUMBER);
+    -- recorta SO quem nao esta inteiramente dentro da UF
+    PROCEDURE recortar_uf(p_exe_id NUMBER, p_uf VARCHAR2,
+                          p_recortadas OUT NUMBER, p_dispensadas OUT NUMBER,
+                          p_arq_id NUMBER DEFAULT NULL);
 
     PROCEDURE rejeitar_fora_da_uf(p_exe_id NUMBER, p_val_id NUMBER, p_uf VARCHAR2,
                                   p_rejeitadas OUT NUMBER);
@@ -20,28 +19,36 @@ CREATE OR REPLACE PACKAGE PKG_TRATAMENTO AS
     -- calcula stg_area_ha uma unica vez, depois do recorte
     PROCEDURE calcular_areas(p_exe_id NUMBER, p_calculadas OUT NUMBER);
 
-    PROCEDURE rejeitar_area_nula(p_exe_id NUMBER, p_val_id NUMBER, p_rejeitadas OUT NUMBER);
+    PROCEDURE rejeitar_area_nula(p_exe_id NUMBER, p_val_id NUMBER, p_rejeitadas OUT NUMBER,
+                                 p_arq_id NUMBER DEFAULT NULL);
 
-    PROCEDURE rejeitar_rl_sem_imovel(p_exe_id NUMBER, p_val_id NUMBER, p_rejeitadas OUT NUMBER);
+    PROCEDURE rejeitar_rl_sem_imovel(p_exe_id NUMBER, p_val_id NUMBER, p_rejeitadas OUT NUMBER,
+                                     p_arq_id NUMBER DEFAULT NULL);
 
     PROCEDURE avisar_area_incompativel(p_exe_id NUMBER, p_val_id NUMBER,
-                                       p_tolerancia_pct NUMBER, p_avisos OUT NUMBER);
+                                       p_tolerancia_pct NUMBER, p_avisos OUT NUMBER,
+                                       p_arq_id NUMBER DEFAULT NULL);
 
     -- hash do conteudo tratado; e o que evita versao nova quando nada mudou
     FUNCTION impressao(p_exe_id NUMBER) RETURN VARCHAR2;
 
-    FUNCTION restantes(p_exe_id NUMBER) RETURN NUMBER;
+    FUNCTION restantes(p_exe_id NUMBER, p_arq_id NUMBER DEFAULT NULL) RETURN NUMBER;
 
-    PROCEDURE carregar_imovel(p_exe_id NUMBER, p_ver_id NUMBER, p_gravadas OUT NUMBER);
+    PROCEDURE carregar_imovel(p_exe_id NUMBER, p_ver_id NUMBER, p_gravadas OUT NUMBER,
+                              p_arq_id NUMBER DEFAULT NULL);
 
-    PROCEDURE carregar_reserva_legal(p_exe_id NUMBER, p_ver_id NUMBER, p_gravadas OUT NUMBER);
+    PROCEDURE carregar_reserva_legal(p_exe_id NUMBER, p_ver_id NUMBER, p_gravadas OUT NUMBER,
+                                     p_arq_id NUMBER DEFAULT NULL);
 
-    PROCEDURE carregar_embargo(p_exe_id NUMBER, p_ver_id NUMBER, p_gravadas OUT NUMBER);
+    PROCEDURE carregar_embargo(p_exe_id NUMBER, p_ver_id NUMBER, p_gravadas OUT NUMBER,
+                               p_arq_id NUMBER DEFAULT NULL);
 
-    PROCEDURE carregar_municipio(p_exe_id NUMBER, p_gravadas OUT NUMBER);
+    PROCEDURE carregar_municipio(p_exe_id NUMBER, p_gravadas OUT NUMBER,
+                                 p_arq_id NUMBER DEFAULT NULL);
 
     PROCEDURE vincular_municipio(p_exe_id NUMBER, p_ver_id NUMBER,
-                                 p_por_codigo OUT NUMBER, p_por_geometria OUT NUMBER);
+                                 p_por_codigo OUT NUMBER, p_por_geometria OUT NUMBER,
+                                 p_arq_id NUMBER DEFAULT NULL);
 
 END PKG_TRATAMENTO;
 /
@@ -102,13 +109,26 @@ CREATE OR REPLACE PACKAGE BODY PKG_TRATAMENTO AS
            AND PKG_GEO.valida(s.stg_geometria) <> 'TRUE';
     END rejeitar_invalidas;
 
-    PROCEDURE recortar_uf(p_exe_id NUMBER, p_uf VARCHAR2, p_recortadas OUT NUMBER) IS
+    -- recorta so quem cruza a fronteira; quem esta dentro passa direto
+    PROCEDURE recortar_uf(p_exe_id NUMBER, p_uf VARCHAR2,
+                          p_recortadas OUT NUMBER, p_dispensadas OUT NUMBER,
+                          p_arq_id NUMBER DEFAULT NULL) IS
+        v_total NUMBER;
     BEGIN
+        SELECT COUNT(*) INTO v_total
+          FROM FEICAO_STAGING
+         WHERE exe_id = p_exe_id
+           AND (p_arq_id IS NULL OR stg_arq_bruto_id = p_arq_id)
+           AND stg_geometria IS NOT NULL;
+
         UPDATE FEICAO_STAGING s
            SET s.stg_geometria = PKG_GEO.recorte_uf(s.stg_geometria, p_uf)
-         WHERE s.exe_id = p_exe_id
-           AND s.stg_geometria IS NOT NULL;
+         WHERE s.exe_id = p_exe_id AND (p_arq_id IS NULL OR s.stg_arq_bruto_id = p_arq_id)
+           AND s.stg_geometria IS NOT NULL
+           AND PKG_GEO.contida_na_uf(s.stg_geometria, p_uf) = 'FALSE';
         p_recortadas := SQL%ROWCOUNT;
+
+        p_dispensadas := v_total - p_recortadas;
     END recortar_uf;
 
     -- depois do recorte, geometria nula significa totalmente fora da UF
@@ -149,7 +169,8 @@ CREATE OR REPLACE PACKAGE BODY PKG_TRATAMENTO AS
         p_calculadas := SQL%ROWCOUNT;
     END calcular_areas;
 
-    PROCEDURE rejeitar_area_nula(p_exe_id NUMBER, p_val_id NUMBER, p_rejeitadas OUT NUMBER) IS
+    PROCEDURE rejeitar_area_nula(p_exe_id NUMBER, p_val_id NUMBER, p_rejeitadas OUT NUMBER,
+                                 p_arq_id NUMBER DEFAULT NULL) IS
     BEGIN
         INSERT INTO QUARENTENA (val_id, reg_id, qua_etapa, qua_identificador, qua_linha_origem,
                                 qua_coluna_erro, qua_valor_encontrado, qua_valor_esperado,
@@ -168,16 +189,19 @@ CREATE OR REPLACE PACKAGE BODY PKG_TRATAMENTO AS
                'PENDENTE'
           FROM FEICAO_STAGING s
          WHERE s.exe_id = p_exe_id
+ AND (p_arq_id IS NULL OR s.stg_arq_bruto_id = p_arq_id)
            AND NVL(s.stg_area_ha, 0) <= 0;
         p_rejeitadas := SQL%ROWCOUNT;
 
         DELETE FROM FEICAO_STAGING s
          WHERE s.exe_id = p_exe_id
+ AND (p_arq_id IS NULL OR s.stg_arq_bruto_id = p_arq_id)
            AND NVL(s.stg_area_ha, 0) <= 0;
     END rejeitar_area_nula;
 
     -- reserva legal sem o imovel na base nao tem onde se pendurar
-    PROCEDURE rejeitar_rl_sem_imovel(p_exe_id NUMBER, p_val_id NUMBER, p_rejeitadas OUT NUMBER) IS
+    PROCEDURE rejeitar_rl_sem_imovel(p_exe_id NUMBER, p_val_id NUMBER, p_rejeitadas OUT NUMBER,
+                                     p_arq_id NUMBER DEFAULT NULL) IS
     BEGIN
         INSERT INTO QUARENTENA (val_id, reg_id, qua_etapa, qua_identificador, qua_linha_origem,
                                 qua_coluna_erro, qua_valor_encontrado, qua_valor_esperado,
@@ -196,19 +220,22 @@ CREATE OR REPLACE PACKAGE BODY PKG_TRATAMENTO AS
                'PENDENTE'
           FROM FEICAO_STAGING s
          WHERE s.exe_id = p_exe_id
+ AND (p_arq_id IS NULL OR s.stg_arq_bruto_id = p_arq_id)
            AND NOT EXISTS (SELECT 1 FROM IMOVEL_RURAL i
                             WHERE i.imo_codigo_car = JSON_VALUE(s.stg_atributos, '$.codigo_car'));
         p_rejeitadas := SQL%ROWCOUNT;
 
         DELETE FROM FEICAO_STAGING s
          WHERE s.exe_id = p_exe_id
+ AND (p_arq_id IS NULL OR s.stg_arq_bruto_id = p_arq_id)
            AND NOT EXISTS (SELECT 1 FROM IMOVEL_RURAL i
                             WHERE i.imo_codigo_car = JSON_VALUE(s.stg_atributos, '$.codigo_car'));
     END rejeitar_rl_sem_imovel;
 
     -- area declarada x area calculada; so avisa, nao rejeita
     PROCEDURE avisar_area_incompativel(p_exe_id NUMBER, p_val_id NUMBER,
-                                       p_tolerancia_pct NUMBER, p_avisos OUT NUMBER) IS
+                                       p_tolerancia_pct NUMBER, p_avisos OUT NUMBER,
+                                       p_arq_id NUMBER DEFAULT NULL) IS
     BEGIN
         INSERT INTO QUARENTENA (val_id, reg_id, qua_etapa, qua_identificador, qua_linha_origem,
                                 qua_coluna_erro, qua_valor_encontrado, qua_valor_esperado,
@@ -237,14 +264,15 @@ CREATE OR REPLACE PACKAGE BODY PKG_TRATAMENTO AS
                                JSON_VALUE(stg_atributos, '$.area_declarada' RETURNING NUMBER
                                           NULL ON ERROR) AS declarada
                           FROM FEICAO_STAGING
-                         WHERE exe_id = p_exe_id) s
+                         WHERE exe_id = p_exe_id
+                           AND (p_arq_id IS NULL OR stg_arq_bruto_id = p_arq_id)) s
                  WHERE s.declarada > 0
                    AND s.stg_area_ha > 0) o
          WHERE o.diferenca_pct > p_tolerancia_pct;
         p_avisos := SQL%ROWCOUNT;
     END avisar_area_incompativel;
 
-    -- impressao do conteudo tratado: XOR dos hashes de linha + hash da contagem.
+    -- impressao do conteudo tratado: XOR dos hashes de linha + hash da contagem
     FUNCTION impressao(p_exe_id NUMBER) RETURN VARCHAR2 IS
         v_acumulado RAW(32) := HEXTORAW(RPAD('0', 64, '0'));
         v_total     NUMBER := 0;
@@ -263,18 +291,21 @@ CREATE OR REPLACE PACKAGE BODY PKG_TRATAMENTO AS
         RETURN LOWER(RAWTOHEX(v_acumulado));
     END impressao;
 
-    FUNCTION restantes(p_exe_id NUMBER) RETURN NUMBER IS
+    FUNCTION restantes(p_exe_id NUMBER, p_arq_id NUMBER DEFAULT NULL) RETURN NUMBER IS
         v_total NUMBER;
     BEGIN
-        SELECT COUNT(*) INTO v_total FROM FEICAO_STAGING WHERE exe_id = p_exe_id;
+        SELECT COUNT(*) INTO v_total FROM FEICAO_STAGING s
+         WHERE s.exe_id = p_exe_id AND (p_arq_id IS NULL OR s.stg_arq_bruto_id = p_arq_id);
         RETURN v_total;
     END restantes;
 
-    PROCEDURE carregar_imovel(p_exe_id NUMBER, p_ver_id NUMBER, p_gravadas OUT NUMBER) IS
+    PROCEDURE carregar_imovel(p_exe_id NUMBER, p_ver_id NUMBER, p_gravadas OUT NUMBER,
+                              p_arq_id NUMBER DEFAULT NULL) IS
     BEGIN
         MERGE INTO IMOVEL_RURAL d
-        USING (SELECT codigo_car, geometria, area, data_informada, arq_bruto_id
+        USING (SELECT codigo_car, nome, geometria, area, data_informada, arq_bruto_id
                  FROM (SELECT JSON_VALUE(s.stg_atributos, '$.codigo_car') AS codigo_car,
+                              SUBSTR(JSON_VALUE(s.stg_atributos, '$.nome'), 1, 200) AS nome,
                               s.stg_geometria   AS geometria,
                               s.stg_area_ha     AS area,
                               TO_DATE(SUBSTR(JSON_VALUE(s.stg_atributos, '$.data_informada'), 1, 10)
@@ -286,7 +317,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_TRATAMENTO AS
                                   ORDER BY s.stg_id DESC) AS ordem
                          FROM FEICAO_STAGING s
                          JOIN EXECUCAO_PIPELINE e ON e.exe_id = s.exe_id
-                        WHERE s.exe_id = p_exe_id
+                        WHERE s.exe_id = p_exe_id AND (p_arq_id IS NULL OR s.stg_arq_bruto_id = p_arq_id)
                           AND JSON_VALUE(s.stg_atributos, '$.codigo_car') IS NOT NULL)
                 WHERE ordem = 1) o
            ON (d.imo_codigo_car = o.codigo_car)
@@ -295,16 +326,28 @@ CREATE OR REPLACE PACKAGE BODY PKG_TRATAMENTO AS
                          d.imo_area_total     = o.area,
                          d.imo_data_informada = o.data_informada,
                          d.ver_id             = p_ver_id,
-                         d.arq_bruto_id       = o.arq_bruto_id
+                         d.arq_bruto_id       = o.arq_bruto_id,
+                         -- nome digitado na tela (MANUAL) nao e apagado por arquivo que vem sem nome
+                         d.imo_nome = CASE
+                             WHEN o.nome IS NOT NULL THEN o.nome
+                             WHEN d.imo_nome_origem = 'ARQUIVO' THEN NULL
+                             ELSE d.imo_nome END,
+                         d.imo_nome_origem = CASE
+                             WHEN o.nome IS NOT NULL THEN 'ARQUIVO'
+                             WHEN d.imo_nome_origem = 'ARQUIVO' THEN NULL
+                             ELSE d.imo_nome_origem END
          WHEN NOT MATCHED THEN
-              INSERT (imo_codigo_car, imo_geometria, imo_area_total, imo_data_informada,
-                      ver_id, arq_bruto_id)
-              VALUES (o.codigo_car, o.geometria, o.area, o.data_informada,
+              INSERT (imo_codigo_car, imo_nome, imo_nome_origem, imo_geometria, imo_area_total,
+                      imo_data_informada, ver_id, arq_bruto_id)
+              VALUES (o.codigo_car, o.nome,
+                      CASE WHEN o.nome IS NOT NULL THEN 'ARQUIVO' ELSE NULL END,
+                      o.geometria, o.area, o.data_informada,
                       p_ver_id, o.arq_bruto_id);
         p_gravadas := SQL%ROWCOUNT;
     END carregar_imovel;
 
-    PROCEDURE carregar_reserva_legal(p_exe_id NUMBER, p_ver_id NUMBER, p_gravadas OUT NUMBER) IS
+    PROCEDURE carregar_reserva_legal(p_exe_id NUMBER, p_ver_id NUMBER, p_gravadas OUT NUMBER,
+                                     p_arq_id NUMBER DEFAULT NULL) IS
     BEGIN
         -- substitui a reserva legal dos imoveis que vieram neste arquivo
         DELETE FROM RESERVA_LEGAL r
@@ -312,7 +355,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_TRATAMENTO AS
                               FROM FEICAO_STAGING s
                               JOIN IMOVEL_RURAL i
                                 ON i.imo_codigo_car = JSON_VALUE(s.stg_atributos, '$.codigo_car')
-                             WHERE s.exe_id = p_exe_id);
+                             WHERE s.exe_id = p_exe_id AND (p_arq_id IS NULL OR s.stg_arq_bruto_id = p_arq_id));
 
         INSERT INTO RESERVA_LEGAL (imo_id, arq_bruto_id, ver_id, rle_area_ha, rle_geometria)
         SELECT i.imo_id,
@@ -323,17 +366,18 @@ CREATE OR REPLACE PACKAGE BODY PKG_TRATAMENTO AS
           FROM FEICAO_STAGING s
           JOIN EXECUCAO_PIPELINE e ON e.exe_id = s.exe_id
           JOIN IMOVEL_RURAL i ON i.imo_codigo_car = JSON_VALUE(s.stg_atributos, '$.codigo_car')
-         WHERE s.exe_id = p_exe_id;
+         WHERE s.exe_id = p_exe_id AND (p_arq_id IS NULL OR s.stg_arq_bruto_id = p_arq_id);
         p_gravadas := SQL%ROWCOUNT;
     END carregar_reserva_legal;
 
-    PROCEDURE carregar_embargo(p_exe_id NUMBER, p_ver_id NUMBER, p_gravadas OUT NUMBER) IS
+    PROCEDURE carregar_embargo(p_exe_id NUMBER, p_ver_id NUMBER, p_gravadas OUT NUMBER,
+                               p_arq_id NUMBER DEFAULT NULL) IS
     BEGIN
         -- substitui os embargos com o mesmo identificador
         DELETE FROM EMBARGO b
          WHERE b.emb_identificador IN (SELECT SUBSTR(s.stg_identificador, 1, 80)
                                          FROM FEICAO_STAGING s
-                                        WHERE s.exe_id = p_exe_id
+                                        WHERE s.exe_id = p_exe_id AND (p_arq_id IS NULL OR s.stg_arq_bruto_id = p_arq_id)
                                           AND s.stg_identificador IS NOT NULL);
 
         INSERT INTO EMBARGO (arq_bruto_id, ver_id, emb_identificador, emb_geometria)
@@ -343,11 +387,12 @@ CREATE OR REPLACE PACKAGE BODY PKG_TRATAMENTO AS
                s.stg_geometria
           FROM FEICAO_STAGING s
           JOIN EXECUCAO_PIPELINE e ON e.exe_id = s.exe_id
-         WHERE s.exe_id = p_exe_id;
+         WHERE s.exe_id = p_exe_id AND (p_arq_id IS NULL OR s.stg_arq_bruto_id = p_arq_id);
         p_gravadas := SQL%ROWCOUNT;
     END carregar_embargo;
 
-    PROCEDURE carregar_municipio(p_exe_id NUMBER, p_gravadas OUT NUMBER) IS
+    PROCEDURE carregar_municipio(p_exe_id NUMBER, p_gravadas OUT NUMBER,
+                                 p_arq_id NUMBER DEFAULT NULL) IS
     BEGIN
         MERGE INTO MUNICIPIO d
         USING (SELECT codigo, nome, uf, area_ha, geometria, arq_bruto_id
@@ -362,7 +407,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_TRATAMENTO AS
                                   ORDER BY s.stg_id DESC)                                       AS ordem
                          FROM FEICAO_STAGING s
                          JOIN EXECUCAO_PIPELINE e ON e.exe_id = s.exe_id
-                        WHERE s.exe_id = p_exe_id
+                        WHERE s.exe_id = p_exe_id AND (p_arq_id IS NULL OR s.stg_arq_bruto_id = p_arq_id)
                           AND JSON_VALUE(s.stg_atributos, '$.municipio_codigo') IS NOT NULL
                           AND JSON_VALUE(s.stg_atributos, '$.municipio_nome') IS NOT NULL)
                 WHERE ordem = 1) o
@@ -378,9 +423,10 @@ CREATE OR REPLACE PACKAGE BODY PKG_TRATAMENTO AS
         p_gravadas := SQL%ROWCOUNT;
     END carregar_municipio;
 
-    -- amarra o imovel ao municipio
+    -- amarra o imovel ao municipio: primeiro pelo codigo declarado, que e exato e
     PROCEDURE vincular_municipio(p_exe_id NUMBER, p_ver_id NUMBER,
-                                 p_por_codigo OUT NUMBER, p_por_geometria OUT NUMBER) IS
+                                 p_por_codigo OUT NUMBER, p_por_geometria OUT NUMBER,
+                                 p_arq_id NUMBER DEFAULT NULL) IS
     BEGIN
         UPDATE IMOVEL_RURAL i
            SET i.mun_id = (SELECT MIN(m.mun_id)
@@ -388,7 +434,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_TRATAMENTO AS
                              JOIN MUNICIPIO m
                                ON m.mun_codigo_origem =
                                   SUBSTR(JSON_VALUE(s.stg_atributos, '$.municipio_codigo'), 1, 7)
-                            WHERE s.exe_id = p_exe_id
+                            WHERE s.exe_id = p_exe_id AND (p_arq_id IS NULL OR s.stg_arq_bruto_id = p_arq_id)
                               AND JSON_VALUE(s.stg_atributos, '$.codigo_car') = i.imo_codigo_car)
          WHERE i.ver_id = p_ver_id
            AND i.mun_id IS NULL;

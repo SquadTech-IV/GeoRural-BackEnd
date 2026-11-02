@@ -32,6 +32,16 @@ public class PerfilReservaLegal implements PerfilCamada {
     }
 
     @Override
+    public int ordemNoTratamento() {
+        return 30;
+    }
+
+    @Override
+    public List<String> nomesDeCamada() {
+        return List.of("RESERVA_LEGAL", "RESERVA_LEGAL_PROPOSTA", "RL");
+    }
+
+    @Override
     public String campoIdentificador() {
         return "codigo_car";
     }

@@ -28,4 +28,14 @@ public interface PerfilCamada {
     default String rotulo() {
         return tipoConjunto();
     }
+
+    // nomes de camada que este perfil atende, para um zip do CAR poder ter imovel e
+    default List<String> nomesDeCamada() {
+        return List.of();
+    }
+
+    // ordem em que a camada e carregada quando a rodada tem varias
+    default int ordemNoTratamento() {
+        return 50;
+    }
 }

@@ -18,15 +18,18 @@ import br.com.fatec.georural.service.pipeline.validacao.CargaStagingService;
 import br.com.fatec.georural.service.pipeline.validacao.RegistroQuarentenaService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 
-// etapa 3 - TRATAMENTO: saneia, recorta pelo limite da UF, calcula area e
-// carrega nas tabelas definitivas. Tudo em SQL sobre o conjunto inteiro.
+// etapa 3 - TRATAMENTO: saneia, recorta, calcula area e carrega o destino
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -44,14 +47,14 @@ public class TratamentoEtapa implements EtapaPipeline {
     private final CargaStagingService cargaStaging;
     private final RegistroTransformacaoService transformacoes;
     private final ExportacaoZonaTratadaService exportacao;
+    private final JdbcTemplate jdbc;
 
     @Override
     public Etapa etapa() {
         return Etapa.TRATAMENTO;
     }
 
-    // transacao unica: as chamadas precisam compartilhar a mesma conexao, senao
-    // o ALTER SESSION do preparar_sessao cai em outra conexao do pool
+    // transacao unica: as chamadas do PKG precisam da mesma conexao
     @Override
     @Transactional
     public ResultadoEtapa executar(ContextoExecucao ctx) {
@@ -70,7 +73,7 @@ public class TratamentoEtapa implements EtapaPipeline {
                     "Nao ha feicoes na area de pouso. Rode a etapa VALIDACAO antes do TRATAMENTO.");
         }
 
-        PerfilCamada perfil = registroPerfis.para(alvosService.tipoConjunto(arquivoId));
+        List<Camada> camadas = camadasDaStaging(stagingId, arquivoId);
         Long validacaoId = quarentena.abrirValidacao(arquivoId, execucaoId);
         double tolerancia = toleranciaArea(ctx);
         String uf = parametro(ctx, "uf", UF_PADRAO);
@@ -79,52 +82,21 @@ public class TratamentoEtapa implements EtapaPipeline {
         long rejeitadas = 0;
 
         long corrigidas = oracle.sanear(stagingId);
-        trilha.passo("VALIDACAO", "Saneamento de geometria com SDO_UTIL.RECTIFY_GEOMETRY: "
+        trilha.passo("VALIDACAO", "Saneamento com SDO_UTIL.RECTIFY_GEOMETRY: "
                 + corrigidas + " geometria(s) corrigida(s).", "FEICAO_STAGING", "FEICAO_STAGING");
 
         long invalidas = oracle.rejeitarInvalidas(stagingId, validacaoId);
         rejeitadas += invalidas;
-        trilha.passo("VALIDACAO", "Geometrias que seguiram invalidas depois do saneamento: "
+        trilha.passo("VALIDACAO", "Geometrias invalidas depois do saneamento: "
                 + invalidas + " rejeitada(s).", "FEICAO_STAGING", "QUARENTENA");
 
-        if (perfil.exigeDentroDoParana()) {
-            long recortadas = oracle.recortarUf(stagingId, uf);
-            trilha.passo("RECORTE", "Recorte pelo limite de " + uf
-                    + " com SDO_GEOM.SDO_INTERSECTION: " + recortadas + " geometria(s) processada(s).",
-                    "LIMITE_TERRITORIAL", "FEICAO_STAGING");
-
-            long fora = oracle.rejeitarForaDaUf(stagingId, validacaoId, uf);
-            rejeitadas += fora;
-            trilha.passo("VALIDACAO", "Feicoes inteiramente fora de " + uf + ": "
-                    + fora + " rejeitada(s).", "FEICAO_STAGING", "QUARENTENA");
-        } else {
-            trilha.passo("OUTRO", "Camada " + perfil.rotulo()
-                    + " nao e recortada: ela e a propria base territorial.",
-                    "FEICAO_STAGING", "FEICAO_STAGING");
-        }
+        rejeitadas += recortar(camadas, stagingId, validacaoId, uf, trilha);
 
         long comArea = oracle.calcularAreas(stagingId);
-        trilha.passo("CALCULO", "Area geodesica em hectares com SDO_GEOM.SDO_AREA "
-                + "(SRID 4674): " + comArea + " feicao(oes).", "FEICAO_STAGING", "FEICAO_STAGING");
+        trilha.passo("CALCULO", "Area geodesica em hectares com SDO_GEOM.SDO_AREA: "
+                + comArea + " feicao(oes).", "FEICAO_STAGING", "FEICAO_STAGING");
 
-        if (perfil.geometriaEsperada() == TipoGeometria.POLIGONO) {
-            long areaNula = oracle.rejeitarAreaNula(stagingId, validacaoId);
-            rejeitadas += areaNula;
-            trilha.passo("VALIDACAO", "Feicoes com area zero ou negativa: "
-                    + areaNula + " rejeitada(s).", "FEICAO_STAGING", "QUARENTENA");
-
-            long avisos = oracle.avisarAreaIncompativel(stagingId, validacaoId, tolerancia);
-            trilha.passo("VALIDACAO", "Area declarada divergente da calculada acima de "
-                    + tolerancia + "%: " + avisos + " aviso(s). As feicoes seguem no fluxo.",
-                    "FEICAO_STAGING", "QUARENTENA");
-        }
-
-        if ("RESERVA_LEGAL".equals(perfil.tipoConjunto())) {
-            long semImovel = oracle.rejeitarRlSemImovel(stagingId, validacaoId);
-            rejeitadas += semImovel;
-            trilha.passo("VALIDACAO", "Reservas legais cujo CAR nao esta em IMOVEL_RURAL: "
-                    + semImovel + " rejeitada(s).", "IMOVEL_RURAL", "QUARENTENA");
-        }
+        rejeitadas += conferirAreas(camadas, stagingId, validacaoId, tolerancia, trilha);
 
         long aprovadas = oracle.restantes(stagingId);
         if (aprovadas == 0) {
@@ -139,27 +111,18 @@ public class TratamentoEtapa implements EtapaPipeline {
         VersaoTratamentoService.VersaoResolvida versao = versaoService.resolver(
                 conjuntoId, execucaoId, ctx.getUsuarioId(), ctx.getCompetencia(), impressao);
 
-        List<String> cargas = carregar(perfil, stagingId, versao.id(), trilha);
+        List<String> cargas = carregar(camadas, stagingId, versao.id(), trilha);
+        exportar(camadas, conjuntoId, versao, arquivoId, execucaoId, cargas, trilha);
 
-        // zona TRATADA: a camada tratada sai como GeoJSON no data lake
-        ExportacaoZonaTratadaService.Resultado tratada = exportacao.exportar(
-                conjuntoId, versao.id(), versao.numero(), perfil.tipoConjunto(),
-                arquivoId, execucaoId);
-        if (tratada.exportou()) {
-            cargas.add(tratada.feicoes() + " feicao(oes) na zona TRATADA");
-            trilha.passo("OUTRO", "Zona TRATADA: " + tratada.mensagem() + " (sha256 "
-                    + tratada.hash().substring(0, 12) + ").", "IMOVEL_RURAL/EMBARGO", "ZONA TRATADA");
-        }
+        long apagadas = cargaStaging.limpar(stagingId);
+        trilha.passo("OUTRO", "Area de pouso liberada: " + apagadas + " linha(s).",
+                "FEICAO_STAGING", "-");
 
         quarentena.fecharValidacao(validacaoId, recebidas, aprovadas, rejeitadas);
         ctx.comParametro("toleranciaAreaPct", String.valueOf(tolerancia));
         ctx.comParametro("uf", uf);
         ctx.comParametro("impressaoTratado", impressao);
-
-        // a area de pouso ja cumpriu o papel; o rollback desfaz isso junto se algo falhar
-        long apagadas = cargaStaging.limpar(stagingId);
-        trilha.passo("OUTRO", "Area de pouso liberada: " + apagadas + " linha(s) de FEICAO_STAGING.",
-                "FEICAO_STAGING", "-");
+        ctx.comParametro("perfis", perfisUsados(camadas));
 
         trilha.passo("OUTRO", versao.nova()
                 ? "Versao v" + versao.numero() + " criada como RASCUNHO."
@@ -168,7 +131,7 @@ public class TratamentoEtapa implements EtapaPipeline {
                 "FEICAO_STAGING", "VERSAO");
         transformacoes.gravar(execucaoId, trilha.passos());
 
-        String mensagem = perfil.rotulo() + " - " + String.join("; ", cargas)
+        String mensagem = String.join("; ", cargas)
                 + (versao.nova()
                    ? ". Versao v" + versao.numero() + " (RASCUNHO)"
                    : ". Nada mudou: segue na versao v" + versao.numero());
@@ -176,50 +139,180 @@ public class TratamentoEtapa implements EtapaPipeline {
         return ResultadoEtapa.de(recebidas, rejeitadas, mensagem).comVersao(versao.id());
     }
 
-    // chama a carga da camada correspondente ao perfil
-    private List<String> carregar(PerfilCamada perfil, Long stagingId, Long versaoId,
+    // recorte e por camada: a malha municipal nao e recortada, ela e a base
+    private long recortar(List<Camada> camadas, Long stagingId, Long validacaoId,
+                          String uf, RegistroTransformacaoService.Trilha trilha) {
+        long dispensadas = 0;
+        long recortadas = 0;
+        boolean algumRecortou = false;
+
+        for (Camada camada : camadas) {
+            if (!camada.perfil().exigeDentroDoParana()) {
+                trilha.passo("OUTRO", "Camada " + camada.nome() + " ("
+                        + camada.perfil().tipoConjunto() + ") nao e recortada: e base territorial.",
+                        "FEICAO_STAGING", "FEICAO_STAGING");
+                continue;
+            }
+            TratamentoOracle.Recorte recorte = oracle.recortarUf(stagingId, uf, camada.arquivoId());
+            dispensadas += recorte.dispensadas();
+            recortadas += recorte.recortadas();
+            algumRecortou = true;
+        }
+
+        if (!algumRecortou) {
+            return 0;
+        }
+
+        trilha.passo("RECORTE", "Recorte pelo limite de " + uf + ": " + dispensadas
+                + " feicao(oes) ja estavam inteiramente dentro e dispensaram o corte; "
+                + recortadas + " cruzavam a fronteira e passaram pelo SDO_GEOM.SDO_INTERSECTION.",
+                "LIMITE_TERRITORIAL", "FEICAO_STAGING");
+
+        long fora = oracle.rejeitarForaDaUf(stagingId, validacaoId, uf);
+        trilha.passo("VALIDACAO", "Feicoes inteiramente fora de " + uf + ": "
+                + fora + " rejeitada(s).", "FEICAO_STAGING", "QUARENTENA");
+        return fora;
+    }
+
+    // area zero e area divergente so fazem sentido em camada de poligono
+    private long conferirAreas(List<Camada> camadas, Long stagingId, Long validacaoId,
+                               double tolerancia, RegistroTransformacaoService.Trilha trilha) {
+        long rejeitadas = 0;
+
+        for (Camada camada : camadas) {
+            if (camada.perfil().geometriaEsperada() == TipoGeometria.POLIGONO) {
+                long areaNula = oracle.rejeitarAreaNula(stagingId, validacaoId, camada.arquivoId());
+                rejeitadas += areaNula;
+
+                long avisos = oracle.avisarAreaIncompativel(
+                        stagingId, validacaoId, tolerancia, camada.arquivoId());
+
+                trilha.passo("VALIDACAO", camada.nome() + ": " + areaNula
+                        + " com area zero ou negativa (rejeitada) e " + avisos
+                        + " com area declarada divergente acima de " + tolerancia
+                        + "% (aviso).", "FEICAO_STAGING", "QUARENTENA");
+            }
+
+            if ("RESERVA_LEGAL".equals(camada.perfil().tipoConjunto())) {
+                long semImovel = oracle.rejeitarRlSemImovel(
+                        stagingId, validacaoId, camada.arquivoId());
+                rejeitadas += semImovel;
+                trilha.passo("VALIDACAO", camada.nome() + ": " + semImovel
+                        + " reserva(s) legal(is) cujo CAR nao esta em IMOVEL_RURAL.",
+                        "IMOVEL_RURAL", "QUARENTENA");
+            }
+        }
+        return rejeitadas;
+    }
+
+    // carga na ordem do perfil: imovel antes de reserva legal, sempre
+    private List<String> carregar(List<Camada> camadas, Long stagingId, Long versaoId,
                                   RegistroTransformacaoService.Trilha trilha) {
         List<String> resumo = new ArrayList<>();
 
-        switch (perfil.tipoConjunto()) {
-            case "IMOVEL" -> {
-                long gravadas = oracle.carregarImovel(stagingId, versaoId);
-                resumo.add(gravadas + " imovel(eis) em IMOVEL_RURAL");
-                trilha.passo("PADRONIZACAO", "Carga em IMOVEL_RURAL (MERGE por codigo do CAR): "
-                        + gravadas + " registro(s).", "FEICAO_STAGING", "IMOVEL_RURAL");
+        for (Camada camada : camadas) {
+            Long arq = camada.arquivoId();
+            String tipo = camada.perfil().tipoConjunto();
 
-                TratamentoOracle.Vinculo vinculo = oracle.vincularMunicipio(stagingId, versaoId);
-                resumo.add(vinculo.total() + " vinculado(s) a municipio");
-                trilha.passo("CRUZAMENTO", "Vinculo com municipio: " + vinculo.porCodigo()
-                        + " pelo codigo declarado e " + vinculo.porGeometria()
-                        + " por cruzamento espacial.", "MUNICIPIO", "IMOVEL_RURAL");
+            switch (tipo) {
+                case "IMOVEL" -> {
+                    long gravadas = oracle.carregarImovel(stagingId, versaoId, arq);
+                    resumo.add(gravadas + " imovel(eis)");
+                    trilha.passo("PADRONIZACAO", camada.nome()
+                            + ": carga em IMOVEL_RURAL (MERGE por codigo do CAR), "
+                            + gravadas + " registro(s).", "FEICAO_STAGING", "IMOVEL_RURAL");
+
+                    TratamentoOracle.Vinculo vinculo =
+                            oracle.vincularMunicipio(stagingId, versaoId, arq);
+                    resumo.add(vinculo.total() + " vinculado(s) a municipio");
+                    trilha.passo("CRUZAMENTO", "Vinculo com municipio: " + vinculo.porCodigo()
+                            + " pelo codigo declarado e " + vinculo.porGeometria()
+                            + " por cruzamento espacial.", "MUNICIPIO", "IMOVEL_RURAL");
+                }
+                case "RESERVA_LEGAL" -> {
+                    long gravadas = oracle.carregarReservaLegal(stagingId, versaoId, arq);
+                    resumo.add(gravadas + " reserva(s) legal(is)");
+                    trilha.passo("PADRONIZACAO", camada.nome()
+                            + ": carga em RESERVA_LEGAL ligada ao imovel pelo CAR, "
+                            + gravadas + " registro(s).", "FEICAO_STAGING", "RESERVA_LEGAL");
+                }
+                case "EMBARGO" -> {
+                    long gravadas = oracle.carregarEmbargo(stagingId, versaoId, arq);
+                    resumo.add(gravadas + " embargo(s)");
+                    trilha.passo("PADRONIZACAO", camada.nome() + ": carga em EMBARGO, "
+                            + gravadas + " registro(s).", "FEICAO_STAGING", "EMBARGO");
+                }
+                case "MALHA_MUNICIPAL" -> {
+                    long gravadas = oracle.carregarMunicipio(stagingId, arq);
+                    resumo.add(gravadas + " municipio(s)");
+                    trilha.passo("PADRONIZACAO", camada.nome()
+                            + ": carga em MUNICIPIO (MERGE por codigo do IBGE), "
+                            + gravadas + " registro(s).", "FEICAO_STAGING", "MUNICIPIO");
+                }
+                default -> throw new IllegalStateException(
+                        "Perfil " + tipo + " nao tem carga definida no TRATAMENTO.");
             }
-            case "RESERVA_LEGAL" -> {
-                long gravadas = oracle.carregarReservaLegal(stagingId, versaoId);
-                resumo.add(gravadas + " reserva(s) legal(is) em RESERVA_LEGAL");
-                trilha.passo("PADRONIZACAO", "Carga em RESERVA_LEGAL ligada ao imovel pelo CAR: "
-                        + gravadas + " registro(s).", "FEICAO_STAGING", "RESERVA_LEGAL");
-            }
-            case "EMBARGO" -> {
-                long gravadas = oracle.carregarEmbargo(stagingId, versaoId);
-                resumo.add(gravadas + " embargo(s) em EMBARGO");
-                trilha.passo("PADRONIZACAO", "Carga em EMBARGO: " + gravadas + " registro(s).",
-                        "FEICAO_STAGING", "EMBARGO");
-            }
-            case "MALHA_MUNICIPAL" -> {
-                long gravadas = oracle.carregarMunicipio(stagingId);
-                resumo.add(gravadas + " municipio(s) em MUNICIPIO");
-                trilha.passo("PADRONIZACAO", "Carga em MUNICIPIO (MERGE por codigo do IBGE): "
-                        + gravadas + " registro(s).", "FEICAO_STAGING", "MUNICIPIO");
-            }
-            default -> throw new IllegalStateException(
-                    "Perfil " + perfil.tipoConjunto() + " nao tem carga definida no TRATAMENTO.");
         }
         return resumo;
     }
 
-    // a staging foi escrita pela execucao da VALIDACAO, que e outra linha de
-    // EXECUCAO_PIPELINE; as duas se encontram pelo dag_run_id
+    // uma exportacao por perfil presente na rodada
+    private void exportar(List<Camada> camadas, Long conjuntoId,
+                          VersaoTratamentoService.VersaoResolvida versao, Long arquivoId,
+                          Long execucaoId, List<String> cargas,
+                          RegistroTransformacaoService.Trilha trilha) {
+        Set<String> perfis = new LinkedHashSet<>();
+        camadas.forEach(c -> perfis.add(c.perfil().tipoConjunto()));
+
+        for (String tipo : perfis) {
+            ExportacaoZonaTratadaService.Resultado tratada = exportacao.exportar(
+                    conjuntoId, versao.id(), versao.numero(), tipo, arquivoId, execucaoId);
+            if (tratada.exportou()) {
+                cargas.add(tratada.feicoes() + " feicao(oes) de " + tipo + " na zona TRATADA");
+                trilha.passo("OUTRO", "Zona TRATADA: " + tratada.mensagem() + " (sha256 "
+                        + tratada.hash().substring(0, 12) + ").", tipo, "ZONA TRATADA");
+            }
+        }
+    }
+
+    // camadas que estao na area de pouso, cada uma com o perfil dela
+    private List<Camada> camadasDaStaging(Long stagingId, Long arquivoId) {
+        List<Object[]> linhas = jdbc.query(
+                "SELECT DISTINCT s.stg_arq_bruto_id, NVL(a.arq_nome, 'sem nome') AS nome "
+                        + "FROM FEICAO_STAGING s "
+                        + "LEFT JOIN ARQUIVO_BRUTO a ON a.arq_bruto_id = s.stg_arq_bruto_id "
+                        + "WHERE s.exe_id = ?",
+                (rs, i) -> new Object[] {
+                        rs.getObject("stg_arq_bruto_id") == null ? null : rs.getLong("stg_arq_bruto_id"),
+                        rs.getString("nome") },
+                stagingId);
+
+        Optional<PerfilCamada> doConjunto =
+                registroPerfis.buscar(alvosService.tipoConjunto(arquivoId));
+
+        List<Camada> camadas = new ArrayList<>();
+        for (Object[] linha : linhas) {
+            String nome = (String) linha[1];
+            PerfilCamada perfil = registroPerfis.porNomeDeCamada(nome)
+                    .or(() -> doConjunto)
+                    .orElseThrow(() -> new RegistroPerfis.PerfilNaoDefinidoException(
+                            alvosService.tipoConjunto(arquivoId)));
+            camadas.add(new Camada((Long) linha[0], nome, perfil));
+        }
+
+        camadas.sort(Comparator.comparingInt(c -> c.perfil().ordemNoTratamento()));
+        log.info("Tratamento de {} camada(s), nesta ordem: {}", camadas.size(),
+                camadas.stream().map(c -> c.nome() + " (" + c.perfil().tipoConjunto() + ")").toList());
+        return camadas;
+    }
+
+    private String perfisUsados(List<Camada> camadas) {
+        Set<String> perfis = new LinkedHashSet<>();
+        camadas.forEach(c -> perfis.add(c.perfil().tipoConjunto()));
+        return String.join(",", perfis);
+    }
+
+    // acha a execucao da VALIDACAO que escreveu a staging, pelo dag_run_id
     private Long execucaoDaStaging(ContextoExecucao ctx) {
         String informado = ctx.getParametros().get("execucaoStagingId");
         if (informado != null && !informado.isBlank()) {
@@ -258,5 +351,8 @@ public class TratamentoEtapa implements EtapaPipeline {
             throw new IllegalArgumentException("A etapa TRATAMENTO precisa de " + nome + ".");
         }
         return valor;
+    }
+
+    private record Camada(Long arquivoId, String nome, PerfilCamada perfil) {
     }
 }
