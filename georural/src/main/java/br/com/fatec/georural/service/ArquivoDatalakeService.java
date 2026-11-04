@@ -13,8 +13,8 @@ import br.com.fatec.georural.exception.RecursoNaoEncontradoException;
 import br.com.fatec.georural.repository.ArquivoBrutoRepository;
 import br.com.fatec.georural.service.storage.ArmazenamentoZonaPort;
 import br.com.fatec.georural.service.storage.Zona;
-import br.com.fatec.georural.service.treatment.PreparadorArquivoProcessamento;
-import br.com.fatec.georural.service.treatment.orchestrator.TreatmentOrchestrator;
+import br.com.fatec.georural.service.pipeline.ContextoExecucao;
+import br.com.fatec.georural.service.pipeline.PipelineExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,25 +24,20 @@ import java.io.UncheckedIOException;
 import java.util.Comparator;
 import java.util.List;
 
-/**
- * Consulta e processamento de arquivos recebidos, lendo direto da zona BRUTA do data lake
- */
+// consulta e processamento de arquivos recebidos, lendo direto da zona BRUTA
 @Service
 public class ArquivoDatalakeService {
 
     private final ArquivoBrutoRepository arquivoRepository;
     private final ArmazenamentoZonaPort armazenamento;
-    private final TreatmentOrchestrator orquestrador;
-    private final PreparadorArquivoProcessamento preparador;
+    private final PipelineExecutor pipeline;
 
     public ArquivoDatalakeService(ArquivoBrutoRepository arquivoRepository,
                                   ArmazenamentoZonaPort armazenamento,
-                                  TreatmentOrchestrator orquestrador,
-                                  PreparadorArquivoProcessamento preparador) {
+                                  PipelineExecutor pipeline) {
         this.arquivoRepository = arquivoRepository;
         this.armazenamento = armazenamento;
-        this.orquestrador = orquestrador;
-        this.preparador = preparador;
+        this.pipeline = pipeline;
     }
 
     @Transactional(readOnly = true)
@@ -93,7 +88,7 @@ public class ArquivoDatalakeService {
         }
     }
 
-    /** Dispara o processamento real (pipeline de validacao/tratamento) do arquivo bruto. */
+    // roda as etapas 1 a 5 do pipeline para o arquivo
     @Transactional
     public EnvioProcessamentoResponse enviarParaProcessamento(Long id) {
         ArquivoBruto arquivo = buscar(id);
@@ -103,34 +98,45 @@ public class ArquivoDatalakeService {
                     "Arquivo sem conteudo na zona bruta; nao e possivel processar: " + id);
         }
 
-        byte[] conteudo;
-        try (InputStream in = armazenamento.ler(Zona.BRUTA, arquivo.getPathArmazenamento())) {
-            conteudo = in.readAllBytes();
-        } catch (IOException e) {
-            throw new UncheckedIOException("Falha ao ler o arquivo da zona bruta: " + id, e);
+        ConjuntoDados conjunto = arquivo.getConjunto();
+        if (conjunto == null) {
+            throw new ConflitoException(
+                    "Arquivo " + id + " nao esta ligado a um conjunto de dados.");
         }
 
-        // Normaliza o arquivo antes do detector/tratamento: descompacta .zip (inclusive zip-dentro-de-zip
-        // do SICAR) e, quando ha varios temas, escolhe o shapefile pelo tipo do conjunto. O diretorio
-        // temporario e apagado ao final.
-        String tipoConjunto = arquivo.getConjunto() != null ? arquivo.getConjunto().getTipoCamada() : null;
-        PreparadorArquivoProcessamento.Preparacao preparacao =
-                preparador.preparar(conteudo, arquivo.getNome(), tipoConjunto);
-        try {
-            ExecucaoPipeline execucao = orquestrador.processarValidacao(arquivo, preparacao.arquivo());
+        ContextoExecucao ctx = ContextoExecucao.novo(
+                conjunto.getId(), arquivo.getId(),
+                arquivo.getUsuario() != null ? arquivo.getUsuario().getId() : null);
+        ctx.setCompetencia(arquivo.getCompetencia());
 
-            return new EnvioProcessamentoResponse(
-                    arquivo.getId(),
-                    arquivo.getNome(),
-                    arquivo.getFormato(),
-                    srid(arquivo),
-                    "/api/arquivos/" + id + "/download",
-                    null, null, null,
-                    arquivo.getPathArmazenamento(),
-                    "Processamento concluido (execucao " + execucao.getId() + ").");
-        } finally {
-            preparador.limpar(preparacao.diretorio());
+        List<ExecucaoPipeline> etapas = pipeline.executarAutomatico(ctx);
+
+        ExecucaoPipeline ultima = etapas.isEmpty() ? null : etapas.get(etapas.size() - 1);
+        Long versao = null;
+        for (ExecucaoPipeline etapa : etapas) {
+            if (etapa.getVersaoGerada() != null) {
+                versao = etapa.getVersaoGerada().getId();
+            }
         }
+
+        String mensagem = etapas.isEmpty()
+                ? "Nenhuma etapa do pipeline foi executada."
+                : etapas.size() + " etapa(s) executada(s), ultima: " + ultima.getEtapa()
+                  + " (" + ultima.getStatus() + ")"
+                  + (versao != null
+                     ? ". Versao " + versao + " gerada como RASCUNHO: publique para os "
+                       + "indicadores valerem."
+                     : ". Nenhuma versao nova foi gerada.");
+
+        return new EnvioProcessamentoResponse(
+                arquivo.getId(),
+                arquivo.getNome(),
+                arquivo.getFormato(),
+                srid(arquivo),
+                "/api/arquivos/" + id + "/download",
+                null, null, null,
+                arquivo.getPathArmazenamento(),
+                mensagem);
     }
 
     private ArquivoResumoResponse toResumo(ArquivoBruto a) {

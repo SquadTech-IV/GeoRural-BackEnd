@@ -8,6 +8,9 @@ import br.com.fatec.georural.exception.RecursoNaoEncontradoException;
 import br.com.fatec.georural.exception.RequisicaoInvalidaException;
 import br.com.fatec.georural.repository.ArquivoBrutoRepository;
 import br.com.fatec.georural.repository.UsuarioRepository;
+import br.com.fatec.georural.service.pipeline.ResolvedorCompetencia;
+import br.com.fatec.georural.service.pipeline.formato.DetectorFormato;
+import br.com.fatec.georural.service.pipeline.formato.FormatoDetectado;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -41,23 +44,19 @@ public class RecebimentoArquivoService {
     private final ArmazenamentoZonaPort armazenamento;
     private final ValidadorConjuntoDados validadorConjuntoDados;
     private final ValidadorFormatoArquivo validadorFormatoArquivo;
+    private final ResolvedorCompetencia resolvedorCompetencia;
+    private final DetectorFormato detectorFormato;
 
-    /**
-     * @param conjuntoId   conjunto de destino
-     * @param usuarioId responsável pelo envio. Identificação provisória: apenas verifica que o usuário existe e o
-     *                  registra; não autentica o chamador, até a autenticação da US#13
-     * @param nomeOriginal nome original do arquivo
-     * @param conteudo     conteúdo do arquivo; não é fechado aqui
-     * @throws ArquivoDuplicadoException      se já existe arquivo ativo com o mesmo hash no conjunto
-     * @throws RecursoNaoEncontradoException se o conjunto não existe
-     * @throws RequisicaoInvalidaException    se o conjunto estiver arquivado/incompatível ou o formato/conteúdo for inválido
-     */
     public ArquivoBruto receber(Long conjuntoId, Long usuarioId, String nomeOriginal, InputStream conteudo) {
+        return receber(conjuntoId, usuarioId, nomeOriginal, conteudo, null);
+    }
+
+    public ArquivoBruto receber(Long conjuntoId, Long usuarioId, String nomeOriginal,
+                                InputStream conteudo, String competencia) {
         if (conjuntoId == null) {
             throw new RequisicaoInvalidaException("Identificador do conjunto é obrigatório.");
         }
-        // O responsável é opcional: enquanto não há autenticação (US#13) o conjunto não grava usu_id,
-        // e o canal de API também recebe com responsável nulo. Quando informado, ele é validado abaixo.
+
         if (conteudo == null) {
             throw new RequisicaoInvalidaException("Conteúdo do arquivo é obrigatório.");
         }
@@ -91,17 +90,23 @@ public class RecebimentoArquivoService {
             // 2. Validar o conteúdo (assinatura dos primeiros bytes) depois da cópia e do hash, e antes de duplicidade
             validadorFormatoArquivo.validarConteudo(temporario, formato);
 
-            Optional<ArquivoBruto> abandonado = verificadorDuplicidade.verificar(conjuntoId, hash);
+            String competenciaResolvida = resolvedorCompetencia.resolver(competencia, nome);
+
+            // A duplicidade agora e avaliada pela identidade correta:
+            Optional<ArquivoBruto> abandonado =
+                    verificadorDuplicidade.verificar(conjuntoId, competenciaResolvida, hash);
             boolean retomada = abandonado.isPresent();
             ArquivoBruto registro = abandonado.orElseGet(
-                    () -> criarRegistroRecebendo(conjunto, conjuntoId, usuarioId, nome, formato, hash, tamanho));
+                    () -> criarRegistroRecebendo(conjunto, conjuntoId, usuarioId, nome, formato,
+                                                 hash, tamanho, competenciaResolvida));
 
             if (registro.getFormato() == null) {
                 registro.setFormato(formato);
             }
 
-            // Na retomada, o caminho e a data gravados no primeiro envio são reaproveitados; nunca recalculados.
-            // Nesse caso o responsável gravado no objeto é o de quem reenviou, e o do registro continua o original.
+            // Formato e sistema de referencia vem do CONTEUDO
+            aplicarDeteccao(registro, temporario, nome, conjunto);
+
             Map<String, String> metadados = montarMetadados(hash, conjuntoId, usuarioId);
             boolean jaPromovido = retomada && armazenamento.existe(Zona.BRUTA, registro.getPathArmazenamento());
             if (!jaPromovido) {
@@ -123,8 +128,26 @@ public class RecebimentoArquivoService {
         }
     }
 
+
+    private void aplicarDeteccao(ArquivoBruto registro, Path temporario, String nome, ConjuntoDados conjunto) {
+        try {
+            FormatoDetectado detectado = detectorFormato.detectar(Files.readAllBytes(temporario), nome);
+            registro.setFormatoDetectado(detectado.formato().name());
+            registro.setSrsDeclarado(detectado.srsEpsg());
+            registro.setSrsUtilizado(detectado.srsEpsg() != null
+                    ? detectado.srsEpsg()
+                    : (conjunto.getSrs() != null ? conjunto.getSrs() : 4674));
+            if (detectado.observacao() != null) {
+                log.info("Arquivo '{}': {}", nome, detectado.observacao());
+            }
+        } catch (IOException | RuntimeException e) {
+            log.warn("Nao foi possivel detectar formato/SRC de '{}': {}", nome, e.getMessage());
+        }
+    }
+
     private ArquivoBruto criarRegistroRecebendo(ConjuntoDados conjunto, Long conjuntoId, Long usuarioId,
-                                                String nome, String formato, String hash, long tamanho) {
+                                                String nome, String formato, String hash, long tamanho,
+                                                String competencia) {
         LocalDateTime agora = LocalDateTime.now();
 
         ArquivoBruto registro = new ArquivoBruto();
@@ -138,12 +161,12 @@ public class RecebimentoArquivoService {
         registro.setHash(hash);
         registro.setAlgoritmoHash(SHA256StreamCalculator.ALGORITMO);
         registro.setCanalEntrada(CANAL_UPLOAD);
+        registro.setCompetencia(competencia);
         registro.setStatus(SituacaoArquivoBruto.RECEBENDO);
         registro.setDataUpload(agora);
         registro.setPathArmazenamento(CaminhoZonaBrutaHelper.gerarCaminho(conjuntoId, agora, hash, nome));
 
         try {
-            // saveAndFlush confirma o registro agora (sem transação externa), reservando a vaga no índice único.
             return arquivoRepository.saveAndFlush(registro);
         } catch (DataIntegrityViolationException e) {
             if (violouUnicidadeConjuntoHash(e)) {
@@ -164,10 +187,6 @@ public class RecebimentoArquivoService {
         }
     }
 
-    /**
-     * A promoção lançou erro, mas o objeto pode ter sido gravado (por exemplo, timeout depois do envio).
-     * Só descarta o registro quando é certo que o objeto não existe.
-     */
     private void resolverFalhaNaPromocao(ArquivoBruto registro, String caminho, Exception causa) {
         boolean existe;
         try {
@@ -207,8 +226,7 @@ public class RecebimentoArquivoService {
         return HexFormat.of().formatHex(digest.digest());
     }
 
-    // Chaves conforme a convenção documentada na T001; se CaminhoZonaBrutaHelper já expõe um método
-    // para montar os metadados, use-o aqui para manter a convenção em um só lugar.
+    // Chaves conforme a convenção documentada na T001
     private static Map<String, String> montarMetadados(String hash, Long conjuntoId, Long usuarioId) {
         return Map.of(
                 "hash-sha256", hash,
@@ -219,7 +237,7 @@ public class RecebimentoArquivoService {
     private static boolean violouUnicidadeConjuntoHash(Throwable erro) {
         for (Throwable t = erro; t != null; t = (t.getCause() == t ? null : t.getCause())) {
             String mensagem = t.getMessage();
-            if (mensagem != null && mensagem.toUpperCase().contains("UK_ARQUIVO_HASH")) {
+            if (mensagem != null && mensagem.toUpperCase().contains("UK_ARQUIVO_CON_COMP_HASH")) {
                 return true;
             }
         }

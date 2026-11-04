@@ -1,69 +1,66 @@
 package br.com.fatec.georural.service.storage;
 
 import br.com.fatec.georural.entity.ArquivoBruto;
-import br.com.fatec.georural.repository.ArquivoBrutoRepository;
 import br.com.fatec.georural.exception.ArquivoDuplicadoException;
+import br.com.fatec.georural.repository.ArquivoBrutoRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
 
-/**
- * Bloqueia o recebimento de arquivo com hash idêntico a um já registrado globalmente.
- *
- * <p>Esta verificação rejeita o caso comum cedo e com mensagem clara. A garantia contra envios
- * simultâneos é o índice único {@code uk_arq_con_hash} do banco: quem grava o registro deve tratar a
- * violação desse índice como duplicado.
- *
- * <p>Um registro RECEBENDO mais antigo que o prazo de abandono é considerado abandonado (o processo
- * pode ter morrido depois de reservar a vaga). Nesse caso ele é devolvido para ser retomado, em vez de
- * bloquear o reenvio para sempre.
- */
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class VerificadorDuplicidade {
 
     private final ArquivoBrutoRepository repositorio;
 
-    // Consta o tempo em que o arquivo está em RECEBENDO antes de ser considerado abandonado. O valor padrão é 15 minutos.
     @Value("${georural.recebimento.prazo-abandono-minutos:15}")
     private long prazoAbandonoMinutos;
 
-    /**
-     * @return vazio se não há arquivo ativo com esse hash no conjunto; ou o registro RECEBENDO
-     *         abandonado, que deve ser retomado
-     * @throws ArquivoDuplicadoException se há arquivo ativo que não está abandonado
-     * @throws IllegalArgumentException  se o conjunto ou o hash não forem informados
-     */
-    public Optional<ArquivoBruto> verificar(Long conjuntoId, String hash) {
+
+    public Optional<ArquivoBruto> verificar(Long conjuntoId, String competencia, String hash) {
         if (conjuntoId == null) {
             throw new IllegalArgumentException("Identificador do conjunto é obrigatório.");
         }
         if (hash == null || hash.isBlank()) {
             throw new IllegalArgumentException("Hash é obrigatório.");
         }
+        if (competencia == null || competencia.isBlank()) {
+            throw new IllegalArgumentException("Competência é obrigatória para identificar o arquivo.");
+        }
         String hashNormalizado = hash.trim().toLowerCase();
 
-        Optional<ArquivoBruto> ativo = repositorio.findByHash(hashNormalizado);
-        if (ativo.isEmpty()) {
+        Optional<ArquivoBruto> existente =
+                repositorio.buscarPorIdentidade(conjuntoId, competencia, hashNormalizado);
+        if (existente.isEmpty()) {
+            avisarSeConteudoRepetidoEmOutraCompetencia(conjuntoId, competencia, hashNormalizado);
             return Optional.empty();
         }
-        ArquivoBruto arquivo = ativo.get();
-        if (pertenceAoConjunto(arquivo, conjuntoId) && estaAbandonado(arquivo)) {
-            return ativo;
+        if (estaAbandonado(existente.get())) {
+            return existente;
         }
         throw new ArquivoDuplicadoException(conjuntoId, hashNormalizado);
+    }
+
+    private void avisarSeConteudoRepetidoEmOutraCompetencia(Long conjuntoId, String competencia, String hash) {
+        var outras = repositorio.buscarMesmoConteudoNoConjunto(conjuntoId, hash);
+        if (!outras.isEmpty()) {
+            log.info("Conteudo identico ja existe no conjunto {} nas competencias {}. "
+                    + "Entrando assim mesmo como competencia {} -- conteudo repetido entre periodos "
+                    + "costuma indicar que a fonte nao atualizou os dados.",
+                    conjuntoId,
+                    outras.stream().map(ArquivoBruto::getCompetencia).distinct().toList(),
+                    competencia);
+        }
     }
 
     private boolean estaAbandonado(ArquivoBruto arquivo) {
         return SituacaoArquivoBruto.RECEBENDO.equals(arquivo.getStatus())
                 && arquivo.getDataUpload() != null
                 && arquivo.getDataUpload().isBefore(LocalDateTime.now().minusMinutes(prazoAbandonoMinutos));
-    }
-
-    private boolean pertenceAoConjunto(ArquivoBruto arquivo, Long conjuntoId) {
-        return arquivo.getConjunto() != null && conjuntoId.equals(arquivo.getConjunto().getId());
     }
 }

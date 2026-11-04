@@ -120,7 +120,7 @@ public class ConjuntoService {
         conjunto.setTipoConjunto(tipo);
         conjunto.setNome(nome);
         conjunto.setDescricao(CadastroCampos.opcional(request.descricao(), "descrição", 400));
-        conjunto.setSrs(request.srs());
+        conjunto.setSrs(request.srs() == null ? 4674 : request.srs());
         conjunto.setCobertura(request.cobertura().trim());
         conjunto.setPeriodicidade(validacao.normalizarPeriodicidade(request.periodicidade()));
         conjunto.setFormaEntrada(upload && api ? "AMBOS" : api ? "API" : "UPLOAD");

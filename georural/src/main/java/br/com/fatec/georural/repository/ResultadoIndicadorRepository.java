@@ -73,4 +73,24 @@ public interface ResultadoIndicadorRepository extends JpaRepository<ResultadoInd
            ORDER BY im.codigoCar, i.sigla
            """)
     List<ResultadoIndicador> buscarPorVersao(@Param("versaoId") Long versaoId);
+
+    /**
+     * Resultados publicados (versoes VIGENTE + ANTERIOR) com indicador, versao e REGRA carregados.
+     * Alimenta a tela US15 (zona publicada): ao agrupar por indicador + versao, cada grupo vira uma
+     * "versao publicada do indicador" trazendo a regra usada (ex.: IRL 20% vs IRL 40%).
+     */
+    @Query("""
+           SELECT r FROM ResultadoIndicador r
+           JOIN FETCH r.indicador i
+           JOIN FETCH r.versao v
+           LEFT JOIN FETCH r.regraCalculo rc
+           WHERE v.situacao IN ('VIGENTE', 'ANTERIOR')
+           ORDER BY i.sigla ASC, v.numero DESC
+           """)
+    List<ResultadoIndicador> buscarPublicadosComRegra();
+
+    // ja existe resultado gravado com esta regra? entao a regra esta congelada
+    boolean existsByRegraCalculo_Id(Long regraCalculoId);
+
+    long countByVersao_Id(Long versaoId);
 }

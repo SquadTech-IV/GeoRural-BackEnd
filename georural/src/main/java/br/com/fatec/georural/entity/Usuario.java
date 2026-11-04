@@ -22,17 +22,20 @@ public class Usuario {
     @JoinColumn(name = "per_id", nullable = false)
     private Perfil perfil;
 
+    @Column(name = "usu_keycloak_id", length = 36)
+    private String keycloakId;
+
     @Column(name = "usu_nome", nullable = false)
     private String nome;
 
     @Column(name = "usu_email", nullable = false)
     private String email;
 
-    @Column(name = "usu_senha_hash", nullable = false)
-    private String senhaHash;
-
     @Column(name = "usu_status", nullable = false)
     private String status;
+
+    @Column(name = "usu_ultimo_login")
+    private LocalDateTime ultimoLogin;
 
     @Column(name = "usu_data_cadastro", nullable = false)
     private LocalDateTime dataCadastro;

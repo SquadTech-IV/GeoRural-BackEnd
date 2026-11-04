@@ -42,6 +42,9 @@ public class Versao {
     @JoinColumn(name = "ver_exe_id")
     private ExecucaoPipeline execucao;
 
+    @Column(name = "ver_justificativa", length = 400)
+    private String justificativa;
+
     @Column(name = "ver_data_publicacao")
     private LocalDateTime dataPublicacao;
 
