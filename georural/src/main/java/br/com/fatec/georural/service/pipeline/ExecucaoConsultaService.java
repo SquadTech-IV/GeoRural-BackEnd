@@ -7,6 +7,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.Timestamp;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -20,10 +22,19 @@ public class ExecucaoConsultaService {
     private final JdbcTemplate jdbc;
 
     // rodadas do pipeline, uma linha por dag_run_id
+    // filtro: TODAS (padrao), AGUARDANDO, REPROVADAS ou FALHADAS
     @Transactional(readOnly = true)
-    public List<ExecucaoResumoResponse> listar(Long conjuntoId, String filtro, int limite) {
+    public List<ExecucaoResumoResponse> listar(Long conjuntoId, String filtro, int limite,
+                                               Integer dias, LocalDate de, LocalDate ate) {
         int teto = Math.min(limite <= 0 ? LIMITE_PADRAO : limite, LIMITE_MAXIMO);
         List<Object> parametros = new ArrayList<>();
+
+        // de/ate mandam; dias e o atalho que a tela usa nos botoes de periodo
+        LocalDateTime inicio = de != null ? de.atStartOfDay()
+                : (dias != null && dias > 0 ? LocalDateTime.now().minusDays(dias) : null);
+
+        // ate e inclusivo: o dia escolhido conta inteiro
+        LocalDateTime fim = ate != null ? ate.plusDays(1).atStartOfDay() : null;
 
         String dentro = " WHERE e.exe_dag_run_id IS NOT NULL";
         if (conjuntoId != null) {
@@ -37,14 +48,26 @@ public class ExecucaoConsultaService {
                 + "                     AND a.aud_registro_id = v.ver_id "
                 + "                     AND a.aud_dados_novos LIKE '%\"acao\":\"REPROVACAO\"%')";
 
-        String fora = "";
+        List<String> condicoes = new ArrayList<>();
         if ("AGUARDANDO".equalsIgnoreCase(filtro)) {
-            fora = " WHERE v.ver_situacao = 'RASCUNHO' AND NOT" + devolvida;
+            condicoes.add("v.ver_situacao = 'RASCUNHO' AND NOT" + devolvida);
         } else if ("REPROVADAS".equalsIgnoreCase(filtro)) {
-            fora = " WHERE" + devolvida;
+            condicoes.add(devolvida);
         } else if ("FALHADAS".equalsIgnoreCase(filtro)) {
-            fora = " WHERE r.falhadas > 0";
+            condicoes.add("r.falhadas > 0");
         }
+
+        // o periodo olha quando a rodada comecou, nao cada etapa
+        if (inicio != null) {
+            condicoes.add("r.inicio >= ?");
+            parametros.add(Timestamp.valueOf(inicio));
+        }
+        if (fim != null) {
+            condicoes.add("r.inicio < ?");
+            parametros.add(Timestamp.valueOf(fim));
+        }
+
+        String fora = condicoes.isEmpty() ? "" : " WHERE " + String.join(" AND ", condicoes);
 
         String sql = "SELECT r.dag_run_id, r.con_id, r.con_nome, r.arq_id, r.arq_nome, r.canal, "
                 + "       r.com_usuario, r.etapas, r.falhadas, r.ressalvas, r.recebidas, r.rejeitadas, "
@@ -119,7 +142,7 @@ public class ExecucaoConsultaService {
         }, parametros.toArray());
     }
 
-    private static java.time.LocalDateTime paraData(Timestamp t) {
+    private static LocalDateTime paraData(Timestamp t) {
         return t == null ? null : t.toLocalDateTime();
     }
 }
