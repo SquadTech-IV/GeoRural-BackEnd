@@ -167,4 +167,8 @@ public class TratamentoOracle {
             return porCodigo + porGeometria;
         }
     }
+    public long carregarVegetacao(Long execucaoId, Long versaoId, Long arquivoId) {
+        return comSaidaNoMeio("PKG_CARREGAR_VEGETACAO.carregar_vegetacao(?, ?, ?, ?)", 3,
+                execucaoId, versaoId, arquivoId);
+    }
 }
