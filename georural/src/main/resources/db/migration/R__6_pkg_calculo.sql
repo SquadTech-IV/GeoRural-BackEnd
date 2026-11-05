@@ -8,6 +8,8 @@ CREATE OR REPLACE PACKAGE PKG_CALCULO AS
     -- imoveis alcancados por esta rodada; escopo = IMOVEL, RESERVA_LEGAL ou EMBARGO
     FUNCTION imoveis_no_escopo(p_ver_id NUMBER, p_escopo VARCHAR2) RETURN SYS.ODCINUMBERLIST;
 
+    FUNCTION id_indicador(p_sigla VARCHAR2) RETURN NUMBER;
+
     PROCEDURE calcular_irl(p_ver_id NUMBER, p_exe_id NUMBER, p_rca_id NUMBER,
                            p_minimo_pct NUMBER, p_escopo VARCHAR2, p_calculados OUT NUMBER);
 
