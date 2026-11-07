@@ -9,42 +9,40 @@ public class PerfilVegetacao implements PerfilCamada {
 
     @Override
     public String tipoConjunto() {
-        return "VEGETACAO_NATIVA";
+        return "VEGETACAO";
     }
 
     @Override
     public String rotulo() {
-        return "Vegetação Nativa";
+        return "Cobertura vegetal nativa";
     }
 
     @Override
     public List<CampoCamada> campos() {
         return List.of(
-                CampoCamada.obrigatorio("codigo_car", TipoCampo.TEXTO,
-                        "cod_imovel", "codigo", "cod_car", "car", "codigoimovel"),
+                // 'tema' e o nome do campo no shapefile do SICAR
+                CampoCamada.opcional("classe", TipoCampo.TEXTO,
+                        "tema", "cod_classe", "des_classe", "tipo", "ind_tipo", "classe_cob"),
                 CampoCamada.opcional("area_declarada", TipoCampo.DECIMAL,
-                        "num_area", "area", "area_ha", "num_area_h", "areaha"),
-                CampoCamada.opcional("tipo", TipoCampo.TEXTO,
-                        "ind_tipo", "tipo_veg", "des_tipo", "categoria"),
-                CampoCamada.opcional("situacao", TipoCampo.TEXTO,
-                        "ind_status", "status", "des_condic")
-        );
+                        "area", "num_area", "area_ha", "num_area_h"),
+                CampoCamada.opcional("codigo_car", TipoCampo.TEXTO,
+                        "recibo", "cod_imovel", "codigo", "cod_car", "car"));
     }
 
     @Override
     public int ordemNoTratamento() {
-        // Define a ordem de execução no pipeline
-        return 50;
+        return 25;
     }
 
     @Override
     public List<String> nomesDeCamada() {
-        return List.of("VEGETACAO_NATIVA", "REMANESCENTE_VEGETACAO", "COBERTURA_VEGETAL", "SUPRESSAO_VEGETACAO", "AREA_VEGETACAO");
+        return List.of("COBERTURA_DO_SOLO", "COBERTURA_SOLO", "COBERTURA_VEGETAL",
+                "VEGETACAO", "VEGETACAO_NATIVA", "REMANESCENTE_VEGETACAO_NATIVA");
     }
 
     @Override
     public String campoIdentificador() {
-        return "codigo_car";
+        return null;
     }
 
     @Override

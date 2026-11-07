@@ -40,6 +40,11 @@ CREATE OR REPLACE PACKAGE PKG_TRATAMENTO AS
     PROCEDURE carregar_reserva_legal(p_exe_id NUMBER, p_ver_id NUMBER, p_gravadas OUT NUMBER,
                                      p_arq_id NUMBER DEFAULT NULL);
 
+    -- so grava a classe de vegetacao nativa; devolve quantas ficaram de fora
+    PROCEDURE carregar_vegetacao(p_exe_id NUMBER, p_ver_id NUMBER,
+                                 p_gravadas OUT NUMBER, p_ignoradas OUT NUMBER,
+                                 p_arq_id NUMBER DEFAULT NULL);
+
     PROCEDURE carregar_embargo(p_exe_id NUMBER, p_ver_id NUMBER, p_gravadas OUT NUMBER,
                                p_arq_id NUMBER DEFAULT NULL);
 
@@ -345,6 +350,41 @@ CREATE OR REPLACE PACKAGE BODY PKG_TRATAMENTO AS
                       p_ver_id, o.arq_bruto_id);
         p_gravadas := SQL%ROWCOUNT;
     END carregar_imovel;
+
+    PROCEDURE carregar_vegetacao(p_exe_id NUMBER, p_ver_id NUMBER,
+                                 p_gravadas OUT NUMBER, p_ignoradas OUT NUMBER,
+                                 p_arq_id NUMBER DEFAULT NULL) IS
+        v_candidatas NUMBER;
+    BEGIN
+        DELETE FROM VEGETACAO_NATIVA v
+         WHERE (p_arq_id IS NOT NULL AND v.arq_bruto_id = p_arq_id)
+            OR (p_arq_id IS NULL AND v.ver_id = p_ver_id);
+        INSERT INTO VEGETACAO_NATIVA (arq_bruto_id, ver_id, veg_area_ha, veg_geometria)
+        SELECT NVL(s.stg_arq_bruto_id, e.arq_bruto_id),
+               p_ver_id,
+               s.stg_area_ha,
+               s.stg_geometria
+          FROM (SELECT f.exe_id, f.stg_arq_bruto_id, f.stg_area_ha, f.stg_geometria,
+                       UPPER(TRANSLATE(JSON_VALUE(f.stg_atributos, '$.classe'),
+                                       'áàâãçéêíóôõúüÁÀÂÃÇÉÊÍÓÔÕÚÜ',
+                                       'aaaaceeiooouuAAAACEEIOOOUU')) AS classe
+                  FROM FEICAO_STAGING f
+                 WHERE f.exe_id = p_exe_id
+                   AND (p_arq_id IS NULL OR f.stg_arq_bruto_id = p_arq_id)
+                   AND f.stg_geometria IS NOT NULL) s
+          JOIN EXECUCAO_PIPELINE e ON e.exe_id = s.exe_id
+         WHERE s.classe IS NULL
+            OR s.classe IN ('VEGETACAO', 'VEGETACAO NATIVA', 'REMANESCENTE')
+            OR s.classe LIKE 'REMANESCENTE%VEGETACAO NATIVA%';
+        p_gravadas := SQL%ROWCOUNT;
+
+        SELECT COUNT(*) INTO v_candidatas
+          FROM FEICAO_STAGING s
+         WHERE s.exe_id = p_exe_id
+           AND (p_arq_id IS NULL OR s.stg_arq_bruto_id = p_arq_id)
+           AND s.stg_geometria IS NOT NULL;
+        p_ignoradas := v_candidatas - p_gravadas;
+    END carregar_vegetacao;
 
     PROCEDURE carregar_reserva_legal(p_exe_id NUMBER, p_ver_id NUMBER, p_gravadas OUT NUMBER,
                                      p_arq_id NUMBER DEFAULT NULL) IS
