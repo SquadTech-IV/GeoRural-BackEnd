@@ -25,9 +25,10 @@ public class CalculoOracle {
                 versaoId, execucaoId, regraId, escopo);
     }
 
-    public long calcularIcv(Long versaoId, Long execucaoId, Long regraCalculoId, Double minimoPct, String escopo) {
-        return comUmaSaida("PKG_CALCULO_ICV.calcular_icv(?, ?, ?, ?, ?, ?)",
-                versaoId, execucaoId, regraCalculoId, minimoPct, escopo);
+    public long calcularIcv(Long versaoId, Long execucaoId, Long regraId,
+                            double minimoPct, String escopo) {
+        return comUmaSaida("PKG_CALCULO.calcular_icv(?, ?, ?, ?, ?, ?)",
+                versaoId, execucaoId, regraId, minimoPct, escopo);
     }
 
     public long agregarMunicipio(Long versaoId, String sigla) {
