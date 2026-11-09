@@ -2,7 +2,6 @@
 -- GeoRural DataHub - PKG_CALCULO
 -- =====================================================================
 
-
 CREATE OR REPLACE PACKAGE PKG_CALCULO AS
 
     -- imoveis alcancados por esta rodada; escopo = IMOVEL, RESERVA_LEGAL ou EMBARGO
@@ -61,6 +60,8 @@ CREATE OR REPLACE PACKAGE BODY PKG_CALCULO AS
                               AND SDO_RELATE(b.emb_geometria, i.imo_geometria,
                                              'mask=ANYINTERACT') = 'TRUE');
         ELSIF p_escopo = 'VEGETACAO' THEN
+            -- imoveis tocados pela vegetacao que ENTROU nesta versao; o indice espacial
+            -- esta em VEGETACAO_NATIVA, por isso ela e o primeiro argumento do SDO_RELATE
             SELECT DISTINCT i.imo_id BULK COLLECT INTO v_ids
               FROM IMOVEL_RURAL i
              WHERE i.imo_geometria IS NOT NULL
@@ -252,6 +253,11 @@ CREATE OR REPLACE PACKAGE BODY PKG_CALCULO AS
 
     PROCEDURE agregar_municipio(p_ver_id NUMBER, p_sigla VARCHAR2, p_agregados OUT NUMBER) IS
         v_ind NUMBER := id_indicador(p_sigla);
+        v_boa VARCHAR2(20) := CASE p_sigla
+                                WHEN 'IAE' THEN 'SEM_EMBARGO'
+                                WHEN 'ICV' THEN 'CONSERVADO'
+                                ELSE 'CONFORME'
+                              END;
     BEGIN
         MERGE INTO RESULTADO_MUNICIPIO d
         USING (SELECT i.mun_id,
@@ -260,8 +266,9 @@ CREATE OR REPLACE PACKAGE BODY PKG_CALCULO AS
                       '{"imoveis":' || TO_CHAR(COUNT(*))
                         || ',"media_percentual":' || TO_CHAR(ROUND(AVG(r.rin_valor_percentual), 4))
                         || ',"soma_hectares":' || TO_CHAR(ROUND(NVL(SUM(r.rin_valor_hectares), 0), 4))
-                        || ',"conformes":' || TO_CHAR(SUM(CASE WHEN r.rin_situacao = 'CONFORME'
+                        || ',"conformes":' || TO_CHAR(SUM(CASE WHEN r.rin_situacao = v_boa
                                                                THEN 1 ELSE 0 END))
+                        || ',"situacao_boa":"' || v_boa || '"'
                         || '}' AS detalhes,
                       COUNT(*) AS imoveis
                  FROM RESULTADO_INDICADOR r
