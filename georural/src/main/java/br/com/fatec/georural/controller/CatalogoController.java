@@ -3,9 +3,13 @@ package br.com.fatec.georural.controller;
 import br.com.fatec.georural.dto.response.PaginaResponse;
 import br.com.fatec.georural.dto.response.catalogo.CatalogoDetalheResponse;
 import br.com.fatec.georural.dto.response.catalogo.CatalogoItemResponse;
+import br.com.fatec.georural.dto.response.catalogo.DadosConjuntoResponse;
 import br.com.fatec.georural.dto.response.catalogo.FiltrosCatalogoResponse;
+import br.com.fatec.georural.dto.response.catalogo.HistoricoVersoesResponse;
 import br.com.fatec.georural.service.catalogo.ConsultaCatalogoService;
+import br.com.fatec.georural.service.catalogo.ConsultaDadosService;
 import br.com.fatec.georural.service.catalogo.FiltroCatalogo;
+import br.com.fatec.georural.service.catalogo.FiltroDados;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -17,20 +21,25 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-// Consulta do catalogo de dados para integracao externa (US#17.01).
+// Consulta do catalogo, dos dados e das versoes para integracao externa (US#17.01 e US#17.02).
 @RestController
 @RequestMapping("/api/v1/catalogo")
 @Tag(
         name = "Catalogo de dados",
         description = "Consulta somente leitura dos conjuntos de dados da plataforma, "
-                + "com fonte, tipo de camada, versao vigente e acervo (US#17.01)"
+                + "com fonte, tipo de camada, versao vigente e acervo, mais os registros "
+                + "tratados e o historico de versoes de cada conjunto (US#17.01 e US#17.02)"
 )
 public class CatalogoController {
 
     private final ConsultaCatalogoService servico;
+    private final ConsultaDadosService dados;
 
-    public CatalogoController(ConsultaCatalogoService servico) {
+    public CatalogoController(
+            ConsultaCatalogoService servico,
+            ConsultaDadosService dados) {
         this.servico = servico;
+        this.dados = dados;
     }
 
     @GetMapping
@@ -125,5 +134,71 @@ public class CatalogoController {
             @PathVariable Long conjuntoId
     ) {
         return servico.detalhar(conjuntoId);
+    }
+
+    @GetMapping("/{conjuntoId}/dados")
+    @Operation(
+            summary = "Lista os registros tratados do conjunto",
+            description = "Devolve uma pagina dos registros ja tratados do conjunto, "
+                    + "com a descricao dos campos de cada camada. A geometria so vem "
+                    + "quando pedida, porque um poligono de imovel ocupa mais que a "
+                    + "pagina inteira de atributos."
+    )
+    public DadosConjuntoResponse dados(
+            @Parameter(description = "Identificador do conjunto de dados")
+            @PathVariable Long conjuntoId,
+
+            @Parameter(description = "Traz apenas os registros gravados por essa versao")
+            @RequestParam(required = false) Long versaoId,
+
+            @Parameter(description = "Traz apenas os registros desse imovel. "
+                    + "Vale para as camadas IMOVEL, APP e RESERVA_LEGAL")
+            @RequestParam(required = false) Long imovelId,
+
+            @Parameter(description = "Busca livre nos campos de texto da camada")
+            @RequestParam(required = false) String q,
+
+            @Parameter(description = "Inclui a geometria de cada registro")
+            @RequestParam(required = false) Boolean incluirGeometria,
+
+            @Parameter(description = "Formato da geometria: geojson (padrao) ou wkt")
+            @RequestParam(required = false) String formatoGeometria,
+
+            @Parameter(description = "Pagina, comecando em 0")
+            @RequestParam(required = false) Integer pagina,
+
+            @Parameter(description = "Itens por pagina. Ate 500 sem geometria, ate 50 com geometria")
+            @RequestParam(required = false) Integer tamanho
+    ) {
+        FiltroDados filtro = FiltroDados.montar(
+                versaoId,
+                imovelId,
+                q,
+                incluirGeometria,
+                pagina,
+                tamanho
+        );
+
+        return dados.dados(conjuntoId, formatoGeometria, filtro);
+    }
+
+    @GetMapping("/{conjuntoId}/versoes")
+    @Operation(
+            summary = "Historico de versoes do conjunto",
+            description = "Lista as versoes do conjunto da mais recente para a mais antiga, "
+                    + "com situacao, competencia, execucao que a gerou, justificativa e "
+                    + "quantos registros cada uma gravou."
+    )
+    public HistoricoVersoesResponse versoes(
+            @Parameter(description = "Identificador do conjunto de dados")
+            @PathVariable Long conjuntoId,
+
+            @Parameter(description = "Pagina, comecando em 0")
+            @RequestParam(required = false, defaultValue = "0") int pagina,
+
+            @Parameter(description = "Itens por pagina, de 1 a 200. Padrao 20")
+            @RequestParam(required = false, defaultValue = "20") int tamanho
+    ) {
+        return dados.versoes(conjuntoId, pagina, tamanho);
     }
 }
