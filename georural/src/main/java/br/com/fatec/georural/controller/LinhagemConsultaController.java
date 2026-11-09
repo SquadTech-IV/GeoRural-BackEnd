@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-// Consulta da linhagem dos dados (US#17.05).
+
 @RestController
 @RequestMapping("/api/v1/linhagem")
 @Tag(

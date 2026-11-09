@@ -141,19 +141,28 @@ public class ConsultaDadosService {
         );
     }
 
+    public static final int TAMANHO_PADRAO_VERSOES = 20;
+    public static final int TAMANHO_MAXIMO_VERSOES = 200;
+
     public HistoricoVersoesResponse versoes(
             Long conjuntoId,
-            int pagina,
-            int tamanho) {
+            Integer paginaPedida,
+            Integer tamanhoPedido) {
+        int pagina = paginaPedida == null ? 0 : paginaPedida;
+        int tamanho = tamanhoPedido == null
+                ? TAMANHO_PADRAO_VERSOES
+                : tamanhoPedido;
+
         if (pagina < 0) {
             throw new RequisicaoInvalidaException(
                     "A pagina nao pode ser negativa."
             );
         }
 
-        if (tamanho < 1 || tamanho > 200) {
+        if (tamanho < 1 || tamanho > TAMANHO_MAXIMO_VERSOES) {
             throw new RequisicaoInvalidaException(
-                    "O tamanho da pagina deve estar entre 1 e 200."
+                    "O tamanho da pagina deve estar entre 1 e "
+                            + TAMANHO_MAXIMO_VERSOES + "."
             );
         }
 

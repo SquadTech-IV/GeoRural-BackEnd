@@ -1,7 +1,7 @@
 package br.com.fatec.georural.service.qualidade;
 
+import br.com.fatec.georural.dto.response.ContagemResponse;
 import br.com.fatec.georural.dto.response.PaginaResponse;
-import br.com.fatec.georural.dto.response.qualidade.ContagemRotuloResponse;
 import br.com.fatec.georural.dto.response.qualidade.ItemQuarentenaResponse;
 import br.com.fatec.georural.dto.response.qualidade.RegraQualidadeResponse;
 import br.com.fatec.georural.dto.response.qualidade.RelatorioQualidadeDetalheResponse;
@@ -30,7 +30,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-// Consulta dos relatorios de qualidade dos dados (US#17.04).
 @Service
 @Transactional(readOnly = true)
 public class ConsultaQualidadeService {
@@ -404,7 +403,7 @@ public class ConsultaQualidadeService {
     }
 
     // Quebra da quarentena de uma validacao por uma expressao de agrupamento fixa.
-    private List<ContagemRotuloResponse> contagem(
+    private List<ContagemResponse> contagem(
             String expressao,
             Long validacaoId) {
         return jdbc.query(
@@ -414,7 +413,7 @@ public class ConsultaQualidadeService {
                         + " WHERE q.val_id = ?"
                         + " GROUP BY " + expressao
                         + " ORDER BY COUNT(*) DESC, 1",
-                (rs, linha) -> new ContagemRotuloResponse(
+                (rs, linha) -> new ContagemResponse(
                         rs.getString("rotulo"),
                         rs.getLong("quantidade")
                 ),

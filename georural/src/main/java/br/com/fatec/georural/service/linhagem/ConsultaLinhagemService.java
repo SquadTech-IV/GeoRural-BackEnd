@@ -37,7 +37,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
-// Consulta da linhagem dos dados, do resultado ate o arquivo de origem (US#17.05).
+
 @Service
 @Transactional(readOnly = true)
 public class ConsultaLinhagemService {

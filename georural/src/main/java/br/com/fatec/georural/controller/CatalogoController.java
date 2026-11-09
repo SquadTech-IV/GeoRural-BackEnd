@@ -194,10 +194,10 @@ public class CatalogoController {
             @PathVariable Long conjuntoId,
 
             @Parameter(description = "Pagina, comecando em 0")
-            @RequestParam(required = false, defaultValue = "0") int pagina,
+            @RequestParam(required = false) Integer pagina,
 
             @Parameter(description = "Itens por pagina, de 1 a 200. Padrao 20")
-            @RequestParam(required = false, defaultValue = "20") int tamanho
+            @RequestParam(required = false) Integer tamanho
     ) {
         return dados.versoes(conjuntoId, pagina, tamanho);
     }

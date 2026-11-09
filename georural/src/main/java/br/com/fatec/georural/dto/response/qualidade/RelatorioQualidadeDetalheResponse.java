@@ -1,5 +1,7 @@
 package br.com.fatec.georural.dto.response.qualidade;
 
+import br.com.fatec.georural.dto.response.ContagemResponse;
+
 import java.util.List;
 import java.util.Map;
 
@@ -7,9 +9,9 @@ import java.util.Map;
 public record RelatorioQualidadeDetalheResponse(
         RelatorioQualidadeResponse relatorio,
         List<ViolacaoRegraResponse> regrasVioladas,
-        List<ContagemRotuloResponse> porEtapa,
-        List<ContagemRotuloResponse> porSituacao,
-        List<ContagemRotuloResponse> porSeveridade,
+        List<ContagemResponse> porEtapa,
+        List<ContagemResponse> porSituacao,
+        List<ContagemResponse> porSeveridade,
         int tamanhoDaAmostra,
         List<ItemQuarentenaResponse> amostra,
         Map<String, String> links
