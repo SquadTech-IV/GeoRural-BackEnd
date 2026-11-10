@@ -74,6 +74,21 @@ public class TratamentoOracle {
                 execucaoId, versaoId, arquivoId);
     }
 
+    public Carga carregarVegetacao(Long execucaoId, Long versaoId, Long arquivoId) {
+        return jdbc.execute((java.sql.Connection conexao) -> {
+            try (CallableStatement cs = conexao.prepareCall(
+                    "BEGIN PKG_TRATAMENTO.carregar_vegetacao(?, ?, ?, ?, ?); END;")) {
+                cs.setLong(1, execucaoId);
+                cs.setLong(2, versaoId);
+                cs.registerOutParameter(3, Types.NUMERIC);
+                cs.registerOutParameter(4, Types.NUMERIC);
+                cs.setObject(5, arquivoId);
+                cs.execute();
+                return new Carga(cs.getLong(3), cs.getLong(4));
+            }
+        });
+    }
+
     public long carregarReservaLegal(Long execucaoId, Long versaoId, Long arquivoId) {
         return comSaidaNoMeio("PKG_TRATAMENTO.carregar_reserva_legal(?, ?, ?, ?)", 3,
                 execucaoId, versaoId, arquivoId);
@@ -158,6 +173,13 @@ public class TratamentoOracle {
 
         public long total() {
             return recortadas + dispensadas;
+        }
+    }
+
+    public record Carga(long gravadas, long ignoradas) {
+
+        public long total() {
+            return gravadas + ignoradas;
         }
     }
 
