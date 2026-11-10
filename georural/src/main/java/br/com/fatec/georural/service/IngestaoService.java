@@ -4,7 +4,10 @@ import br.com.fatec.georural.dto.response.ArquivoValidacaoResponse;
 import br.com.fatec.georural.entity.ArquivoBruto;
 import br.com.fatec.georural.entity.ConjuntoDados;
 import br.com.fatec.georural.exception.ArquivoDuplicadoException;
+import br.com.fatec.georural.exception.ConflitoException;
+import br.com.fatec.georural.exception.RecursoNaoEncontradoException;
 import br.com.fatec.georural.exception.RequisicaoInvalidaException;
+import br.com.fatec.georural.service.ingestao.SituacaoEnvio;
 import br.com.fatec.georural.service.storage.RecebimentoArquivoService;
 
 import lombok.extern.slf4j.Slf4j;
@@ -17,8 +20,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Ingestao por upload manual. Grava direto na zona BRUTA do data lake
- * (ARQUIVO_BRUTO + armazenamento de objetos) via RecebimentoArquivoService
+ * Ingestao por upload manual, um ou varios arquivos na mesma chamada. Grava direto na
+ * zona BRUTA do data lake (ARQUIVO_BRUTO + armazenamento de objetos) via
+ * RecebimentoArquivoService.
  */
 @Slf4j
 @Service
@@ -29,9 +33,9 @@ public class IngestaoService {
     private final RecebimentoArquivoService recebimentoService;
 
     public IngestaoService(
-        IdentificadorFormatoService identificador,
-        OrigemArquivoService origemService,
-        RecebimentoArquivoService recebimentoService
+            IdentificadorFormatoService identificador,
+            OrigemArquivoService origemService,
+            RecebimentoArquivoService recebimentoService
     ) {
         this.identificador = identificador;
         this.origemService = origemService;
@@ -39,61 +43,77 @@ public class IngestaoService {
     }
 
     public List<ArquivoValidacaoResponse> ingerir(List<MultipartFile> arquivos, Long conjuntoId) {
-        validarArquivos(arquivos);
+        if (arquivos == null || arquivos.isEmpty()) {
+            throw new RequisicaoInvalidaException("Envie pelo menos um arquivo.");
+        }
 
         ConjuntoDados conjunto = origemService.obterConjuntoParaUpload(conjuntoId);
         Long usuarioId = conjunto.getUsuario() != null ? conjunto.getUsuario().getId() : null;
         Long fonteId = conjunto.getFonte() != null ? conjunto.getFonte().getId() : null;
 
         List<ArquivoValidacaoResponse> resultados = new ArrayList<>();
-
         for (MultipartFile arquivo : arquivos) {
-            String extensao = identificador.extrairExtensao(arquivo);
-            String mime = identificador.detectarMimeType(arquivo);
-            boolean aceito = identificador.isFormatoAceito(arquivo);
-
-            Long arquivoId = null;
-            if (!aceito) {
-                // Recusa na validacao de formato/MIME, antes de tentar gravar na zona bruta.
-                log.warn("Upload recusado por formato: arquivo='{}', extensao='{}', mime detectado='{}'. "
-                                + "Extensoes aceitas: .zip (shapefile), .geojson, .gpkg, .csv, .tif/.tiff.",
-                        arquivo.getOriginalFilename(), extensao, mime);
-            } else {
-                try (InputStream in = arquivo.getInputStream()) {
-                    ArquivoBruto registro = recebimentoService.receber(
-                            conjuntoId, usuarioId, arquivo.getOriginalFilename(), in);
-                    arquivoId = registro.getId();
-                } catch (IOException e) {
-                    throw new IllegalStateException("Nao foi possivel ler o arquivo enviado.", e);
-                } catch (ArquivoDuplicadoException e) {
-                    // Conteudo ja recebido antes (arq_hash e unico global): NAO e erro de formato.
-                    aceito = false;
-                    log.warn("Upload recusado por DUPLICIDADE: arquivo='{}' ja foi recebido antes "
-                                    + "(mesmo conteudo/hash). {}",
-                            arquivo.getOriginalFilename(), e.getMessage());
-                } catch (RuntimeException e) {
-                    // Conjunto incompativel, responsavel ausente, falha ao gravar na zona bruta (OCI), etc.
-                    aceito = false;
-                    log.warn("Upload recusado ao receber na zona bruta: arquivo='{}', motivo={}: {}",
-                            arquivo.getOriginalFilename(), e.getClass().getSimpleName(), e.getMessage(), e);
-                }
-            }
-
-            resultados.add(new ArquivoValidacaoResponse(
-                    arquivo.getOriginalFilename(), extensao, mime, aceito,
-                    arquivoId, fonteId, conjunto.getId()));
+            resultados.add(receberUm(arquivo, conjuntoId, usuarioId, fonteId, conjunto.getId()));
         }
-
         return resultados;
     }
 
-    private void validarArquivos(List<MultipartFile> arquivos) {
-        if (arquivos == null || arquivos.isEmpty()) {
-            throw new RequisicaoInvalidaException("Envie pelo menos um arquivo.");
+    private ArquivoValidacaoResponse receberUm(MultipartFile arquivo, Long conjuntoId,
+                                               Long usuarioId, Long fonteId, Long conjuntoRespostaId) {
+        if (arquivo == null || arquivo.isEmpty()) {
+            String nome = arquivo != null ? arquivo.getOriginalFilename() : null;
+            log.warn("Upload recusado: '{}' chegou vazio.", nome);
+            return ArquivoValidacaoResponse.recusado(nome, null, null, fonteId, conjuntoRespostaId,
+                    SituacaoEnvio.ARQUIVO_VAZIO,
+                    "O arquivo chegou sem conteudo. Confira se ele nao esta corrompido e envie de novo.");
         }
-        boolean possuiVazio = arquivos.stream().anyMatch(a -> a == null || a.isEmpty());
-        if (possuiVazio) {
-            throw new RequisicaoInvalidaException("A lista contém um arquivo vazio.");
+
+        String nome = arquivo.getOriginalFilename();
+        String extensao = identificador.extrairExtensao(arquivo);
+        String mime = identificador.detectarMimeType(arquivo);
+
+        if (!identificador.isFormatoAceito(arquivo)) {
+            String motivo = "Formato nao aceito (extensao '" + extensao + "', tipo detectado '" + mime
+                    + "'). Aceitos: .zip com shapefile, .geojson, .gpkg, .csv e .tif/.tiff.";
+            log.warn("Upload recusado por formato: arquivo='{}'. {}", nome, motivo);
+            return ArquivoValidacaoResponse.recusado(nome, extensao, mime, fonteId,
+                    conjuntoRespostaId, SituacaoEnvio.FORMATO_RECUSADO, motivo);
         }
+
+        try (InputStream in = arquivo.getInputStream()) {
+            ArquivoBruto registro = recebimentoService.receber(conjuntoId, usuarioId, nome, in);
+            return ArquivoValidacaoResponse.aceito(nome, extensao, mime, registro.getId(),
+                    fonteId, conjuntoRespostaId);
+
+        } catch (ArquivoDuplicadoException e) {
+            // Nao e erro: o conteudo ja esta no acervo nesta competencia. Quem enviou nao
+            // precisa fazer nada, e por isso DUPLICADO e um desfecho proprio.
+            String motivo = e.getArquivoExistenteId() != null
+                    ? "Este conteudo ja esta no acervo nesta competencia (arquivo "
+                    + e.getArquivoExistenteId() + "). Nao foi preciso receber de novo."
+                    : "Este conteudo ja esta no acervo nesta competencia. Nao foi preciso receber de novo.";
+            log.info("Upload de '{}' dispensado por duplicidade. {}", nome, motivo);
+            return ArquivoValidacaoResponse.duplicado(nome, extensao, mime, fonteId,
+                    conjuntoRespostaId, e.getArquivoExistenteId(), motivo);
+
+        } catch (RequisicaoInvalidaException | RecursoNaoEncontradoException | ConflitoException e) {
+            // regra de cadastro: conjunto incompativel, responsavel inexistente, nome invalido
+            log.warn("Upload de '{}' recusado por regra: {}", nome, e.getMessage());
+            return ArquivoValidacaoResponse.recusado(nome, extensao, mime, fonteId,
+                    conjuntoRespostaId, SituacaoEnvio.RECUSADO, e.getMessage());
+
+        } catch (IOException | RuntimeException e) {
+            // inesperado: leitura do multipart, gravacao na OCI, banco. Vale tentar de novo.
+            log.error("Falha ao receber '{}' na zona bruta: {}: {}",
+                    nome, e.getClass().getSimpleName(), e.getMessage(), e);
+            return ArquivoValidacaoResponse.recusado(nome, extensao, mime, fonteId,
+                    conjuntoRespostaId, SituacaoEnvio.ERRO,
+                    "Falha ao gravar na zona bruta: " + mensagemDe(e) + ". Tente enviar de novo.");
+        }
+    }
+
+    private static String mensagemDe(Exception e) {
+        String m = e.getMessage();
+        return m == null || m.isBlank() ? e.getClass().getSimpleName() : m;
     }
 }

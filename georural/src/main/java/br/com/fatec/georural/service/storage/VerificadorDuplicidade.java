@@ -43,15 +43,16 @@ public class VerificadorDuplicidade {
         if (estaAbandonado(existente.get())) {
             return existente;
         }
-        throw new ArquivoDuplicadoException(conjuntoId, hashNormalizado);
+        throw new ArquivoDuplicadoException(conjuntoId, hashNormalizado, existente.get().getId());
     }
+
 
     private void avisarSeConteudoRepetidoEmOutraCompetencia(Long conjuntoId, String competencia, String hash) {
         var outras = repositorio.buscarMesmoConteudoNoConjunto(conjuntoId, hash);
         if (!outras.isEmpty()) {
             log.info("Conteudo identico ja existe no conjunto {} nas competencias {}. "
-                    + "Entrando assim mesmo como competencia {} -- conteudo repetido entre periodos "
-                    + "costuma indicar que a fonte nao atualizou os dados.",
+                            + "Entrando assim mesmo como competencia {} -- conteudo repetido entre periodos "
+                            + "costuma indicar que a fonte nao atualizou os dados.",
                     conjuntoId,
                     outras.stream().map(ArquivoBruto::getCompetencia).distinct().toList(),
                     competencia);
