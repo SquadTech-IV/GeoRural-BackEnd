@@ -2,6 +2,7 @@ package br.com.fatec.georural.controller;
 
 import br.com.fatec.georural.dto.response.ArquivoValidacaoResponse;
 import br.com.fatec.georural.dto.response.ErroResponse;
+import br.com.fatec.georural.dto.response.ingestao.EnvioLoteResponse;
 import br.com.fatec.georural.service.IngestaoService;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -29,22 +30,16 @@ public class IngestaoController {
         this.service = service;
     }
 
-    // Os parametros sao opcionais no Spring de proposito, como no
-    // RecebimentoArquivoController: a ausencia e tratada no servico, com mensagem
-    // propria, em vez de cair no erro generico do Spring.
+    // parametros opcionais no Spring de proposito: a ausencia cai na mensagem do servico
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @Operation(
-            summary = "Envia um ou varios arquivos para a zona bruta",
-            description = "Aceita varios arquivos na mesma chamada e devolve um resultado por "
-                    + "arquivo, com o desfecho e o motivo. Um arquivo recusado nao impede os "
-                    + "outros de entrarem. Formatos aceitos: .zip com shapefile, .geojson, "
-                    + ".gpkg, .csv e .tif/.tiff.")
+    @Operation(summary = "Envia arquivos e devolve a lista de resultados",
+            description = "Resposta em lista, um item por arquivo. Mantida como estava para nao "
+                    + "quebrar a tela de upload atual; para totais, use POST /api/ingestao/lote.")
     @ApiResponses({
-            @ApiResponse(responseCode = "200",
-                    description = "Lote processado; confira o desfecho de cada arquivo na resposta"),
-            @ApiResponse(responseCode = "400", description = "Lista vazia ou competencia invalida",
+            @ApiResponse(responseCode = "200", description = "Confira o desfecho de cada arquivo"),
+            @ApiResponse(responseCode = "400", description = "Lista vazia",
                     content = @Content(schema = @Schema(implementation = ErroResponse.class))),
-            @ApiResponse(responseCode = "404", description = "Conjunto de dados nao encontrado",
+            @ApiResponse(responseCode = "404", description = "Conjunto nao encontrado",
                     content = @Content(schema = @Schema(implementation = ErroResponse.class))),
             @ApiResponse(responseCode = "409", description = "Conjunto arquivado ou que nao aceita upload",
                     content = @Content(schema = @Schema(implementation = ErroResponse.class)))
@@ -52,20 +47,41 @@ public class IngestaoController {
     public ResponseEntity<List<ArquivoValidacaoResponse>> receberArquivos(
             @Parameter(description = "Arquivos a enviar; pode ser mais de um")
             @RequestParam(value = "files", required = false) List<MultipartFile> arquivos,
-
             @Parameter(description = "Conjunto de dados de destino")
             @RequestParam(value = "conjuntoId", required = false) Long conjuntoId,
-
-            @Parameter(description = "Periodo a que os dados se referem: 2026, 2026-11, 11/2026. "
-                    + "Faz parte da IDENTIDADE do arquivo, junto com o conjunto e o hash. "
-                    + "Vale para todos os arquivos desta chamada. Omitido, cada arquivo tem a "
-                    + "competencia deduzida do proprio nome e, em ultimo caso, do mes corrente.")
+            @Parameter(description = "Periodo dos dados: 2026, 2026-11 ou 11/2026")
             @RequestParam(value = "competencia", required = false) String competencia,
-
-            @Parameter(description = "Responsavel pelo envio (provisorio, sem autenticacao). "
-                    + "Omitido, usa o responsavel cadastrado no conjunto.")
+            @Parameter(description = "Responsavel pelo envio; omitido, usa o do conjunto")
             @RequestParam(value = "usuId", required = false) Long usuId
     ) {
         return ResponseEntity.ok(service.ingerir(arquivos, conjuntoId, competencia, usuId));
+    }
+
+    // mesmo envio, com totais e id de correlacao
+    @PostMapping(value = "/lote", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "Envia arquivos em lote e devolve o resumo",
+            description = "Devolve totais (enviados, aceitos, duplicados, recusados, bytes), "
+                    + "duracao, id de correlacao do envio e a lista de itens.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Lote processado",
+                    content = @Content(schema = @Schema(implementation = EnvioLoteResponse.class))),
+            @ApiResponse(responseCode = "400", description = "Lista vazia",
+                    content = @Content(schema = @Schema(implementation = ErroResponse.class))),
+            @ApiResponse(responseCode = "404", description = "Conjunto nao encontrado",
+                    content = @Content(schema = @Schema(implementation = ErroResponse.class))),
+            @ApiResponse(responseCode = "409", description = "Conjunto arquivado ou que nao aceita upload",
+                    content = @Content(schema = @Schema(implementation = ErroResponse.class)))
+    })
+    public ResponseEntity<EnvioLoteResponse> receberLote(
+            @Parameter(description = "Arquivos a enviar; pode ser mais de um")
+            @RequestParam(value = "files", required = false) List<MultipartFile> arquivos,
+            @Parameter(description = "Conjunto de dados de destino")
+            @RequestParam(value = "conjuntoId", required = false) Long conjuntoId,
+            @Parameter(description = "Periodo dos dados: 2026, 2026-11 ou 11/2026")
+            @RequestParam(value = "competencia", required = false) String competencia,
+            @Parameter(description = "Responsavel pelo envio; omitido, usa o do conjunto")
+            @RequestParam(value = "usuId", required = false) Long usuId
+    ) {
+        return ResponseEntity.ok(service.ingerirLote(arquivos, conjuntoId, competencia, usuId));
     }
 }

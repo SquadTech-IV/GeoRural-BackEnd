@@ -1,6 +1,7 @@
 package br.com.fatec.georural.service;
 
 import br.com.fatec.georural.dto.response.ArquivoValidacaoResponse;
+import br.com.fatec.georural.dto.response.ingestao.EnvioLoteResponse;
 import br.com.fatec.georural.entity.ArquivoBruto;
 import br.com.fatec.georural.entity.ConjuntoDados;
 import br.com.fatec.georural.exception.ArquivoDuplicadoException;
@@ -17,15 +18,13 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import java.util.regex.Pattern;
 
-/**
- * Ingestao por upload manual, um ou varios arquivos na mesma chamada. Grava direto na
- * zona BRUTA do data lake (ARQUIVO_BRUTO + armazenamento de objetos) via
- * RecebimentoArquivoService.
- */
+// upload manual de um ou varios arquivos direto na zona BRUTA do data lake
 @Slf4j
 @Service
 public class IngestaoService {
@@ -50,26 +49,20 @@ public class IngestaoService {
         this.resolvedorCompetencia = resolvedorCompetencia;
     }
 
-    /** Mantido para quem chamava a versao de dois argumentos. */
+    // versao antiga, de dois argumentos
     public List<ArquivoValidacaoResponse> ingerir(List<MultipartFile> arquivos, Long conjuntoId) {
         return ingerir(arquivos, conjuntoId, null, null);
     }
 
-    /**
-     * @param competencia periodo a que TODOS os arquivos desta chamada se referem.
-     *        Nulo ou vazio: cada arquivo tem a sua deduzida do proprio nome. Arquivos de
-     *        competencias diferentes pedem chamadas diferentes -- de proposito, porque a
-     *        competencia errada parte o acervo em dois sem avisar ninguem.
-     * @param usuId responsavel pelo envio. Nulo: usa o responsavel do conjunto.
-     */
+    // competencia vale para todos os arquivos da chamada; nula, cada um deduz do nome.
+    // usuId nulo usa o responsavel do conjunto.
     public List<ArquivoValidacaoResponse> ingerir(List<MultipartFile> arquivos, Long conjuntoId,
                                                   String competencia, Long usuId) {
         if (arquivos == null || arquivos.isEmpty()) {
             throw new RequisicaoInvalidaException("Envie pelo menos um arquivo.");
         }
 
-        // o conjunto e condicao do lote inteiro, nao de um arquivo: se ele nao serve,
-        // nenhum arquivo entraria, e recusar a requisicao toda e a resposta honesta
+        // o conjunto vale para o lote inteiro: nao servindo, a requisicao toda e recusada
         ConjuntoDados conjunto = origemService.obterConjuntoParaUpload(conjuntoId);
         Long fonteId = conjunto.getFonte() != null ? conjunto.getFonte().getId() : null;
 
@@ -78,12 +71,12 @@ public class IngestaoService {
                 ? usuId
                 : (conjunto.getUsuario() != null ? conjunto.getUsuario().getId() : null);
 
-        // "11/2026" e "2026-11" sao a mesma competencia: normaliza uma vez, aqui, para a
-        // resposta mostrar a forma que de fato vai para o banco
+        // normaliza uma vez: "11/2026" e "2026-11" sao a mesma competencia
         String competenciaInformada = informada(competencia)
                 ? resolvedorCompetencia.resolver(competencia, null)
                 : null;
         if (competenciaInformada != null) {
+            // valor fora do padrao entra (a coluna e texto livre), mas fica o aviso
             if (!FORMA_CANONICA.matcher(competenciaInformada).matches()) {
                 log.warn("Competencia informada '{}' nao tem a forma yyyy nem yyyy-MM. Ela vai "
                                 + "para o banco assim mesmo, mas confira se nao foi erro de digitacao: "
@@ -103,6 +96,45 @@ public class IngestaoService {
                     conjunto.getId(), competenciaInformada));
         }
         return resultados;
+    }
+
+    // mesmo envio da ingerir, com totais e um id de correlacao para a tela e para o log
+    public EnvioLoteResponse ingerirLote(List<MultipartFile> arquivos, Long conjuntoId,
+                                         String competencia, Long usuId) {
+        String envioId = UUID.randomUUID().toString();
+        LocalDateTime inicio = LocalDateTime.now();
+
+        List<ArquivoValidacaoResponse> itens = ingerir(arquivos, conjuntoId, competencia, usuId);
+
+        // itens sai na mesma ordem de arquivos, um para um: da para casar pelo indice
+        long bytesEnviados = 0;
+        long bytesAceitos = 0;
+        for (int i = 0; i < arquivos.size(); i++) {
+            MultipartFile arquivo = arquivos.get(i);
+            long tamanho = arquivo != null ? arquivo.getSize() : 0;
+            bytesEnviados += tamanho;
+            if (i < itens.size() && itens.get(i).aceito()) {
+                bytesAceitos += tamanho;
+            }
+        }
+
+        // o envio so tem uma competencia quando todos os arquivos ficaram na mesma
+        List<String> competencias = itens.stream()
+                .map(ArquivoValidacaoResponse::competencia)
+                .filter(c -> c != null && !c.isBlank())
+                .distinct()
+                .toList();
+        String competenciaUsada = competencias.size() == 1 ? competencias.get(0) : null;
+
+        EnvioLoteResponse resposta = EnvioLoteResponse.de(envioId, inicio, conjuntoId,
+                competenciaUsada, itens, bytesEnviados, bytesAceitos);
+
+        log.info("Envio {} no conjunto {}: {} enviado(s), {} aceito(s), {} duplicado(s), "
+                        + "{} recusado(s), {} byte(s) em {}s.",
+                envioId, conjuntoId, resposta.totais().enviados(), resposta.totais().aceitos(),
+                resposta.totais().duplicados(), resposta.totais().recusados(),
+                bytesEnviados, resposta.duracaoSegundos());
+        return resposta;
     }
 
     private ArquivoValidacaoResponse receberUm(MultipartFile arquivo, Long conjuntoId,
@@ -132,14 +164,12 @@ public class IngestaoService {
         try (InputStream in = arquivo.getInputStream()) {
             ArquivoBruto registro =
                     recebimentoService.receber(conjuntoId, usuarioId, nome, in, competencia);
-            // a competencia da resposta vem do registro: e a que de fato ficou gravada,
-            // inclusive quando foi deduzida do nome do arquivo
+            // competencia lida do registro: e a que ficou gravada
             return ArquivoValidacaoResponse.aceito(nome, extensao, mime, registro.getId(),
                     fonteId, conjuntoRespostaId, registro.getCompetencia());
 
         } catch (ArquivoDuplicadoException e) {
-            // Nao e erro: o conteudo ja esta no acervo nesta competencia. Quem enviou nao
-            // precisa fazer nada, e por isso DUPLICADO e um desfecho proprio.
+            // conteudo ja no acervo nesta competencia: desfecho proprio, nao e falha
             String motivo = e.getArquivoExistenteId() != null
                     ? "Este conteudo ja esta no acervo nesta competencia (arquivo "
                     + e.getArquivoExistenteId() + "). Nao foi preciso receber de novo."
@@ -149,15 +179,13 @@ public class IngestaoService {
                     conjuntoRespostaId, e.getArquivoExistenteId(), motivo, competencia);
 
         } catch (RequisicaoInvalidaException | RecursoNaoEncontradoException | ConflitoException e) {
-            // regra de cadastro: conjunto incompativel, responsavel inexistente, nome invalido.
-            // O responsavel e conferido pelo receber() antes de qualquer leitura do arquivo,
-            // entao um usuId errado recusa rapido, sem gastar o upload.
+            // regra de cadastro: conjunto incompativel, responsavel inexistente, nome invalido
             log.warn("Upload de '{}' recusado por regra: {}", nome, e.getMessage());
             return ArquivoValidacaoResponse.recusado(nome, extensao, mime, fonteId,
                     conjuntoRespostaId, SituacaoEnvio.RECUSADO, e.getMessage(), competencia);
 
         } catch (IOException | RuntimeException e) {
-            // inesperado: leitura do multipart, gravacao na OCI, banco. Vale tentar de novo.
+            // inesperado: multipart, OCI ou banco
             log.error("Falha ao receber '{}' na zona bruta: {}: {}",
                     nome, e.getClass().getSimpleName(), e.getMessage(), e);
             return ArquivoValidacaoResponse.recusado(nome, extensao, mime, fonteId,
