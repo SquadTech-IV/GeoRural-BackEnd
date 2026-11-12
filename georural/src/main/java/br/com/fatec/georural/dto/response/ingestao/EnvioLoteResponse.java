@@ -15,7 +15,9 @@ public record EnvioLoteResponse(
         Long conjuntoId,
         String competencia,
         Totais totais,
-        List<ArquivoValidacaoResponse> itens
+        List<ArquivoValidacaoResponse> itens,
+        // preenchido so quando o envio pediu para processar na mesma chamada
+        ProcessamentoDoEnvioResponse processamento
 ) {
 
     // contagens do envio, para a tela nao somar na mao
@@ -45,7 +47,14 @@ public record EnvioLoteResponse(
                 conjuntoId,
                 competencia,
                 new Totais(itens.size(), aceitos, duplicados, recusados, bytesEnviados, bytesAceitos),
-                itens);
+                itens,
+                null);
+    }
+
+    // copia com o resultado do pipeline anexado
+    public EnvioLoteResponse comProcessamento(ProcessamentoDoEnvioResponse processamento) {
+        return new EnvioLoteResponse(envioId, recebidoEm, duracaoSegundos, conjuntoId,
+                competencia, totais, itens, processamento);
     }
 
     // nenhum arquivo entrou

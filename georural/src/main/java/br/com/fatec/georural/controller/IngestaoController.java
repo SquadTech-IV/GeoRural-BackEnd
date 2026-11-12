@@ -3,6 +3,7 @@ package br.com.fatec.georural.controller;
 import br.com.fatec.georural.dto.response.ArquivoValidacaoResponse;
 import br.com.fatec.georural.dto.response.ErroResponse;
 import br.com.fatec.georural.dto.response.ingestao.EnvioLoteResponse;
+import br.com.fatec.georural.service.ingestao.ProcessamentoPosEnvioService;
 import br.com.fatec.georural.service.IngestaoService;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -25,9 +26,12 @@ import java.util.List;
 public class IngestaoController {
 
     private final IngestaoService service;
+    private final ProcessamentoPosEnvioService processamentoPosEnvio;
 
-    public IngestaoController(IngestaoService service) {
+    public IngestaoController(IngestaoService service,
+                              ProcessamentoPosEnvioService processamentoPosEnvio) {
         this.service = service;
+        this.processamentoPosEnvio = processamentoPosEnvio;
     }
 
     // parametros opcionais no Spring de proposito: a ausencia cai na mensagem do servico
@@ -61,7 +65,9 @@ public class IngestaoController {
     @PostMapping(value = "/lote", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @Operation(summary = "Envia arquivos em lote e devolve o resumo",
             description = "Devolve totais (enviados, aceitos, duplicados, recusados, bytes), "
-                    + "duracao, id de correlacao do envio e a lista de itens.")
+                    + "duracao, id de correlacao do envio e a lista de itens. Com "
+                    + "processarAposEnvio=true, roda o pipeline nos aceitos antes de responder "
+                    + "e a resposta espera o processamento terminar.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Lote processado",
                     content = @Content(schema = @Schema(implementation = EnvioLoteResponse.class))),
@@ -80,8 +86,16 @@ public class IngestaoController {
             @Parameter(description = "Periodo dos dados: 2026, 2026-11 ou 11/2026")
             @RequestParam(value = "competencia", required = false) String competencia,
             @Parameter(description = "Responsavel pelo envio; omitido, usa o do conjunto")
-            @RequestParam(value = "usuId", required = false) Long usuId
+            @RequestParam(value = "usuId", required = false) Long usuId,
+            @Parameter(description = "Roda o pipeline nos arquivos aceitos antes de responder. "
+                    + "A requisicao fica aberta ate o processamento terminar.")
+            @RequestParam(value = "processarAposEnvio", required = false, defaultValue = "false")
+            boolean processarAposEnvio
     ) {
-        return ResponseEntity.ok(service.ingerirLote(arquivos, conjuntoId, competencia, usuId));
+        EnvioLoteResponse envio = service.ingerirLote(arquivos, conjuntoId, competencia, usuId);
+        if (processarAposEnvio) {
+            envio = envio.comProcessamento(processamentoPosEnvio.rodar(envio));
+        }
+        return ResponseEntity.ok(envio);
     }
 }
