@@ -36,7 +36,8 @@ public class ProcessamentoPosEnvioService {
         // false no pararNoPrimeiroErro: um arquivo que falha nao impede o outro de rodar,
         // igual ao criterio do envio
         LoteProcessamentoService.Resultado resultado = lote.processar(
-                envio.conjuntoId(), null, envio.competencia(), aceitos, false, null);
+                envio.conjuntoId(), envio.responsavelId(), envio.competencia(),
+                aceitos, false, null);
 
         List<ProcessamentoDoEnvioResponse.Item> itens = resultado.arquivos().stream()
                 .map(a -> new ProcessamentoDoEnvioResponse.Item(

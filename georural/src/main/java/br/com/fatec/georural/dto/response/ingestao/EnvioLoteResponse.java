@@ -13,6 +13,7 @@ public record EnvioLoteResponse(
         LocalDateTime recebidoEm,
         long duracaoSegundos,
         Long conjuntoId,
+        Long responsavelId,
         String competencia,
         Totais totais,
         List<ArquivoValidacaoResponse> itens,
@@ -31,20 +32,24 @@ public record EnvioLoteResponse(
     ) {
     }
 
-    // monta os totais contando os itens
+    // monta os totais a partir dos itens
     public static EnvioLoteResponse de(String envioId, LocalDateTime inicio, Long conjuntoId,
-                                       String competencia, List<ArquivoValidacaoResponse> itens,
-                                       long bytesEnviados, long bytesAceitos) {
+                                       Long responsavelId, String competencia,
+                                       List<ArquivoValidacaoResponse> itens) {
         int aceitos = (int) itens.stream().filter(i -> i.situacao() == SituacaoEnvio.ACEITO).count();
         int duplicados = (int) itens.stream().filter(i -> i.situacao() == SituacaoEnvio.DUPLICADO).count();
         int recusados = itens.size() - aceitos - duplicados;
 
-        LocalDateTime fim = LocalDateTime.now();
+        long bytesEnviados = itens.stream().mapToLong(ArquivoValidacaoResponse::tamanhoBytes).sum();
+        long bytesAceitos = itens.stream().filter(ArquivoValidacaoResponse::aceito)
+                .mapToLong(ArquivoValidacaoResponse::tamanhoBytes).sum();
+
         return new EnvioLoteResponse(
                 envioId,
                 inicio,
-                Duration.between(inicio, fim).toSeconds(),
+                Duration.between(inicio, LocalDateTime.now()).toSeconds(),
                 conjuntoId,
+                responsavelId,
                 competencia,
                 new Totais(itens.size(), aceitos, duplicados, recusados, bytesEnviados, bytesAceitos),
                 itens,
@@ -54,7 +59,7 @@ public record EnvioLoteResponse(
     // copia com o resultado do pipeline anexado
     public EnvioLoteResponse comProcessamento(ProcessamentoDoEnvioResponse processamento) {
         return new EnvioLoteResponse(envioId, recebidoEm, duracaoSegundos, conjuntoId,
-                competencia, totais, itens, processamento);
+                responsavelId, competencia, totais, itens, processamento);
     }
 
     // nenhum arquivo entrou
@@ -62,7 +67,7 @@ public record EnvioLoteResponse(
         return totais.aceitos() == 0;
     }
 
-    // algum arquivo pede acao de quem enviou (duplicado nao conta)
+    // algum arquivo pede acao de quem enviou
     public boolean temProblema() {
         return totais.recusados() > 0;
     }

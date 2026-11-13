@@ -2,9 +2,8 @@ package br.com.fatec.georural.dto.response;
 
 import br.com.fatec.georural.service.ingestao.SituacaoEnvio;
 
-/**
- * Resultado de UM arquivo dentro de um envio.
- */
+// resultado de um arquivo dentro de um envio.
+// aceito continua no contrato porque o front atual decide por ele.
 public record ArquivoValidacaoResponse(
         String nomeArquivo,
         String extensao,
@@ -15,15 +14,11 @@ public record ArquivoValidacaoResponse(
         Long conjuntoId,
         SituacaoEnvio situacao,
         String motivo,
-        /** Quando situacao = DUPLICADO: o arquivo que ja estava no acervo. */
+        // quando situacao = DUPLICADO: o arquivo que ja estava no acervo
         Long arquivoExistenteId,
-        /**
-         * Competencia com que o arquivo entrou -- parte da identidade dele, junto com o
-         * conjunto e o hash. Vem preenchida quando se sabe: a informada na chamada (em
-         * todos os itens) ou a que ficou gravada no registro (nos aceitos). Nula quando o
-         * arquivo foi recusado antes de ter competencia resolvida.
-         */
-        String competencia
+        // competencia com que o arquivo entrou; nula quando nao chegou a ser resolvida
+        String competencia,
+        long tamanhoBytes
 ) {
 
     public ArquivoValidacaoResponse(
@@ -33,34 +28,34 @@ public record ArquivoValidacaoResponse(
             boolean aceito
     ) {
         this(nomeArquivo, extensao, mimeDetectado, aceito, null, null, null,
-                aceito ? SituacaoEnvio.ACEITO : SituacaoEnvio.RECUSADO, null, null, null);
+                aceito ? SituacaoEnvio.ACEITO : SituacaoEnvio.RECUSADO, null, null, null, 0L);
     }
 
     public static ArquivoValidacaoResponse aceito(String nome, String extensao, String mime,
                                                   Long arquivoId, Long fonteId, Long conjuntoId,
-                                                  String competencia) {
+                                                  String competencia, long tamanhoBytes) {
         return new ArquivoValidacaoResponse(nome, extensao, mime, true, arquivoId, fonteId,
                 conjuntoId, SituacaoEnvio.ACEITO, SituacaoEnvio.ACEITO.descricaoPadrao(), null,
-                competencia);
+                competencia, tamanhoBytes);
     }
 
     public static ArquivoValidacaoResponse duplicado(String nome, String extensao, String mime,
                                                      Long fonteId, Long conjuntoId,
                                                      Long arquivoExistenteId, String motivo,
-                                                     String competencia) {
+                                                     String competencia, long tamanhoBytes) {
         return new ArquivoValidacaoResponse(nome, extensao, mime, false, null, fonteId,
                 conjuntoId, SituacaoEnvio.DUPLICADO,
                 motivo != null ? motivo : SituacaoEnvio.DUPLICADO.descricaoPadrao(),
-                arquivoExistenteId, competencia);
+                arquivoExistenteId, competencia, tamanhoBytes);
     }
 
     public static ArquivoValidacaoResponse recusado(String nome, String extensao, String mime,
                                                     Long fonteId, Long conjuntoId,
                                                     SituacaoEnvio situacao, String motivo,
-                                                    String competencia) {
+                                                    String competencia, long tamanhoBytes) {
         return new ArquivoValidacaoResponse(nome, extensao, mime, false, null, fonteId,
                 conjuntoId, situacao,
                 motivo != null && !motivo.isBlank() ? motivo : situacao.descricaoPadrao(), null,
-                competencia);
+                competencia, tamanhoBytes);
     }
 }

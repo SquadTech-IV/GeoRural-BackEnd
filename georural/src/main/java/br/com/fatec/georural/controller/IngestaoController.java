@@ -34,11 +34,15 @@ public class IngestaoController {
         this.processamentoPosEnvio = processamentoPosEnvio;
     }
 
+    // rota antiga, mantida pela tela atual; a nova e a /lote
     // parametros opcionais no Spring de proposito: a ausencia cai na mensagem do servico
+    @Deprecated
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @Operation(summary = "Envia arquivos e devolve a lista de resultados",
-            description = "Resposta em lista, um item por arquivo. Mantida como estava para nao "
-                    + "quebrar a tela de upload atual; para totais, use POST /api/ingestao/lote.")
+            deprecated = true,
+            description = "Resposta em lista, um item por arquivo. Mantida para nao quebrar a tela "
+                    + "de upload atual, que valida resposta de um item so. Use POST "
+                    + "/api/ingestao/lote, que devolve os mesmos itens com totais.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Confira o desfecho de cada arquivo"),
             @ApiResponse(responseCode = "400", description = "Lista vazia",

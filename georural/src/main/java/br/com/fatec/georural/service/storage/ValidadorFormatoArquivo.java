@@ -16,6 +16,7 @@ import java.util.zip.ZipFile;
 
 import org.springframework.stereotype.Component;
 
+import br.com.fatec.georural.exception.FormatoInvalidoException;
 import br.com.fatec.georural.exception.RequisicaoInvalidaException;
 
 /**
@@ -59,7 +60,7 @@ public class ValidadorFormatoArquivo {
      *
      * @param nomeArquivo nome do arquivo original
      * @return código do formato para persistência (SHP, GEOJSON, GPKG, CSV ou TIF)
-     * @throws RequisicaoInvalidaException se a extensão não for aceita ou for .json
+     * @throws FormatoInvalidoException se a extensão não for aceita ou for .json
      */
     public String validarExtensao(String nomeArquivo) {
         if (nomeArquivo == null || nomeArquivo.isBlank()) {
@@ -67,7 +68,7 @@ public class ValidadorFormatoArquivo {
         }
         String nomeLower = nomeArquivo.toLowerCase(Locale.ROOT);
         if (nomeLower.endsWith(".json")) {
-            throw new RequisicaoInvalidaException(
+            throw new FormatoInvalidoException(
                     "Formato .json não é aceito. Para arquivos GeoJSON utilize a extensão .geojson.");
         }
         if (nomeLower.endsWith(".zip")) {
@@ -85,7 +86,7 @@ public class ValidadorFormatoArquivo {
         if (nomeLower.endsWith(".tif") || nomeLower.endsWith(".tiff")) {
             return FORMATO_TIF;
         }
-        throw new RequisicaoInvalidaException(
+        throw new FormatoInvalidoException(
                 "Extensão de arquivo não suportada para o arquivo: " + nomeArquivo
                         + ". Extensões aceitas: .zip, .geojson, .gpkg, .csv, .tif, .tiff.");
     }
@@ -95,7 +96,7 @@ public class ValidadorFormatoArquivo {
      *
      * @param arquivo arquivo salvo temporariamente em disco
      * @param formato código do formato retornado por {@link #validarExtensao(String)}
-     * @throws RequisicaoInvalidaException se o conteúdo violar a assinatura esperada
+     * @throws FormatoInvalidoException se o conteúdo violar a assinatura esperada
      */
     public void validarConteudo(Path arquivo, String formato) {
         if (arquivo == null || !Files.exists(arquivo)) {
@@ -108,7 +109,7 @@ public class ValidadorFormatoArquivo {
             case FORMATO_TIF -> validarTiff(arquivo);
             case FORMATO_GEOJSON -> validarGeoJson(arquivo);
             case FORMATO_CSV -> validarCsv(arquivo);
-            default -> throw new RequisicaoInvalidaException("Formato desconhecido: " + formato);
+            default -> throw new FormatoInvalidoException("Formato desconhecido: " + formato);
         }
     }
 
@@ -116,11 +117,11 @@ public class ValidadorFormatoArquivo {
         try (InputStream is = Files.newInputStream(arquivo)) {
             byte[] magic = is.readNBytes(4);
             if (magic.length < 4 || !Arrays.equals(magic, ZIP_MAGIC)) {
-                throw new RequisicaoInvalidaException(
+                throw new FormatoInvalidoException(
                         "Arquivo Shapefile inválido: assinatura mágica de arquivo ZIP não encontrada ('PK' 03 04).");
             }
         } catch (IOException e) {
-            throw new RequisicaoInvalidaException("Falha ao ler assinatura do arquivo ZIP: " + e.getMessage());
+            throw new FormatoInvalidoException("Falha ao ler assinatura do arquivo ZIP: " + e.getMessage());
         }
 
         try (ZipFile zipFile = new ZipFile(arquivo.toFile())) {
@@ -157,13 +158,13 @@ public class ValidadorFormatoArquivo {
             }
 
             if (!completo) {
-                throw new RequisicaoInvalidaException(
+                throw new FormatoInvalidoException(
                         "O arquivo .zip deve ser um shapefile contendo ao menos os arquivos .shp, .shx e .dbf com o mesmo nome base.");
             }
         } catch (ZipException e) {
-            throw new RequisicaoInvalidaException("Arquivo .zip corrompido ou inválido: " + e.getMessage());
+            throw new FormatoInvalidoException("Arquivo .zip corrompido ou inválido: " + e.getMessage());
         } catch (IOException e) {
-            throw new RequisicaoInvalidaException("Falha ao inspecionar o arquivo .zip: " + e.getMessage());
+            throw new FormatoInvalidoException("Falha ao inspecionar o arquivo .zip: " + e.getMessage());
         }
     }
 
@@ -171,11 +172,11 @@ public class ValidadorFormatoArquivo {
         try (InputStream is = Files.newInputStream(arquivo)) {
             byte[] magic = is.readNBytes(GPKG_MAGIC.length);
             if (magic.length < GPKG_MAGIC.length || !Arrays.equals(magic, GPKG_MAGIC)) {
-                throw new RequisicaoInvalidaException(
+                throw new FormatoInvalidoException(
                         "Arquivo GeoPackage inválido: assinatura 'SQLite format 3\\0' não encontrada.");
             }
         } catch (IOException e) {
-            throw new RequisicaoInvalidaException("Falha ao ler assinatura do GeoPackage: " + e.getMessage());
+            throw new FormatoInvalidoException("Falha ao ler assinatura do GeoPackage: " + e.getMessage());
         }
     }
 
@@ -186,11 +187,11 @@ public class ValidadorFormatoArquivo {
                     && !Arrays.equals(magic, TIFF_BE)
                     && !Arrays.equals(magic, BIGTIFF_LE)
                     && !Arrays.equals(magic, BIGTIFF_BE))) {
-                throw new RequisicaoInvalidaException(
+                throw new FormatoInvalidoException(
                         "Arquivo TIFF inválido: assinatura TIFF não encontrada (esperado II*\\0, MM\\0*, II+\\0 ou MM\\0+).");
             }
         } catch (IOException e) {
-            throw new RequisicaoInvalidaException("Falha ao ler assinatura do arquivo TIFF: " + e.getMessage());
+            throw new FormatoInvalidoException("Falha ao ler assinatura do arquivo TIFF: " + e.getMessage());
         }
     }
 
@@ -217,11 +218,11 @@ public class ValidadorFormatoArquivo {
             }
 
             if (primeiroNaoBranco != '{') {
-                throw new RequisicaoInvalidaException(
+                throw new FormatoInvalidoException(
                         "Arquivo GeoJSON inválido: primeiro caractere não branco deve ser '{'.");
             }
         } catch (IOException e) {
-            throw new RequisicaoInvalidaException("Falha ao ler arquivo GeoJSON: " + e.getMessage());
+            throw new FormatoInvalidoException("Falha ao ler arquivo GeoJSON: " + e.getMessage());
         }
     }
 
@@ -230,12 +231,12 @@ public class ValidadorFormatoArquivo {
             byte[] buffer = is.readNBytes(CSV_BUFFER_SIZE);
             for (byte b : buffer) {
                 if (b == 0x00) {
-                    throw new RequisicaoInvalidaException(
+                    throw new FormatoInvalidoException(
                             "Arquivo CSV inválido: contém byte nulo nos primeiros 8 KB.");
                 }
             }
         } catch (IOException e) {
-            throw new RequisicaoInvalidaException("Falha ao ler arquivo CSV: " + e.getMessage());
+            throw new FormatoInvalidoException("Falha ao ler arquivo CSV: " + e.getMessage());
         }
     }
 }
