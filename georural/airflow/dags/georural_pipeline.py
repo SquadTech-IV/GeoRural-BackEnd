@@ -1,4 +1,14 @@
-"""DAG do pipeline do GeoRural: as 5 etapas automaticas, encadeadas."""
+"""DAG do pipeline do GeoRural: as 5 etapas automaticas, encadeadas.
+
+Uma task por etapa, cada uma chamando POST /api/pipeline/etapas/{etapa} com o
+run_id do Airflow como dag_run_id. A PUBLICACAO fica de fora de proposito: pelo
+enum Etapa ela nao e automatica, e publicar versao e ato do gestor.
+
+Disparo (manual ou pela DAG de descoberta da US#10.04):
+
+    {"conjuntoId": 10, "arquivoBrutoId": 7, "competencia": "2026-03",
+     "parametros": {"camadasSelecionadas": "AREA_IMOVEL,RESERVA_LEGAL"}}
+"""
 
 from __future__ import annotations
 
@@ -128,9 +138,9 @@ def georural_pipeline():
             )
         else:
             log.info(
-                "Nenhuma versao nova. Se alguma etapa ficou FALHOU, reexecute so ela "
-                "em POST /api/pipeline/execucoes/%s/etapas/{etapa}/reexecutar.",
-                "{dagRunId}",
+                "Nenhuma versao nova. Se alguma etapa ficou FALHOU, reexecute so ela: "
+                "POST /api/pipeline/execucoes/%s/etapas/<ETAPA>/reexecutar",
+                get_current_context().get("run_id"),
             )
 
     chain(*tarefas)
