@@ -2,7 +2,6 @@
 -- GeoRural DataHub - PKG_CALCULO
 -- =====================================================================
 
-
 CREATE OR REPLACE PACKAGE PKG_CALCULO AS
 
     -- imoveis alcancados por esta rodada; escopo = IMOVEL, RESERVA_LEGAL ou EMBARGO
@@ -13,6 +12,9 @@ CREATE OR REPLACE PACKAGE PKG_CALCULO AS
 
     PROCEDURE calcular_iae(p_ver_id NUMBER, p_exe_id NUMBER, p_rca_id NUMBER,
                            p_escopo VARCHAR2, p_calculados OUT NUMBER);
+
+    PROCEDURE calcular_icv(p_ver_id NUMBER, p_exe_id NUMBER, p_rca_id NUMBER,
+                           p_minimo_pct NUMBER, p_escopo VARCHAR2, p_calculados OUT NUMBER);
 
     PROCEDURE agregar_municipio(p_ver_id NUMBER, p_sigla VARCHAR2, p_agregados OUT NUMBER);
 
@@ -57,10 +59,22 @@ CREATE OR REPLACE PACKAGE BODY PKG_CALCULO AS
                               AND b.emb_geometria IS NOT NULL
                               AND SDO_RELATE(b.emb_geometria, i.imo_geometria,
                                              'mask=ANYINTERACT') = 'TRUE');
+        ELSIF p_escopo = 'VEGETACAO' THEN
+            -- imoveis tocados pela vegetacao que ENTROU nesta versao; o indice espacial
+            -- esta em VEGETACAO_NATIVA, por isso ela e o primeiro argumento do SDO_RELATE
+            SELECT DISTINCT i.imo_id BULK COLLECT INTO v_ids
+              FROM IMOVEL_RURAL i
+             WHERE i.imo_geometria IS NOT NULL
+               AND EXISTS (SELECT 1
+                             FROM VEGETACAO_NATIVA v
+                            WHERE v.ver_id = p_ver_id
+                              AND v.veg_geometria IS NOT NULL
+                              AND SDO_RELATE(v.veg_geometria, i.imo_geometria,
+                                             'mask=ANYINTERACT') = 'TRUE');
         ELSE
             RAISE_APPLICATION_ERROR(-20041,
                 'Escopo de calculo desconhecido: ' || p_escopo
-                || '. Esperado IMOVEL, RESERVA_LEGAL ou EMBARGO.');
+                || '. Esperado IMOVEL, RESERVA_LEGAL, VEGETACAO ou EMBARGO.');
         END IF;
 
         RETURN NVL(v_ids, SYS.ODCINUMBERLIST());
@@ -177,8 +191,73 @@ CREATE OR REPLACE PACKAGE BODY PKG_CALCULO AS
         p_calculados := SQL%ROWCOUNT;
     END calcular_iae;
 
+    PROCEDURE calcular_icv(p_ver_id NUMBER, p_exe_id NUMBER, p_rca_id NUMBER,
+                           p_minimo_pct NUMBER, p_escopo VARCHAR2, p_calculados OUT NUMBER) IS
+        v_ids SYS.ODCINUMBERLIST := imoveis_no_escopo(p_ver_id, p_escopo);
+        v_ind NUMBER := id_indicador('ICV');
+    BEGIN
+        IF v_ids.COUNT = 0 THEN
+            p_calculados := 0;
+            RETURN;
+        END IF;
+
+        MERGE INTO RESULTADO_INDICADOR d
+        USING (SELECT o.imo_id,
+                      v_ind AS ind_id,
+                      LEAST(o.area_vegetacao / NULLIF(o.area_imovel, 0) * 100, 100) AS pct,
+                      o.area_vegetacao,
+                      CASE WHEN o.area_vegetacao / NULLIF(o.area_imovel, 0) * 100 >= p_minimo_pct
+                           THEN 'CONSERVADO' ELSE 'DEGRADADO' END AS situacao,
+                      '{"area_imovel_ha":' || TO_CHAR(ROUND(o.area_imovel, 4))
+                        || ',"area_vegetacao_ha":' || TO_CHAR(ROUND(o.area_vegetacao, 4))
+                        || ',"minimo_pct":' || TO_CHAR(p_minimo_pct)
+                        || ',"poligonos_considerados":' || TO_CHAR(o.poligonos)
+                        || ',"dissolvido":true}' AS detalhes
+                 FROM (SELECT i.imo_id,
+                              NVL(i.imo_area_total, 0) AS area_imovel,
+                              -- une a vegetacao que toca o imovel e so entao recorta
+                              NVL(PKG_GEO.area_intersecao_ha(
+                                    i.imo_geometria,
+                                    (SELECT SDO_AGGR_UNION(SDOAGGRTYPE(v.veg_geometria, 0.05))
+                                       FROM VEGETACAO_NATIVA v
+                                      WHERE v.veg_geometria IS NOT NULL
+                                        AND SDO_RELATE(v.veg_geometria, i.imo_geometria,
+                                                       'mask=ANYINTERACT') = 'TRUE')), 0)
+                                AS area_vegetacao,
+                              NVL((SELECT COUNT(*)
+                                     FROM VEGETACAO_NATIVA v
+                                    WHERE v.veg_geometria IS NOT NULL
+                                      AND SDO_RELATE(v.veg_geometria, i.imo_geometria,
+                                                     'mask=ANYINTERACT') = 'TRUE'), 0) AS poligonos
+                         FROM IMOVEL_RURAL i
+                        WHERE i.imo_id IN (SELECT column_value FROM TABLE(v_ids))) o) f
+           ON (d.imo_id = f.imo_id AND d.ind_id = f.ind_id AND d.ver_id = p_ver_id)
+         WHEN MATCHED THEN
+              UPDATE SET d.rin_valor_percentual = f.pct,
+                         d.rin_valor_hectares   = f.area_vegetacao,
+                         d.rin_valor_absoluto   = f.area_vegetacao,
+                         d.rin_situacao         = f.situacao,
+                         d.rin_detalhes         = f.detalhes,
+                         d.rin_data_calculo     = SYSTIMESTAMP,
+                         d.exe_id               = p_exe_id,
+                         d.rca_id               = p_rca_id
+         WHEN NOT MATCHED THEN
+              INSERT (imo_id, ind_id, ver_id, exe_id, rca_id, rin_valor_percentual,
+                      rin_valor_hectares, rin_valor_absoluto, rin_situacao, rin_detalhes,
+                      rin_data_calculo, rin_vigente)
+              VALUES (f.imo_id, f.ind_id, p_ver_id, p_exe_id, p_rca_id, f.pct,
+                      f.area_vegetacao, f.area_vegetacao, f.situacao, f.detalhes,
+                      SYSTIMESTAMP, 'N');
+        p_calculados := SQL%ROWCOUNT;
+    END calcular_icv;
+
     PROCEDURE agregar_municipio(p_ver_id NUMBER, p_sigla VARCHAR2, p_agregados OUT NUMBER) IS
         v_ind NUMBER := id_indicador(p_sigla);
+        v_boa VARCHAR2(20) := CASE p_sigla
+                                WHEN 'IAE' THEN 'SEM_EMBARGO'
+                                WHEN 'ICV' THEN 'CONSERVADO'
+                                ELSE 'CONFORME'
+                              END;
     BEGIN
         MERGE INTO RESULTADO_MUNICIPIO d
         USING (SELECT i.mun_id,
@@ -187,8 +266,9 @@ CREATE OR REPLACE PACKAGE BODY PKG_CALCULO AS
                       '{"imoveis":' || TO_CHAR(COUNT(*))
                         || ',"media_percentual":' || TO_CHAR(ROUND(AVG(r.rin_valor_percentual), 4))
                         || ',"soma_hectares":' || TO_CHAR(ROUND(NVL(SUM(r.rin_valor_hectares), 0), 4))
-                        || ',"conformes":' || TO_CHAR(SUM(CASE WHEN r.rin_situacao = 'CONFORME'
+                        || ',"conformes":' || TO_CHAR(SUM(CASE WHEN r.rin_situacao = v_boa
                                                                THEN 1 ELSE 0 END))
+                        || ',"situacao_boa":"' || v_boa || '"'
                         || '}' AS detalhes,
                       COUNT(*) AS imoveis
                  FROM RESULTADO_INDICADOR r

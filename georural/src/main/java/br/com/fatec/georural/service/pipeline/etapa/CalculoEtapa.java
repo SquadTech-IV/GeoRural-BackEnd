@@ -17,13 +17,14 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.ArrayList;
 import java.util.List;
 
-// etapa 4 - CALCULO: IRL e IAE sobre os imoveis alcancados pela rodada
+// etapa 4 - CALCULO: IRL, IAE e ICV sobre os imoveis alcancados pela rodada
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class CalculoEtapa implements EtapaPipeline {
 
     private static final double MINIMO_RL_PADRAO = 20.0;
+    private static final double MINIMO_ICV_PADRAO = 20.0;
 
     private final AlvosValidacaoService alvosService;
     private final ResolvedorVersaoService resolvedorVersao;
@@ -71,7 +72,7 @@ public class CalculoEtapa implements EtapaPipeline {
             ctx.comParametro("regraIrl", regra.versao());
             ctx.comParametro("minimo_rl_percent", String.valueOf(minimo));
             trilha.passo("CALCULO", "IRL pela regra " + regra.versao() + " com minimo de "
-                    + minimo + "%: " + feitos + " resultado(s). Formula: " + regra.formula(),
+                            + minimo + "%: " + feitos + " resultado(s). Formula: " + regra.formula(),
                     "RESERVA_LEGAL + IMOVEL_RURAL", "RESULTADO_INDICADOR");
         }
 
@@ -88,21 +89,38 @@ public class CalculoEtapa implements EtapaPipeline {
                     + feitos + " resultado(s).", "EMBARGO + IMOVEL_RURAL", "RESULTADO_INDICADOR");
         }
 
+        if (indicadores.contains("ICV")) {
+            RegraVigenteService.RegraEmUso regra =
+                    regras.emUso("ICV", regraForcada(ctx, "rcaIdIcv"));
+            double minimo = regra.numero("minimo_cobertura_percent", MINIMO_ICV_PADRAO);
+
+            long feitos = oracle.calcularIcv(versaoId, execucaoId, regra.id(), minimo, escopo);
+            calculados += feitos;
+            resumos.add("ICV " + regra.versao() + " em " + feitos + " imovel(eis)");
+            ctx.comParametro("regraIcv", regra.versao());
+            ctx.comParametro("minimo_cobertura_percent", String.valueOf(minimo));
+            trilha.passo("DISSOLVER", "ICV pela regra " + regra.versao() + " com minimo de "
+                            + minimo + "%: a vegetacao que toca cada imovel e unida com"
+                            + " SDO_AGGR_UNION antes da medicao, para poligono sobreposto nao"
+                            + " contar duas vezes. " + feitos + " resultado(s).",
+                    "VEGETACAO_NATIVA + IMOVEL_RURAL", "RESULTADO_INDICADOR");
+        }
+
         transformacoes.gravar(execucaoId, trilha.passos());
         ctx.comParametro("escopoCalculo", escopo);
 
         return ResultadoEtapa.de(imoveis, 0,
-                String.join("; ", resumos) + ". Resultados gravados como NAO vigentes: "
-                        + "ficam valendo quando a versao for publicada.")
+                        String.join("; ", resumos) + ". Resultados gravados como NAO vigentes: "
+                                + "ficam valendo quando a versao for publicada.")
                 .comVersao(versaoId);
     }
-
-    // hoje so IRL e IAE estao no escopo do projeto
+    
     private List<String> indicadoresDoEscopo(String tipoConjunto) {
         return switch (tipoConjunto == null ? "" : tipoConjunto) {
-            case "IMOVEL" -> List.of("IRL", "IAE");
+            case "IMOVEL" -> List.of("IRL", "IAE", "ICV");
             case "RESERVA_LEGAL" -> List.of("IRL");
             case "EMBARGO" -> List.of("IAE");
+            case "VEGETACAO" -> List.of("ICV");
             default -> List.of();
         };
     }

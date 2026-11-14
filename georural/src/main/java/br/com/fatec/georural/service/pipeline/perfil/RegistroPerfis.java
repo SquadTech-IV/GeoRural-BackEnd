@@ -101,7 +101,8 @@ public class RegistroPerfis {
     public static class PerfilNaoDefinidoException extends RuntimeException {
         public PerfilNaoDefinidoException(String tipoConjunto) {
             super("Ainda nao existe perfil de camada para o tipo de conjunto '" + tipoConjunto
-                    + "'. Os tipos atendidos sao IMOVEL, RESERVA_LEGAL, EMBARGO e MALHA_MUNICIPAL.");
+                    + "'. Os tipos atendidos sao IMOVEL, RESERVA_LEGAL, VEGETACAO, EMBARGO"
+                    + " e MALHA_MUNICIPAL.");
         }
     }
 }

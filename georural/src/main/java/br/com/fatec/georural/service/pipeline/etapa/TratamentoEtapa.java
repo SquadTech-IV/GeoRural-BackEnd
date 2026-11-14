@@ -125,16 +125,16 @@ public class TratamentoEtapa implements EtapaPipeline {
         ctx.comParametro("perfis", perfisUsados(camadas));
 
         trilha.passo("OUTRO", versao.nova()
-                ? "Versao v" + versao.numero() + " criada como RASCUNHO."
-                : "Conteudo identico ao da versao v" + versao.numero()
+                        ? "Versao v" + versao.numero() + " criada como RASCUNHO."
+                        : "Conteudo identico ao da versao v" + versao.numero()
                         + ": nenhuma versao nova foi criada.",
                 "FEICAO_STAGING", "VERSAO");
         transformacoes.gravar(execucaoId, trilha.passos());
 
         String mensagem = String.join("; ", cargas)
                 + (versao.nova()
-                   ? ". Versao v" + versao.numero() + " (RASCUNHO)"
-                   : ". Nada mudou: segue na versao v" + versao.numero());
+                ? ". Versao v" + versao.numero() + " (RASCUNHO)"
+                : ". Nada mudou: segue na versao v" + versao.numero());
 
         return ResultadoEtapa.de(recebidas, rejeitadas, mensagem).comVersao(versao.id());
     }
@@ -149,7 +149,7 @@ public class TratamentoEtapa implements EtapaPipeline {
         for (Camada camada : camadas) {
             if (!camada.perfil().exigeDentroDoParana()) {
                 trilha.passo("OUTRO", "Camada " + camada.nome() + " ("
-                        + camada.perfil().tipoConjunto() + ") nao e recortada: e base territorial.",
+                                + camada.perfil().tipoConjunto() + ") nao e recortada: e base territorial.",
                         "FEICAO_STAGING", "FEICAO_STAGING");
                 continue;
             }
@@ -164,8 +164,8 @@ public class TratamentoEtapa implements EtapaPipeline {
         }
 
         trilha.passo("RECORTE", "Recorte pelo limite de " + uf + ": " + dispensadas
-                + " feicao(oes) ja estavam inteiramente dentro e dispensaram o corte; "
-                + recortadas + " cruzavam a fronteira e passaram pelo SDO_GEOM.SDO_INTERSECTION.",
+                        + " feicao(oes) ja estavam inteiramente dentro e dispensaram o corte; "
+                        + recortadas + " cruzavam a fronteira e passaram pelo SDO_GEOM.SDO_INTERSECTION.",
                 "LIMITE_TERRITORIAL", "FEICAO_STAGING");
 
         long fora = oracle.rejeitarForaDaUf(stagingId, validacaoId, uf);
@@ -198,7 +198,7 @@ public class TratamentoEtapa implements EtapaPipeline {
                         stagingId, validacaoId, camada.arquivoId());
                 rejeitadas += semImovel;
                 trilha.passo("VALIDACAO", camada.nome() + ": " + semImovel
-                        + " reserva(s) legal(is) cujo CAR nao esta em IMOVEL_RURAL.",
+                                + " reserva(s) legal(is) cujo CAR nao esta em IMOVEL_RURAL.",
                         "IMOVEL_RURAL", "QUARENTENA");
             }
         }
@@ -228,6 +228,22 @@ public class TratamentoEtapa implements EtapaPipeline {
                     trilha.passo("CRUZAMENTO", "Vinculo com municipio: " + vinculo.porCodigo()
                             + " pelo codigo declarado e " + vinculo.porGeometria()
                             + " por cruzamento espacial.", "MUNICIPIO", "IMOVEL_RURAL");
+                }
+                case "VEGETACAO" -> {
+                    TratamentoOracle.Carga carga =
+                            oracle.carregarVegetacao(stagingId, versaoId, arq);
+                    resumo.add(carga.gravadas() + " poligono(s) de vegetacao nativa");
+                    trilha.passo("PADRONIZACAO", camada.nome()
+                            + ": carga em VEGETACAO_NATIVA, " + carga.gravadas()
+                            + " registro(s).", "FEICAO_STAGING", "VEGETACAO_NATIVA");
+
+                    if (carga.ignoradas() > 0) {
+                        resumo.add(carga.ignoradas() + " de outra classe de cobertura");
+                        trilha.passo("VALIDACAO", camada.nome() + ": " + carga.ignoradas()
+                                        + " poligono(s) fora do ICV por nao serem vegetacao nativa"
+                                        + " (area consolidada, area nao classificada e afins).",
+                                "FEICAO_STAGING", "-");
+                    }
                 }
                 case "RESERVA_LEGAL" -> {
                     long gravadas = oracle.carregarReservaLegal(stagingId, versaoId, arq);
