@@ -1,9 +1,4 @@
-"""Cliente da API do GeoRural usada pelas DAGs.
 
-Fica separado da DAG de proposito: aqui nao se importa nada do Airflow no
-nivel do modulo, entao da para testar as decisoes por codigo de status sem
-subir Airflow nenhum.
-"""
 
 from __future__ import annotations
 
@@ -97,7 +92,12 @@ def _por_variavel(nome: str) -> Optional[str]:
 def _por_conexao() -> tuple[Optional[str], Optional[str]]:
     """Le host e token da Connection do Airflow, se ela existir."""
     try:
-        from airflow.hooks.base import BaseHook
+        # O Airflow 3 moveu o BaseHook para airflow.sdk e avisa de deprecacao em
+        # airflow.hooks.base; o 2.x so tem airflow.hooks.base.
+        try:
+            from airflow.sdk.bases.hook import BaseHook
+        except ImportError:
+            from airflow.hooks.base import BaseHook
 
         conexao = BaseHook.get_connection(CONEXAO)
         base = conexao.host or ""
@@ -111,21 +111,41 @@ def _por_conexao() -> tuple[Optional[str], Optional[str]]:
         return None, None
 
 
+# Guarda o que ja foi resolvido: cada etapa faria a mesma consulta de novo, e
+# uma Variable que nao existe deixa uma linha de erro no log a cada consulta.
+_RESOLVIDO: dict = {}
+
+
 def base_da_api() -> str:
-    base, _ = _por_conexao()
-    base = base or _por_variavel("georural_api_base") or "http://localhost:8080"
-    return base.rstrip("/")
+    if "base" not in _RESOLVIDO:
+        base, _ = _por_conexao()
+        base = base or _por_variavel("georural_api_base") or "http://localhost:8080"
+        _RESOLVIDO["base"] = base.rstrip("/")
+
+    return _RESOLVIDO["base"]
 
 
 def token_da_api() -> Optional[str]:
-    _, token = _por_conexao()
-    return token or _por_variavel("georural_api_token")
+    if "token" not in _RESOLVIDO:
+        _, token = _por_conexao()
+        _RESOLVIDO["token"] = token or _por_variavel("georural_api_token")
+
+    return _RESOLVIDO["token"]
+
+
+def esquecer_resolvido() -> None:
+    """Descarta o que foi resolvido. Serve para teste e para trocar de ambiente."""
+    _RESOLVIDO.clear()
 
 
 def timeout_de_leitura() -> int:
+    if "timeout" in _RESOLVIDO:
+        return _RESOLVIDO["timeout"]
+
     bruto = _por_variavel("georural_timeout_etapa_seg")
     try:
-        return int(bruto) if bruto else TIMEOUT_LEITURA_PADRAO_SEG
+        _RESOLVIDO["timeout"] = int(bruto) if bruto else TIMEOUT_LEITURA_PADRAO_SEG
+        return _RESOLVIDO["timeout"]
     except ValueError:
         log.warning("georural_timeout_etapa_seg invalido (%s); usando o padrao.", bruto)
         return TIMEOUT_LEITURA_PADRAO_SEG

@@ -1,29 +1,43 @@
-"""DAGs de descoberta: acham o que esta pendente e disparam o pipeline."""
+
 
 from __future__ import annotations
 
 import inspect
 import logging
 import os
+import sys
 from datetime import timedelta
 from typing import Optional
 
 import pendulum
-from airflow.decorators import dag, task
+# O Airflow 3 move os decoradores para airflow.sdk e avisa de deprecacao em
+# airflow.decorators; o 2.x so tem airflow.decorators.
+try:  # pragma: no cover
+    from airflow.sdk import dag, task
+except ImportError:  # pragma: no cover
+    from airflow.decorators import dag, task
 from airflow.exceptions import AirflowFailException
 
+# O Airflow 3 moveu get_current_context para airflow.sdk; o 2.x mantem onde estava.
 try:  # pragma: no cover
     from airflow.sdk import get_current_context
 except ImportError:  # pragma: no cover
     from airflow.operators.python import get_current_context
 
-
+# O Airflow 3 levou os operadores para o provider standard e avisa de deprecacao
+# em airflow.operators; o 2.x antigo so tem airflow.operators.
 try:  # pragma: no cover
-    from airflow.operators.trigger_dagrun import TriggerDagRunOperator
-except ImportError:  # pragma: no cover
     from airflow.providers.standard.operators.trigger_dagrun import (
         TriggerDagRunOperator,
     )
+except ImportError:  # pragma: no cover
+    from airflow.operators.trigger_dagrun import TriggerDagRunOperator
+
+# A pasta do proprio arquivo entra no sys.path antes de importar o cliente.
+# O dag-processor do Airflow 3 poe a raiz do bundle no sys.path, mas o Airflow 2,
+# o DagBag chamado na mao e um subdiretorio da pasta de DAGs nao poem — e sem
+# isso o import abaixo quebra com ModuleNotFoundError.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from georural_api import (
     CADENCIA_MANUAL,
@@ -45,7 +59,8 @@ DAG_DO_PIPELINE = "georural_pipeline"
 # centenas de rodadas de uma vez. O resto entra na varredura seguinte.
 MAX_DISPAROS = int(os.environ.get("GEORURAL_MAX_DISPAROS_POR_VARREDURA", "50"))
 
-
+# skip_when_already_exists existe no Airflow 2.8+ e no 3.x. E ele que transforma
+# run_id repetido em skipped em vez de falha. Sem ele, o disparo repetido falha.
 _ACEITOS = inspect.signature(TriggerDagRunOperator.__init__).parameters
 EXTRAS_DO_TRIGGER = (
     {"skip_when_already_exists": True}
@@ -86,6 +101,9 @@ def _conf() -> dict:
 def _sufixo(conf: dict) -> Optional[str]:
     """Sufixo do run_id, quando se quer permitir repetir o mesmo arquivo.
 
+    Vem do conf (`sufixo`) ou da Variable `georural_sweep_run_id_por_dia`, que
+    por padrao esta desligada: ligada, cada dia pode disparar de novo um arquivo
+    que ja falhou.
     """
     if conf.get("sufixo"):
         return str(conf["sufixo"])[:32]

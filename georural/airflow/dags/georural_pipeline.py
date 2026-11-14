@@ -1,23 +1,19 @@
-"""DAG do pipeline do GeoRural: as 5 etapas automaticas, encadeadas.
 
-Uma task por etapa, cada uma chamando POST /api/pipeline/etapas/{etapa} com o
-run_id do Airflow como dag_run_id. A PUBLICACAO fica de fora de proposito: pelo
-enum Etapa ela nao e automatica, e publicar versao e ato do gestor.
-
-Disparo (manual ou pela DAG de descoberta da US#10.04):
-
-    {"conjuntoId": 10, "arquivoBrutoId": 7, "competencia": "2026-03",
-     "parametros": {"camadasSelecionadas": "AREA_IMOVEL,RESERVA_LEGAL"}}
-"""
 
 from __future__ import annotations
 
 import logging
 import os
+import sys
 from datetime import timedelta
 
 import pendulum
-from airflow.decorators import dag, task
+# O Airflow 3 move os decoradores para airflow.sdk e avisa de deprecacao em
+# airflow.decorators; o 2.x so tem airflow.decorators.
+try:  # pragma: no cover
+    from airflow.sdk import dag, task
+except ImportError:  # pragma: no cover
+    from airflow.decorators import dag, task
 from airflow.exceptions import AirflowFailException, AirflowSkipException
 
 # O Airflow 3 moveu estas duas para airflow.sdk; o 2.x mantem onde estavam.
@@ -26,6 +22,12 @@ try:  # pragma: no cover
 except ImportError:  # pragma: no cover
     from airflow.models.baseoperator import chain
     from airflow.operators.python import get_current_context
+
+# A pasta do proprio arquivo entra no sys.path antes de importar o cliente.
+# O dag-processor do Airflow 3 poe a raiz do bundle no sys.path, mas o Airflow 2,
+# o DagBag chamado na mao e um subdiretorio da pasta de DAGs nao poem — e sem
+# isso o import abaixo quebra com ModuleNotFoundError.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from georural_api import (
     ETAPAS_ENCADEADAS,

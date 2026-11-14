@@ -39,16 +39,23 @@ def erro(mensagem):
 
 
 def main():
-    base = (sys.argv[1] if len(sys.argv) > 1
-            else os.environ.get("GEORURAL_API_BASE", "http://localhost:8080"))
-    token = (sys.argv[2] if len(sys.argv) > 2
-             else os.environ.get("GEORURAL_API_TOKEN"))
-
-    base = base.rstrip("/")
+    # Sem argumento, usa a mesma resolucao da DAG: Connection, Variable,
+    # variavel de ambiente. Rodando dentro do container, isso confere
+    # exatamente o que a DAG vai usar.
+    if len(sys.argv) > 1:
+        # URL na mao: nao toca no Airflow, para rodar em qualquer maquina.
+        base = sys.argv[1].rstrip("/")
+        # "" em vez de None: o cliente so procura Connection quando vem None.
+        token = (sys.argv[2] if len(sys.argv) > 2
+                 else os.environ.get("GEORURAL_API_TOKEN") or "")
+    else:
+        base = api.base_da_api()
+        token = api.token_da_api()
     http = api.sessao()
 
     print(f"\nAPI: {base}")
-    print(f"Token: {'sim' if token else 'nao'}\n")
+    print(f"Token: {'sim' if token else 'nao'}")
+    print(f"Origem: {'argumento da linha de comando' if len(sys.argv) > 1 else 'Connection/Variable/ambiente, igual a DAG'}\n")
 
     # 1. a API esta no ar e diz quais etapas existem
     print("1. GET /api/pipeline/etapas")
