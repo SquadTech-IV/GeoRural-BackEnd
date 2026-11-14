@@ -1,0 +1,150 @@
+# Ambiente do Airflow do GeoRural (US#10.06).
+#
+# Sobe: Postgres + api-server (a interface) + scheduler + dag-processor +
+# triggerer. Executor local, sem Redis e sem Celery: e o suficiente para o
+# volume do projeto e tem menos peca para quebrar.
+#
+#   docker compose up -d        sobe
+#   docker compose logs -f      acompanha
+#   docker compose down         derruba (os dados do Postgres ficam)
+#   docker compose down -v      derruba e apaga tudo
+#
+# A interface fica em http://localhost:8081 (8080 e da API do Spring).
+
+x-georural: &georural
+  # Onde a API do Spring esta, vista de DENTRO do container.
+  GEORURAL_API_BASE: ${GEORURAL_API_BASE:-http://host.docker.internal:8080}
+  GEORURAL_API_TOKEN: ${GEORURAL_API_TOKEN:-}
+  # A Connection do Airflow, montada aqui para o cliente nao precisar procurar
+  # Variable nenhuma (sem ela o log enche de "Variable not found").
+  AIRFLOW_CONN_GEORURAL_API: '{"conn_type": "http", "host": "${GEORURAL_API_BASE:-http://host.docker.internal:8080}", "password": "${GEORURAL_API_TOKEN:-}"}'
+  # Lidos na leitura dos arquivos de DAG.
+  GEORURAL_MAX_RODADAS_PARALELAS: ${GEORURAL_MAX_RODADAS_PARALELAS:-1}
+  GEORURAL_RETRIES_ETAPA: ${GEORURAL_RETRIES_ETAPA:-0}
+  GEORURAL_MAX_DISPAROS_POR_VARREDURA: ${GEORURAL_MAX_DISPAROS_POR_VARREDURA:-50}
+  GEORURAL_SITUACOES_DISPARAVEIS: ${GEORURAL_SITUACOES_DISPARAVEIS:-RECEBIDO,APROVADO}
+  GEORURAL_TIMEOUT_ETAPA_SEG: ${GEORURAL_TIMEOUT_ETAPA_SEG:-14400}
+  # O Docker Desktop novo roda um proxy proprio (http.docker.internal:3128) e pode
+  # injetar HTTP_PROXY nos containers. Sem estas duas linhas, a chamada para a API
+  # na maquina sairia pelo proxy e falharia sem motivo aparente.
+  NO_PROXY: ${NO_PROXY:-host.docker.internal,localhost,127.0.0.1,postgres}
+  no_proxy: ${NO_PROXY:-host.docker.internal,localhost,127.0.0.1,postgres}
+
+x-airflow-comum: &airflow-comum
+  image: apache/airflow:${AIRFLOW_VERSAO:-3.1.2}
+  environment:
+    <<: *georural
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__DEFAULT_TIMEZONE: America/Sao_Paulo
+    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:?defina AIRFLOW_FERNET_KEY no .env - rode ./subir.sh}
+    AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_JWT_SECRET:?defina AIRFLOW_JWT_SECRET no .env - rode ./subir.sh}
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+    # Login da interface: admin / a senha do arquivo em config/.
+    AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_USERS: admin:admin
+    AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_PASSWORDS_FILE: /opt/airflow/config/simple_auth_manager_passwords.json
+    # Pausa as DAGs novas: ninguem comeca varrendo sem alguem olhar.
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+    AIRFLOW__SCHEDULER__CATCHUP_BY_DEFAULT: "false"
+    # Sem isto o scheduler nao abre a porta 8974 e o healthcheck dele falha sempre.
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./logs:/opt/airflow/logs
+    - ./config:/opt/airflow/config
+    # O script de conferencia, para rodar de dentro do container.
+    - ./verificar_integracao.py:/opt/airflow/verificar.py:ro
+  # No Linux, para os arquivos de log nao nascerem do root.
+  user: "${AIRFLOW_UID:-50000}:0"
+  # Faz host.docker.internal apontar para a maquina tambem no Linux.
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  depends_on:
+    postgres:
+      condition: service_healthy
+    airflow-init:
+      condition: service_completed_successfully
+  restart: unless-stopped
+
+services:
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres-dados:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  # Cria as tabelas do Airflow. Roda uma vez e sai.
+  airflow-init:
+    image: apache/airflow:${AIRFLOW_VERSAO:-3.1.2}
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        set -e
+        airflow db migrate
+        echo "Banco do Airflow pronto."
+    environment:
+      <<: *georural
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:?defina AIRFLOW_FERNET_KEY no .env - rode ./subir.sh}
+      AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_JWT_SECRET:?defina AIRFLOW_JWT_SECRET no .env - rode ./subir.sh}
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./config:/opt/airflow/config
+      - ./verificar_integracao.py:/opt/airflow/verificar.py:ro
+    user: "${AIRFLOW_UID:-50000}:0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # A interface e a API do Airflow.
+  api-server:
+    <<: *airflow-comum
+    command: api-server
+    ports:
+      - "${AIRFLOW_PORTA:-8081}:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/api/v2/monitor/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # Decide o que roda e quando. Com LocalExecutor, e ele que roda as tasks.
+  scheduler:
+    <<: *airflow-comum
+    command: scheduler
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # Le os arquivos de DAG. No Airflow 3 e um processo separado.
+  dag-processor:
+    <<: *airflow-comum
+    command: dag-processor
+
+  # Cuida de task que fica esperando. Nenhuma DAG do GeoRural usa hoje, mas sem
+  # ele uma task adiada ficaria pendurada sem explicacao.
+  triggerer:
+    <<: *airflow-comum
+    command: triggerer
+
+volumes:
+  postgres-dados:
