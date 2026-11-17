@@ -1,6 +1,8 @@
 package br.com.fatec.georural.controller;
 
+import br.com.fatec.georural.dto.response.monitoramento.RecursosResponse;
 import br.com.fatec.georural.dto.response.monitoramento.SaudePlataformaResponse;
+import br.com.fatec.georural.service.monitoramento.ConsumoRecursosService;
 import br.com.fatec.georural.service.monitoramento.SaudePlataformaService;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -17,9 +19,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class MonitoramentoController {
 
     private final SaudePlataformaService saudePlataforma;
+    private final ConsumoRecursosService consumoRecursos;
 
-    public MonitoramentoController(SaudePlataformaService saudePlataforma) {
+    public MonitoramentoController(SaudePlataformaService saudePlataforma,
+                                   ConsumoRecursosService consumoRecursos) {
         this.saudePlataforma = saudePlataforma;
+        this.consumoRecursos = consumoRecursos;
     }
 
     // estado de portal, API, banco, armazenamento e Airflow
@@ -33,5 +38,14 @@ public class MonitoramentoController {
             @Parameter(description = "true ignora o cache e verifica agora")
             @RequestParam(value = "agora", required = false, defaultValue = "false") boolean agora) {
         return agora ? saudePlataforma.consultarAgora() : saudePlataforma.consultar();
+    }
+
+    // CPU, memoria, disco e tamanho do acervo
+    @GetMapping("/recursos")
+    @Operation(summary = "Consumo de recursos",
+            description = "Medido de dentro da aplicacao (java.lang.management) e do catalogo "
+                    + "ARQUIVO_BRUTO. O campo naoMedido lista o que depende do provedor de nuvem.")
+    public RecursosResponse recursos() {
+        return consumoRecursos.consultar();
     }
 }
