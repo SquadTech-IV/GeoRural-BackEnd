@@ -10,7 +10,7 @@ import br.com.fatec.georural.dto.response.indicador.RegraVigenteResponse;
 import br.com.fatec.georural.dto.response.indicador.ResultadoImovelResponse;
 import br.com.fatec.georural.dto.response.indicador.ResultadoMunicipioResponse;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -70,9 +70,9 @@ public class ConsultaIndicadorService {
     );
 
     private final JdbcTemplate jdbc;
-    private final ObjectMapper json;
+    private final JsonMapper json;
 
-    public ConsultaIndicadorService(JdbcTemplate jdbc, ObjectMapper json) {
+    public ConsultaIndicadorService(JdbcTemplate jdbc, JsonMapper json) {
         this.jdbc = jdbc;
         this.json = json;
     }
