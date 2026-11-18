@@ -12,6 +12,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.web.bind.annotation.*;
+import br.com.fatec.georural.dto.request.qualidade.AlterarSituacaoQuarentenaRequest;
+import br.com.fatec.georural.service.qualidade.QuarentenaSituacaoService;
 
 @RestController
 @RequestMapping("/api/v1/qualidade")
@@ -20,6 +22,7 @@ import org.springframework.web.bind.annotation.*;
 public class ConsultaExecucaoQuarentenaController {
 
     private final ConsultaExecucaoQuarentenaService consultaService;
+    private final QuarentenaSituacaoService situacaoService;
 
     @GetMapping("/execucoes")
     @Operation(summary = "Lista as execuções do pipeline de validação/tratamento com contagens de recebidos, aprovados e rejeitados")
@@ -50,5 +53,17 @@ public class ConsultaExecucaoQuarentenaController {
         );
 
         return PaginaResponse.de(resultado);
+    }
+
+    @PatchMapping("/quarentena/{id}/situacao")
+    @Operation(summary = "Altera a situação de um registro em quarentena (grava qua_data_resolucao e auditoria; Operador só altera registros dos seus próprios arquivos)")
+    public QuarentenaConsultaResponse alterarSituacaoQuarentena(
+            @Parameter(description = "Identificador do registro na quarentena (qua_id)")
+            @PathVariable Long id,
+            @RequestBody AlterarSituacaoQuarentenaRequest request) {
+
+        String situacao = request != null ? request.situacao() : null;
+        String observacao = request != null ? request.observacao() : null;
+        return situacaoService.alterarSituacao(id, situacao, observacao);
     }
 }

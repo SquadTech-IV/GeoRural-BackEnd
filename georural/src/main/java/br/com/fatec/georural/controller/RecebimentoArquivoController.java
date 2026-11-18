@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import br.com.fatec.georural.security.IsolamentoCargaService;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -29,11 +30,14 @@ import java.io.InputStream;
 @Tag(name = "Arquivos brutos", description = "Recebimento de arquivos na zona bruta do data lake")
 public class RecebimentoArquivoController {
 
-    private final RecebimentoArquivoService service;
+        private final RecebimentoArquivoService service;
+        private final IsolamentoCargaService isolamentoCargaService;
 
-    public RecebimentoArquivoController(RecebimentoArquivoService service) {
-        this.service = service;
-    }
+        public RecebimentoArquivoController(RecebimentoArquivoService service,
+                                        IsolamentoCargaService isolamentoCargaService) {
+                this.service = service;
+                this.isolamentoCargaService = isolamentoCargaService;
+        }
 
     // Os parâmetros são opcionais no Spring de propósito: a ausência de qualquer um deles é tratada aqui e
     // no serviço como requisição inválida (400), em vez de cair no tratador genérico (500).
@@ -73,9 +77,10 @@ public class RecebimentoArquivoController {
             throw new RequisicaoInvalidaException("O arquivo é obrigatório.");
         }
 
+        Long usuarioEfetivoId = isolamentoCargaService.resolverUsuarioIdAutenticado(usuId);
         try (InputStream conteudo = arquivo.getInputStream()) {
-            ArquivoBruto registro = service.receber(conId, usuId, arquivo.getOriginalFilename(), conteudo);
-            return ResponseEntity.status(HttpStatus.CREATED).body(ArquivoBrutoResponse.de(registro));
+                ArquivoBruto registro = service.receber(conId, usuarioEfetivoId, arquivo.getOriginalFilename(), conteudo);
+                return ResponseEntity.status(HttpStatus.CREATED).body(ArquivoBrutoResponse.de(registro));
         }
     }
 }

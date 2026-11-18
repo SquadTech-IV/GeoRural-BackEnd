@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import br.com.fatec.georural.security.IsolamentoCargaService;
 
 import java.util.Arrays;
 import java.util.Map;
@@ -33,9 +34,11 @@ import java.util.Map;
 public class ReexecucaoEtapaController {
 
     private final ReexecucaoEtapaService servico;
+    private final IsolamentoCargaService isolamentoCargaService;
 
-    public ReexecucaoEtapaController(ReexecucaoEtapaService servico) {
+    public ReexecucaoEtapaController(ReexecucaoEtapaService servico, IsolamentoCargaService isolamentoCargaService) {
         this.servico = servico;
+        this.isolamentoCargaService = isolamentoCargaService;
     }
 
     @PostMapping("/{dagRunId}/etapas/{etapa}/reexecutar")
@@ -57,7 +60,17 @@ public class ReexecucaoEtapaController {
 
             @RequestBody(required = false) ReexecucaoEtapaRequest pedido
     ) {
-        return servico.reexecutar(dagRunId, converter(etapa), pedido);
+        isolamentoCargaService.validarAcessoRodada(dagRunId);
+        Long usuarioEfetivoId = isolamentoCargaService.resolverUsuarioIdAutenticado(
+                pedido != null ? pedido.usuarioId() : null
+        );
+        ReexecucaoEtapaRequest pedidoEfetivo = new ReexecucaoEtapaRequest(
+                usuarioEfetivoId,
+                pedido != null ? pedido.forcar() : null,
+                pedido != null ? pedido.parametros() : null
+                
+        );
+        return servico.reexecutar(dagRunId, converter(etapa), pedidoEfetivo);
     }
 
     private Etapa converter(String etapa) {

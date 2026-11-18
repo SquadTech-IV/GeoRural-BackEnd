@@ -121,6 +121,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/pipeline/etapas/**").hasAnyRole(OPERACAO_E_INGESTAO)
                         .requestMatchers(HttpMethod.POST, "/api/pipeline/execucoes/*/etapas/*/reexecutar").hasAnyRole(OPERACAO_E_INGESTAO)
 
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/qualidade/**").hasAnyRole(OPERACAO_E_INGESTAO)
+
                         // 5. Linhagem e qualidade (ADMIN, GESTOR, OPERADOR, AUDITOR - bloqueia ANALISTA)
                         .requestMatchers(HttpMethod.GET, "/api/v1/linhagem/**").hasAnyRole(QUALIDADE_E_LINHAGEM)
                         .requestMatchers(HttpMethod.GET, "/api/linhagem/**").hasAnyRole(QUALIDADE_E_LINHAGEM)
