@@ -17,6 +17,8 @@ WHEN MATCHED THEN
 WHEN NOT MATCHED THEN
     INSERT (per_funcao, per_nome) VALUES (src.per_funcao, src.per_nome);
 
+COMMIT;
+
 -- 2. Garante a FK usuario.per_id -> perfil.per_id
 DECLARE
     v_count NUMBER;
@@ -89,6 +91,8 @@ WHEN NOT MATCHED THEN
     INSERT (per_id, usu_keycloak_id, usu_nome, usu_email, usu_status)
     VALUES (src.per_id, src.usu_keycloak_id, src.usu_nome, src.usu_email, 'S');
 
+COMMIT;
+
 -- 4. Limpa usuarios de teste avulsos (preservando os espelhos oficiais @georural.invalid)
 DECLARE
     v_admin_id NUMBER;
@@ -104,5 +108,7 @@ BEGIN
 
     DELETE FROM USUARIO
      WHERE LOWER(usu_email) NOT LIKE '%@georural.invalid';
+
+    COMMIT;
 END;
 /

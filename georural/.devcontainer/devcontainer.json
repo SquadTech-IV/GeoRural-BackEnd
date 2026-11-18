@@ -13,7 +13,8 @@
 				"vscjava.vscode-java-pack",
 				"vmware.vscode-spring-boot",
 				"vscjava.vscode-spring-boot-dashboard",
-				"vscjava.vscode-maven"
+				"vscjava.vscode-maven",
+				"Oracle.sql-developer"
 			]
 		}
 	},
