@@ -56,14 +56,13 @@ public class ConsultaExecucaoQuarentenaController {
     }
 
     @PatchMapping("/quarentena/{id}/situacao")
-    @Operation(summary = "Altera a situação de um registro em quarentena (grava qua_data_resolucao e auditoria; Operador só altera registros dos seus próprios arquivos)")
+    @Operation(summary = "Altera qua_situacao de PENDENTE para CORRIGIDO ou DESCARTADO (aceita somente qua_situacao; grava qua_data_resolucao e auditoria)")
     public QuarentenaConsultaResponse alterarSituacaoQuarentena(
             @Parameter(description = "Identificador do registro na quarentena (qua_id)")
             @PathVariable Long id,
-            @RequestBody AlterarSituacaoQuarentenaRequest request) {
+            @RequestBody(required = false) AlterarSituacaoQuarentenaRequest request) {
 
         String situacao = request != null ? request.situacao() : null;
-        String observacao = request != null ? request.observacao() : null;
-        return situacaoService.alterarSituacao(id, situacao, observacao);
+        return situacaoService.alterarSituacao(id, situacao);
     }
 }

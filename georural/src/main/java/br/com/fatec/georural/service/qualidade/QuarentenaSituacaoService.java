@@ -26,9 +26,7 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class QuarentenaSituacaoService {
 
-    private static final Set<String> SITUACOES_VALIDAS = Set.of(
-            "PENDENTE", "RESOLVIDO", "DESCARTADO", "REPROCESSADO", "IGNORADO"
-    );
+    private static final Set<String> SITUACOES_FINAIS = Set.of("CORRIGIDO", "DESCARTADO");
 
     private final QuarentenaRepository quarentenaRepository;
     private final AuditoriaRepository auditoriaRepository;
@@ -37,15 +35,15 @@ public class QuarentenaSituacaoService {
     private final UsuarioAutenticadoProvider usuarioAutenticadoProvider;
 
     @Transactional
-    public QuarentenaConsultaResponse alterarSituacao(Long quaId, String novaSituacaoRaw, String observacao) {
+    public QuarentenaConsultaResponse alterarSituacao(Long quaId, String novaSituacaoRaw) {
         if (novaSituacaoRaw == null || novaSituacaoRaw.isBlank()) {
-            throw new RequisicaoInvalidaException("Informe a nova situação do registro em quarentena.");
+            throw new RequisicaoInvalidaException("Informe qua_situacao (CORRIGIDO ou DESCARTADO).");
         }
 
         String novaSituacao = novaSituacaoRaw.trim().toUpperCase();
-        if (!SITUACOES_VALIDAS.contains(novaSituacao)) {
+        if (!SITUACOES_FINAIS.contains(novaSituacao)) {
             throw new RequisicaoInvalidaException(
-                    "Situação inválida: '" + novaSituacao + "'. Valores aceitos: " + SITUACOES_VALIDAS);
+                    "Situação inválida: '" + novaSituacao + "'. Transições finais aceitas: CORRIGIDO ou DESCARTADO.");
         }
 
         Quarentena q = quarentenaRepository.findById(quaId)
@@ -55,18 +53,19 @@ public class QuarentenaSituacaoService {
         isolamentoCargaService.validarAcessoQuarentena(quaId);
 
         String situacaoAnterior = q.getSituacao();
+        if (situacaoAnterior == null || !"PENDENTE".equalsIgnoreCase(situacaoAnterior.trim())) {
+            throw new RequisicaoInvalidaException(
+                    "Registro de quarentena já está em situação final ('" + situacaoAnterior + "') e não pode ser alterado.");
+        }
+
         LocalDateTime resolucaoAnterior = q.getDataResolucao();
         LocalDateTime agora = LocalDateTime.now();
 
         q.setSituacao(novaSituacao);
-        if ("PENDENTE".equals(novaSituacao)) {
-            q.setDataResolucao(null);
-        } else {
-            q.setDataResolucao(agora);
-        }
+        q.setDataResolucao(agora);
 
         Quarentena salvo = quarentenaRepository.save(q);
-        registrarAuditoria(salvo, situacaoAnterior, resolucaoAnterior, observacao, agora);
+        registrarAuditoria(salvo, situacaoAnterior, resolucaoAnterior, agora);
 
         var val = salvo.getValidacao();
         var exec = val != null ? val.getExecucao() : null;
@@ -95,7 +94,6 @@ public class QuarentenaSituacaoService {
             Quarentena q,
             String situacaoAnterior,
             LocalDateTime resolucaoAnterior,
-            String observacao,
             LocalDateTime dataHora) {
 
         Auditoria aud = new Auditoria();
@@ -125,10 +123,9 @@ public class QuarentenaSituacaoService {
         ));
 
         aud.setDadosNovos(String.format(
-                "{\"qua_situacao\":\"%s\",\"qua_data_resolucao\":\"%s\",\"observacao\":\"%s\"}",
+                "{\"qua_situacao\":\"%s\",\"qua_data_resolucao\":\"%s\"}",
                 escapar(q.getSituacao()),
-                q.getDataResolucao() != null ? q.getDataResolucao().toString() : "",
-                escapar(observacao)
+                q.getDataResolucao() != null ? q.getDataResolucao().toString() : ""
         ));
 
         auditoriaRepository.save(aud);
