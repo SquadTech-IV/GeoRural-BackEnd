@@ -15,6 +15,8 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
+import br.com.fatec.georural.security.ValidacaoUsuarioJwtFilter;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 
 @Configuration
 @EnableWebSecurity
@@ -53,6 +55,7 @@ public class SecurityConfig {
 
     private final KeycloakJwtAuthenticationConverter jwtAuthenticationConverter;
     private final SegurancaExceptionHandlers segurancaExceptionHandlers;
+    private final ValidacaoUsuarioJwtFilter validacaoUsuarioJwtFilter;
 
     // true: API sem autenticacao (contingencia). false: exige JWT do Keycloak fora das rotas acima.
     @Value("${georural.seguranca.liberar-api:false}")
@@ -151,7 +154,8 @@ public class SecurityConfig {
                 .oauth2ResourceServer(oauth -> oauth
                         .authenticationEntryPoint(segurancaExceptionHandlers)
                         .accessDeniedHandler(segurancaExceptionHandlers)
-                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter)));
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter)))
+                        .addFilterAfter(validacaoUsuarioJwtFilter, BearerTokenAuthenticationFilter.class);
 
         return http.build();
     }
