@@ -2,6 +2,7 @@ package br.com.fatec.georural.controller;
 
 import br.com.fatec.georural.dto.response.indicador.ConsolidadoMunicipiosResponse;
 import br.com.fatec.georural.service.indicador.ConsolidadoMunicipioService;
+import br.com.fatec.georural.service.indicador.FaixasDeComparacao;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -24,7 +25,17 @@ public class ConsolidadoMunicipioController {
     public ConsolidadoMunicipiosResponse porMunicipio(
             @PathVariable String sigla,
             @RequestParam(required = false) Long versaoId,
-            @RequestParam(defaultValue = "true") boolean incluirSemDados) {
-        return consolidadoMunicipioService.porMunicipio(sigla, versaoId, incluirSemDados);
+            @RequestParam(defaultValue = "true") boolean incluirSemDados,
+            @RequestParam(required = false) String ordenacao,
+            @RequestParam(required = false) String faixas,
+            @RequestParam(required = false) Integer qtdFaixas) {
+
+        return consolidadoMunicipioService.porMunicipio(
+                sigla,
+                versaoId,
+                incluirSemDados,
+                ordenacao,
+                faixas,
+                qtdFaixas == null ? FaixasDeComparacao.QUANTIDADE_PADRAO : qtdFaixas);
     }
 }

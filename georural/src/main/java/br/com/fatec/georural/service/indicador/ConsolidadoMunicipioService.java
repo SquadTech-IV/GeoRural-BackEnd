@@ -1,6 +1,7 @@
 package br.com.fatec.georural.service.indicador;
 
 import br.com.fatec.georural.dto.response.indicador.ConsolidadoMunicipiosResponse;
+import br.com.fatec.georural.dto.response.indicador.ConsolidadoMunicipiosResponse.Escala;
 import br.com.fatec.georural.dto.response.indicador.ConsolidadoMunicipiosResponse.Resumo;
 import br.com.fatec.georural.dto.response.indicador.MunicipioConsolidadoResponse;
 import br.com.fatec.georural.exception.RecursoNaoEncontradoException;
@@ -14,9 +15,9 @@ import java.math.RoundingMode;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -33,10 +34,21 @@ public class ConsolidadoMunicipioService {
 
     @Transactional(readOnly = true)
     public ConsolidadoMunicipiosResponse porMunicipio(
-            String sigla, Long versaoId, boolean incluirSemDados) {
+            String sigla,
+            Long versaoId,
+            boolean incluirSemDados,
+            String ordenacaoPedida,
+            String faixasPedidas,
+            int quantidadeDeFaixas) {
+
+        // valida os parametros antes de ir ao banco
+        OrdemComparacao ordem = OrdemComparacao.de(ordenacaoPedida);
+        FaixasDeComparacao.Estrategia estrategia =
+                FaixasDeComparacao.Estrategia.de(faixasPedidas);
 
         Map<String, Object> indicador = buscarIndicador(sigla);
         Long indicadorId = numero(indicador.get("IND_ID"));
+        SentidoIndicador sentido = SentidoIndicador.de(texto(indicador.get("IND_SENTIDO")));
 
         if (versaoId != null) {
             conferirVersao(versaoId);
@@ -45,14 +57,16 @@ public class ConsolidadoMunicipioService {
         List<MunicipioConsolidadoResponse> municipios =
                 listar(indicadorId, versaoId, incluirSemDados);
 
-        return montar(indicador, versaoId, municipios);
+        return montar(indicador, sentido, versaoId, municipios, ordem, estrategia,
+                quantidadeDeFaixas);
     }
 
     private Map<String, Object> buscarIndicador(String sigla) {
         String normalizada = sigla == null ? "" : sigla.trim().toUpperCase();
 
         List<Map<String, Object>> achados = jdbc.queryForList(
-                "SELECT ind_id, ind_sigla, ind_nome, ind_unidade "
+                "SELECT ind_id, ind_sigla, ind_nome, ind_unidade, ind_sentido, "
+                        + "       ind_escala_min, ind_escala_max "
                         + "  FROM INDICADOR WHERE UPPER(ind_sigla) = ?",
                 normalizada);
 
@@ -121,40 +135,110 @@ public class ConsolidadoMunicipioService {
                     rs.getBigDecimal("soma_ha"),
                     rs.getString("rmu_situacao"),
                     numero(rs.getObject("ver_id")),
-                    dataHora(rs.getTimestamp("rmu_data_calculo")));
+                    dataHora(rs.getTimestamp("rmu_data_calculo")),
+                    null, null, null);
         }, parametros);
     }
 
     private ConsolidadoMunicipiosResponse montar(
             Map<String, Object> indicador,
+            SentidoIndicador sentido,
             Long versaoId,
-            List<MunicipioConsolidadoResponse> municipios) {
+            List<MunicipioConsolidadoResponse> municipios,
+            OrdemComparacao ordem,
+            FaixasDeComparacao.Estrategia estrategia,
+            int quantidadeDeFaixas) {
 
-        List<MunicipioConsolidadoResponse> comDados = municipios.stream()
+        String sigla = String.valueOf(indicador.get("IND_SIGLA"));
+
+        List<BigDecimal> valores = municipios.stream()
+                .filter(MunicipioConsolidadoResponse::temDados)
+                .map(MunicipioConsolidadoResponse::valorAgregado)
+                .filter(Objects::nonNull)
+                .sorted()
+                .toList();
+
+        FaixasDeComparacao.Resultado faixas = FaixasDeComparacao.calcular(
+                estrategia, quantidadeDeFaixas, valores,
+                decimal(indicador.get("IND_ESCALA_MIN")),
+                decimal(indicador.get("IND_ESCALA_MAX")),
+                sentido);
+
+        // ordena e so depois numera a posicao, para a posicao ser a da lista
+        List<MunicipioConsolidadoResponse> ordenados = new ArrayList<>(municipios);
+        ordenados.sort(ordem.comparador(sentido));
+
+        List<MunicipioConsolidadoResponse> classificados = new ArrayList<>();
+        int posicao = 0;
+        for (MunicipioConsolidadoResponse m : ordenados) {
+            Integer lugar = m.temDados() ? ++posicao : null;
+            classificados.add(m.comClassificacao(
+                    faixas.faixaDe(m.valorAgregado()),
+                    faixas.rotuloDe(m.valorAgregado()),
+                    lugar));
+        }
+
+        List<MunicipioConsolidadoResponse> comDados = classificados.stream()
                 .filter(MunicipioConsolidadoResponse::temDados)
                 .toList();
 
         long imoveis = comDados.stream()
                 .map(MunicipioConsolidadoResponse::imoveis)
-                .filter(java.util.Objects::nonNull)
+                .filter(Objects::nonNull)
                 .mapToLong(Long::longValue)
                 .sum();
+
+        List<ConsolidadoMunicipiosResponse.Versao> versoes = versoesEnvolvidas(comDados);
 
         return new ConsolidadoMunicipiosResponse(
                 new ConsolidadoMunicipiosResponse.Indicador(
                         numero(indicador.get("IND_ID")),
-                        String.valueOf(indicador.get("IND_SIGLA")),
+                        sigla,
                         String.valueOf(indicador.get("IND_NOME")),
-                        texto(indicador.get("IND_UNIDADE"))),
-                versoesEnvolvidas(comDados),
+                        texto(indicador.get("IND_UNIDADE")),
+                        sentido.name()),
+                versoes,
                 versaoId == null,
-                situacaoBoa(String.valueOf(indicador.get("IND_SIGLA"))),
+                situacaoBoa(sigla),
                 municipios.size(),
                 comDados.size(),
                 municipios.size() - comDados.size(),
                 imoveis,
-                resumo(comDados),
-                municipios);
+                resumo(valores),
+                ordem.name(),
+                new Escala(faixas.escalaMin(), faixas.escalaMax(),
+                        faixas.origemDaEscala(), estrategia.name()),
+                faixas.faixas(),
+                avisos(sigla, municipios, comDados, versoes, faixas),
+                classificados);
+    }
+
+    // o que a tela e a equipe precisam saber para nao interpretar errado
+    private List<String> avisos(
+            String sigla,
+            List<MunicipioConsolidadoResponse> municipios,
+            List<MunicipioConsolidadoResponse> comDados,
+            List<ConsolidadoMunicipiosResponse.Versao> versoes,
+            FaixasDeComparacao.Resultado faixas) {
+
+        List<String> avisos = new ArrayList<>(faixas.avisos());
+
+        if (municipios.isEmpty()) {
+            avisos.add("A tabela MUNICIPIO esta vazia: a malha municipal ainda nao "
+                    + "foi carregada, entao nao ha o que comparar.");
+        } else if (comDados.isEmpty()) {
+            avisos.add("Nenhum municipio tem resultado agregado para " + sigla
+                    + " nesta versao. Quem preenche RESULTADO_MUNICIPIO e a etapa "
+                    + "QUALIDADE do pipeline.");
+        }
+
+        if (versoes.size() > 1) {
+            avisos.add("Os resultados vigentes vieram de " + versoes.size()
+                    + " versoes diferentes, porque o vigente e por par "
+                    + "(municipio, indicador). Informe versaoId para olhar uma so.");
+        }
+
+        return avisos;
     }
 
 
@@ -163,7 +247,7 @@ public class ConsolidadoMunicipioService {
 
         List<Long> ids = comDados.stream()
                 .map(MunicipioConsolidadoResponse::versaoId)
-                .filter(java.util.Objects::nonNull)
+                .filter(Objects::nonNull)
                 .distinct()
                 .sorted()
                 .toList();
@@ -191,26 +275,21 @@ public class ConsolidadoMunicipioService {
     }
 
     // minimo, maximo, media e mediana sobre os municipios com dado, calculados
-    private Resumo resumo(List<MunicipioConsolidadoResponse> comDados) {
-        List<BigDecimal> valores = comDados.stream()
-                .map(MunicipioConsolidadoResponse::valorAgregado)
-                .filter(java.util.Objects::nonNull)
-                .sorted()
-                .toList();
-
-        if (valores.isEmpty()) {
+    private Resumo resumo(List<BigDecimal> valoresOrdenados) {
+        if (valoresOrdenados.isEmpty()) {
             return new Resumo(null, null, null, null);
         }
 
-        BigDecimal soma = valores.stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal soma = valoresOrdenados.stream()
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal media = soma.divide(
-                BigDecimal.valueOf(valores.size()), 4, RoundingMode.HALF_UP);
+                BigDecimal.valueOf(valoresOrdenados.size()), 4, RoundingMode.HALF_UP);
 
         return new Resumo(
-                valores.get(0),
-                valores.get(valores.size() - 1),
+                valoresOrdenados.get(0),
+                valoresOrdenados.get(valoresOrdenados.size() - 1),
                 media,
-                mediana(valores));
+                mediana(valoresOrdenados));
     }
 
     private static BigDecimal mediana(List<BigDecimal> ordenados) {
@@ -245,6 +324,18 @@ public class ConsolidadoMunicipioService {
 
     private static Long numero(Object valor) {
         return valor == null ? null : ((Number) valor).longValue();
+    }
+
+    private static BigDecimal decimal(Object valor) {
+        if (valor == null) {
+            return null;
+        }
+
+        if (valor instanceof BigDecimal bd) {
+            return bd;
+        }
+
+        return new BigDecimal(String.valueOf(valor));
     }
 
     private static String texto(Object valor) {

@@ -28,5 +28,19 @@ public record MunicipioConsolidadoResponse(
         BigDecimal somaHectares,
         String situacao,
         Long versaoId,
-        LocalDateTime dataCalculo) {
+        LocalDateTime dataCalculo,
+        // ordem da faixa em que o valor caiu; ver a lista faixas da resposta
+        Integer faixa,
+        String faixaRotulo,
+        // lugar na lista ja ordenada; null para municipio sem dado
+        Integer posicao) {
+
+    /** Mesma linha com a faixa e a posicao preenchidas. */
+    public MunicipioConsolidadoResponse comClassificacao(
+            Integer faixa, String faixaRotulo, Integer posicao) {
+        return new MunicipioConsolidadoResponse(
+                municipioId, codigoIbge, nome, uf, areaHa, temDados, valorAgregado,
+                imoveis, conformes, percentualConformes, somaHectares, situacao,
+                versaoId, dataCalculo, faixa, faixaRotulo, posicao);
+    }
 }
