@@ -35,6 +35,22 @@ public class SecurityConfig {
             "/actuator/health/**"
     };
 
+    private static final String[] TODOS_PERFIS = {
+            "ADMIN", "GESTOR", "OPERADOR", "ANALISTA", "AUDITOR"
+    };
+
+    private static final String[] QUALIDADE_E_LINHAGEM = {
+            "ADMIN", "GESTOR", "OPERADOR", "AUDITOR"
+    };
+
+    private static final String[] OPERACAO_E_INGESTAO = {
+            "ADMIN", "GESTOR", "OPERADOR"
+    };
+
+    private static final String[] GESTAO = {
+            "ADMIN", "GESTOR"
+    };
+
     private final KeycloakJwtAuthenticationConverter jwtAuthenticationConverter;
     private final SegurancaExceptionHandlers segurancaExceptionHandlers;
 
@@ -62,12 +78,73 @@ public class SecurityConfig {
             return http.build();
         }
 
-        log.info("Seguranca Keycloak ativa: JWT exigido fora das rotas de documentacao e health.");
+        log.info("Seguranca Keycloak ativa: matriz de permissoes aplicada em todas as rotas.");
 
         http.authorizeHttpRequests(regras -> regras
+                        // 1. Preflight e rotas publicas de documentacao/health
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers(ABERTOS).permitAll()
-                        .anyRequest().authenticated())
+
+                        // 2. Rotas restritas exclusivamente a ADMIN
+                        .requestMatchers("/api/teste/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/pipeline/limite-territorial/recarregar").hasRole("ADMIN")
+
+                        // 3. Gestao e administracao (ADMIN, GESTOR)
+                        .requestMatchers(HttpMethod.POST, "/api/fontes").hasAnyRole(GESTAO)
+                        .requestMatchers(HttpMethod.PUT, "/api/fontes/**").hasAnyRole(GESTAO)
+                        .requestMatchers(HttpMethod.DELETE, "/api/fontes/**").hasAnyRole(GESTAO)
+                        .requestMatchers(HttpMethod.PATCH, "/api/fontes/**").hasAnyRole(GESTAO)
+
+                        .requestMatchers(HttpMethod.DELETE, "/api/conjuntos/**").hasAnyRole(GESTAO)
+                        .requestMatchers(HttpMethod.PATCH, "/api/conjuntos/**").hasAnyRole(GESTAO)
+
+                        .requestMatchers(HttpMethod.POST, "/api/versoes/*/publicar").hasAnyRole(GESTAO)
+                        .requestMatchers(HttpMethod.POST, "/api/versoes/*/reprovar").hasAnyRole(GESTAO)
+                        .requestMatchers(HttpMethod.POST, "/api/versoes/*/reverter").hasAnyRole(GESTAO)
+
+                        .requestMatchers(HttpMethod.POST, "/api/indicadores/**").hasAnyRole(GESTAO)
+                        .requestMatchers(HttpMethod.PUT, "/api/imoveis/*/nome").hasAnyRole(GESTAO)
+
+                        // 4. Escrita de conjuntos, ingestao, uploads e execucao/reprocessamento de pipeline (ADMIN, GESTOR, OPERADOR)
+                        .requestMatchers(HttpMethod.POST, "/api/conjuntos").hasAnyRole(OPERACAO_E_INGESTAO)
+                        .requestMatchers(HttpMethod.PUT, "/api/conjuntos/**").hasAnyRole(OPERACAO_E_INGESTAO)
+
+                        .requestMatchers(HttpMethod.POST, "/api/ingestao/**").hasAnyRole(OPERACAO_E_INGESTAO)
+                        .requestMatchers(HttpMethod.POST, "/api/arquivos/brutos/upload").hasAnyRole(OPERACAO_E_INGESTAO)
+                        .requestMatchers(HttpMethod.POST, "/api/arquivos/*/processar").hasAnyRole(OPERACAO_E_INGESTAO)
+
+                        .requestMatchers(HttpMethod.POST, "/api/pipeline/executar").hasAnyRole(OPERACAO_E_INGESTAO)
+                        .requestMatchers(HttpMethod.POST, "/api/pipeline/lote").hasAnyRole(OPERACAO_E_INGESTAO)
+                        .requestMatchers(HttpMethod.POST, "/api/pipeline/etapas/**").hasAnyRole(OPERACAO_E_INGESTAO)
+                        .requestMatchers(HttpMethod.POST, "/api/pipeline/execucoes/*/etapas/*/reexecutar").hasAnyRole(OPERACAO_E_INGESTAO)
+
+                        // 5. Linhagem e qualidade (ADMIN, GESTOR, OPERADOR, AUDITOR - bloqueia ANALISTA)
+                        .requestMatchers(HttpMethod.GET, "/api/v1/linhagem/**").hasAnyRole(QUALIDADE_E_LINHAGEM)
+                        .requestMatchers(HttpMethod.GET, "/api/linhagem/**").hasAnyRole(QUALIDADE_E_LINHAGEM)
+                        .requestMatchers(HttpMethod.GET, "/api/v1/qualidade/**").hasAnyRole(QUALIDADE_E_LINHAGEM)
+                        .requestMatchers(HttpMethod.GET, "/api/execucoes/*/qualidade").hasAnyRole(QUALIDADE_E_LINHAGEM)
+
+                        // 6. Consultas gerais, downloads e leitura de execucoes (todos os 5 perfis autenticados)
+                        .requestMatchers(HttpMethod.GET, "/api/v1/catalogo/**").hasAnyRole(TODOS_PERFIS)
+                        .requestMatchers(HttpMethod.GET, "/api/v1/indicadores/**").hasAnyRole(TODOS_PERFIS)
+                        .requestMatchers(HttpMethod.GET, "/api/indicadores/**").hasAnyRole(TODOS_PERFIS)
+                        .requestMatchers(HttpMethod.GET, "/api/imoveis/**").hasAnyRole(TODOS_PERFIS)
+                        .requestMatchers(HttpMethod.GET, "/api/mapa/**").hasAnyRole(TODOS_PERFIS)
+                        .requestMatchers(HttpMethod.GET, "/api/arquivos/**").hasAnyRole(TODOS_PERFIS)
+                        .requestMatchers(HttpMethod.GET, "/api/inventario/**").hasAnyRole(TODOS_PERFIS)
+                        .requestMatchers(HttpMethod.GET, "/api/perfis/**").hasAnyRole(TODOS_PERFIS)
+                        .requestMatchers(HttpMethod.GET, "/api/datalake/**").hasAnyRole(TODOS_PERFIS)
+                        .requestMatchers(HttpMethod.GET, "/api/conjuntos/**").hasAnyRole(TODOS_PERFIS)
+                        .requestMatchers(HttpMethod.GET, "/api/fontes/**").hasAnyRole(TODOS_PERFIS)
+                        .requestMatchers(HttpMethod.GET, "/api/versoes/**").hasAnyRole(TODOS_PERFIS)
+                        .requestMatchers(HttpMethod.GET, "/api/trajetoria-conjuntos/**").hasAnyRole(TODOS_PERFIS)
+                        .requestMatchers(HttpMethod.GET, "/api/zona-tratada/**").hasAnyRole(TODOS_PERFIS)
+                        .requestMatchers(HttpMethod.GET, "/api/ingestao/**").hasAnyRole(TODOS_PERFIS)
+                        .requestMatchers(HttpMethod.GET, "/api/v1/execucoes/**").hasAnyRole(TODOS_PERFIS)
+                        .requestMatchers(HttpMethod.GET, "/api/pipeline/**").hasAnyRole(TODOS_PERFIS)
+
+                        // 7. Negar por padrao qualquer rota nao mapeada na matriz
+                        .anyRequest().denyAll())
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint(segurancaExceptionHandlers)
                         .accessDeniedHandler(segurancaExceptionHandlers))
