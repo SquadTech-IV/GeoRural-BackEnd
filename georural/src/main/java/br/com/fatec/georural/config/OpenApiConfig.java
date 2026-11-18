@@ -129,6 +129,7 @@ public class OpenApiConfig {
         Map<String, String> padrao = Map.of(
                 "400", "Parametro invalido na requisicao",
                 "401", "Token ausente, expirado ou invalido",
+                "403", "Acesso negado para o perfil do usuario",
                 "404", "Recurso nao encontrado",
                 "500", "Erro interno no servidor"
         );

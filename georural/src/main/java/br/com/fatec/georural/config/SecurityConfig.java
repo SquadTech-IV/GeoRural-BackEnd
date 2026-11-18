@@ -1,13 +1,16 @@
 package br.com.fatec.georural.config;
 
+import br.com.fatec.georural.security.KeycloakJwtAuthenticationConverter;
+import br.com.fatec.georural.security.SegurancaExceptionHandlers;
+import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -15,11 +18,8 @@ import org.springframework.security.web.SecurityFilterChain;
 
 @Configuration
 @EnableWebSecurity
-@ConditionalOnProperty(
-        name = "georural.seguranca.provisoria",
-        havingValue = "true",
-        matchIfMissing = true
-)
+@EnableMethodSecurity
+@RequiredArgsConstructor
 public class SecurityConfig {
 
     private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
@@ -35,13 +35,15 @@ public class SecurityConfig {
             "/actuator/health/**"
     };
 
-    // true: API sem autenticacao nenhuma. false: exige JWT fora das rotas acima.
-    @Value("${georural.seguranca.liberar-api:true}")
+    private final KeycloakJwtAuthenticationConverter jwtAuthenticationConverter;
+    private final SegurancaExceptionHandlers segurancaExceptionHandlers;
+
+    // true: API sem autenticacao (contingencia). false: exige JWT do Keycloak fora das rotas acima.
+    @Value("${georural.seguranca.liberar-api:false}")
     private boolean liberarApi;
 
     @Bean
     public SecurityFilterChain filtroDeSeguranca(HttpSecurity http) throws Exception {
-        // API com token no cabecalho: nao usa sessao nem formulario, entao CSRF nao se aplica.
         http.csrf(csrf -> csrf.disable())
                 .cors(Customizer.withDefaults())
                 .sessionManagement(sessao -> sessao
@@ -53,24 +55,26 @@ public class SecurityConfig {
             log.warn("""
                     ATENCAO: georural.seguranca.liberar-api=true.
                     A API esta SEM autenticacao - qualquer um que alcance a porta chama qualquer rota.
-                    E o que permite o Airflow (US#10) rodar antes da US#13 entrar.
-                    Quando o Keycloak estiver de pe, ponha georural.seguranca.liberar-api=false.
+                    Para ativar o Keycloak, defina georural.seguranca.liberar-api=false.
                     """);
 
-            // Sem oauth2ResourceServer: a aplicacao sobe sem o Keycloak responder.
             http.authorizeHttpRequests(regras -> regras.anyRequest().permitAll());
-
             return http.build();
         }
 
-        log.info("Autenticacao ligada: JWT do Keycloak exigido fora das rotas de documentacao.");
+        log.info("Seguranca Keycloak ativa: JWT exigido fora das rotas de documentacao e health.");
 
         http.authorizeHttpRequests(regras -> regras
-                        // O preflight do navegador vem sem token.
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers(ABERTOS).permitAll()
                         .anyRequest().authenticated())
-                .oauth2ResourceServer(oauth -> oauth.jwt(Customizer.withDefaults()));
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint(segurancaExceptionHandlers)
+                        .accessDeniedHandler(segurancaExceptionHandlers))
+                .oauth2ResourceServer(oauth -> oauth
+                        .authenticationEntryPoint(segurancaExceptionHandlers)
+                        .accessDeniedHandler(segurancaExceptionHandlers)
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter)));
 
         return http.build();
     }
