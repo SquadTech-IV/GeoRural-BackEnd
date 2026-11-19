@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import br.com.fatec.georural.security.IsolamentoCargaService;
 
 import java.util.Arrays;
 import java.util.List;
@@ -26,6 +27,7 @@ public class PipelineController {
     private final PipelineExecutor executor;
     private final CargaLimiteTerritorialService cargaLimite;
     private final LoteProcessamentoService lote;
+    private final IsolamentoCargaService isolamentoCargaService;
 
     // o que existe e o que ja esta implementado
     @GetMapping("/etapas")
@@ -57,10 +59,11 @@ public class PipelineController {
         if (request == null || request.conjuntoId() == null) {
             throw new ResponseStatusExceptionSimples(HttpStatus.BAD_REQUEST, "Informe o conjuntoId.");
         }
-
+        isolamentoCargaService.validarAcessoArquivosBrutos(request.arquivoBrutoIds());
+        Long usuarioEfetivoId = isolamentoCargaService.resolverUsuarioIdAutenticado(request.usuarioId());
         LoteProcessamentoService.Resultado resultado = lote.processar(
                 request.conjuntoId(),
-                request.usuarioId(),
+                usuarioEfetivoId,
                 request.competencia(),
                 request.arquivoBrutoIds(),
                 Boolean.TRUE.equals(request.pararNoPrimeiroErro()),
@@ -124,7 +127,9 @@ public class PipelineController {
             throw new ResponseStatusExceptionSimples(HttpStatus.BAD_REQUEST,
                     "Informe o conjuntoId.");
         }
-        ContextoExecucao ctx = ContextoExecucao.novo(r.conjuntoId(), r.arquivoBrutoId(), r.usuarioId());
+        isolamentoCargaService.validarAcessoArquivoBruto(r.arquivoBrutoId());
+        Long usuarioEfetivoId = isolamentoCargaService.resolverUsuarioIdAutenticado(r.usuarioId());
+        ContextoExecucao ctx = ContextoExecucao.novo(r.conjuntoId(), r.arquivoBrutoId(), usuarioEfetivoId);
         if (r.dagRunId() != null && !r.dagRunId().isBlank()) {
             ctx.setDagRunId(r.dagRunId());
         }

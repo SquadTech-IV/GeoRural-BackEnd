@@ -23,7 +23,7 @@ public class ArquivoBruto {
     private ConjuntoDados conjunto;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "usu_id")
+    @JoinColumn(name = "usu_id", nullable = false)
     private Usuario usuario;
 
     @Column(name = "arq_nome", nullable = false)

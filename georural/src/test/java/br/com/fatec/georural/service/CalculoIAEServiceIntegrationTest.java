@@ -23,11 +23,10 @@ class CalculoIAEServiceIntegrationTest {
     @Test
     void calcular_deveRetornarAreaProximaDaMedidaManualmente() {
         Long imovelId = 121L;
-        Long versaoEmbargoId = 1L;
         BigDecimal areaEsperadaHa = new BigDecimal("91.503");
         BigDecimal tolerancia = new BigDecimal("1.83"); // ~2% de 91.503
 
-        IAEResponse resposta = service.calcularSobreposicaoEmbargo(imovelId, versaoEmbargoId);
+        IAEResponse resposta = service.calcularSobreposicaoEmbargo(imovelId);
 
         assertThat(resposta.getValorHectares().doubleValue())
             .isCloseTo(areaEsperadaHa.doubleValue(), within(tolerancia.doubleValue()));

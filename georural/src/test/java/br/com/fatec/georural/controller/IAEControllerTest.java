@@ -28,7 +28,6 @@ class IAEControllerTest {
     private MockMvc mockMvc;
 
     private static final Long IMOVEL_ID = 41L;
-    private static final Long EMBARGO_VERSAO_NUMERO = 1L;
 
     @BeforeEach
     void setUp() {
@@ -54,16 +53,16 @@ class IAEControllerTest {
     @Test
     void calcular_deveRetornar201EResultado() throws Exception {
         IAEResponse resposta = new IAEResponse(
-                IMOVEL_ID, 
-                null, 
-                null, 
-                "IAE", 
-                null, 
-                null, 
-                null, 
-                null, 
+                IMOVEL_ID,
+                null,
+                null,
+                "IAE",
+                null,
+                null,
+                null,
+                null,
                 List.of());
-        when(calculoService.calcularSobreposicaoEmbargo(IMOVEL_ID, EMBARGO_VERSAO_NUMERO)).thenReturn(resposta);
+        when(calculoService.calcularSobreposicaoEmbargo(IMOVEL_ID)).thenReturn(resposta);
 
         mockMvc.perform(post("/api/indicadores/iae/" + IMOVEL_ID))
                 .andExpect(status().isCreated())
@@ -72,7 +71,7 @@ class IAEControllerTest {
 
     @Test
     void calcular_deveRetornar409_quandoJaCalculado() throws Exception {
-        when(calculoService.calcularSobreposicaoEmbargo(IMOVEL_ID, EMBARGO_VERSAO_NUMERO))
+        when(calculoService.calcularSobreposicaoEmbargo(IMOVEL_ID))
                 .thenThrow(new ConflitoException("IAE já calculado para o imóvel " + IMOVEL_ID));
 
         mockMvc.perform(post("/api/indicadores/iae/" + IMOVEL_ID))

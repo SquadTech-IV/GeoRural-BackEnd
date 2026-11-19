@@ -32,6 +32,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -87,7 +88,7 @@ class ImportacaoApiServiceTest {
         when(leitor.ler(any(), eq(FormatoRespostaApi.GEOJSON)))
                 .thenReturn(new ConteudoRecebido(FormatoRespostaApi.GEOJSON, 2, corpo.length, true, corpo));
         when(validador.validar(any(), any(), any())).thenReturn(ResultadoValidacao.ok());
-        when(duplicidade.jaExistePorHash(anyString())).thenReturn(false);
+        lenient().when(duplicidade.jaExiste(eq(10L), any(), anyString())).thenReturn(false);
         ArquivoBruto salvo = new ArquivoBruto();
         salvo.setId(99L);
         when(ingestao.registrar(eq(c), any(), anyString(), eq(FormatoRespostaApi.GEOJSON), any(), eq("API")))
