@@ -230,6 +230,13 @@ public class GlobalExceptionHandler {
         return montar(HttpStatus.CONTENT_TOO_LARGE, "O arquivo excede o tamanho máximo permitido.", req);
     }
 
+    @ExceptionHandler(KeycloakIndisponivelException.class)
+    public ResponseEntity<ErroResponse> tratarKeycloakIndisponivel(
+            KeycloakIndisponivelException ex, HttpServletRequest req) {
+        log.error("502 {} {} -> {}", req.getMethod(), req.getRequestURI(), ex.getMessage(), ex);
+        return montar(HttpStatus.BAD_GATEWAY, ex.getMessage(), req);
+    }
+
     private ResponseEntity<ErroResponse> montar(
             HttpStatus status, String mensagem, HttpServletRequest req) {
         // o RegistroErroFilter le estes atributos para gravar em ERRO_API.
