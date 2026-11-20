@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.jdbc.core.RowCallbackHandler;
 
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -113,7 +114,7 @@ public class ConsultaExportacaoService {
                 ps.setObject(i + 1, params.get(i));
             }
             return ps;
-        }, rs -> consumidor.accept(montar(rs)));
+        }, (RowCallbackHandler) rs -> consumidor.accept(montar(rs)));
     }
 
     private LinhaResultado montar(ResultSet rs) throws SQLException {
