@@ -7,7 +7,7 @@ COPY mvnw pom.xml ./
 RUN chmod +x mvnw && ./mvnw dependency:go-offline -B
 
 COPY src/ src/
-RUN ./mvnw clean package -DskipTests -B
+RUN ./mvnw clean package -Dmaven.test.skip=true -B
 
 # --- Estágio 2: Runtime ---
 FROM eclipse-temurin:21-jre
