@@ -17,6 +17,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowCallbackHandler;
 
 @Slf4j
 @Service
@@ -113,7 +115,7 @@ public class ConsultaExportacaoService {
                 ps.setObject(i + 1, params.get(i));
             }
             return ps;
-        }, rs -> consumidor.accept(montar(rs)));
+        }, (RowCallbackHandler) rs -> consumidor.accept(montar(rs)));
     }
 
     private LinhaResultado montar(ResultSet rs) throws SQLException {
