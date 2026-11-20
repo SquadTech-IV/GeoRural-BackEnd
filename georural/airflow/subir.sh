@@ -92,7 +92,7 @@ for _ in $(seq 1 60); do
   sleep 3
 done
 
-SENHA=$(python3 -c "import json;print(json.load(open('config/simple_auth_manager_passwords.json'))['admin'])" 2>/dev/null || echo georural)
+SENHA=$(python3 -c "import json;print(json.load(open('config/simple_auth_manager_passwords.json'))['admin'])" 2>/dev/null || echo "")
 
 echo
 echo "==================================================================="
