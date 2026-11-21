@@ -194,6 +194,21 @@ class SecurityMatrizPermissoesTest {
                 .andExpect(status().isForbidden());
     }
 
+    @Test
+    @DisplayName("/api/usuarios/** permite apenas ADMIN (200) e bloqueia os demais 4 perfis (403)")
+    void rotasUsuarios_apenasAdmin() throws Exception {
+        mockMvc.perform(get("/api/usuarios")
+                        .header("Authorization", tokenComRole("ADMIN")))
+                .andExpect(status().isOk());
+
+        for (String role : List.of("GESTOR", "OPERADOR", "ANALISTA", "AUDITOR")) {
+            mockMvc.perform(get("/api/usuarios")
+                            .header("Authorization", tokenComRole(role)))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.status").value(403));
+        }
+    }
+
     @Configuration
     @EnableWebMvc
     @Import({SecurityConfig.class, KeycloakJwtAuthenticationConverter.class, SegurancaExceptionHandlers.class})
@@ -265,5 +280,8 @@ class SecurityMatrizPermissoesTest {
 
         @GetMapping("/api/rota-inexistente-na-matriz")
         String naoMapeada() { return "ok"; }
+
+        @GetMapping("/api/usuarios")
+        String usuarios() { return "ok"; }
     }
 }

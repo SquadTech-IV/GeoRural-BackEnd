@@ -89,6 +89,7 @@ public class SecurityConfig {
                         .requestMatchers(ABERTOS).permitAll()
 
                         // 2. Rotas restritas exclusivamente a ADMIN
+                        .requestMatchers("/api/usuarios/**").hasRole("ADMIN")
                         .requestMatchers("/api/teste/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/pipeline/limite-territorial/recarregar").hasRole("ADMIN")
 

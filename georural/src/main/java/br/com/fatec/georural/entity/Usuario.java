@@ -22,7 +22,7 @@ public class Usuario {
     @JoinColumn(name = "per_id", nullable = false)
     private Perfil perfil;
 
-    @Column(name = "usu_keycloak_id", length = 36)
+    @Column(name = "usu_keycloak_id", length = 36, nullable = false)
     private String keycloakId;
 
     @Column(name = "usu_nome", nullable = false)

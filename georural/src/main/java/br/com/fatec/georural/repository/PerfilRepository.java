@@ -8,4 +8,5 @@ import java.util.Optional;
 public interface PerfilRepository extends JpaRepository<Perfil, Long> {
 
     Optional<Perfil> findByFuncao(String funcao);
+    Optional<Perfil> findByFuncaoIgnoreCase(String funcao);
 }

@@ -1,23 +1,15 @@
 package br.com.fatec.georural.service.qualidade;
 
 import br.com.fatec.georural.dto.response.qualidade.QuarentenaConsultaResponse;
-import br.com.fatec.georural.entity.Auditoria;
 import br.com.fatec.georural.entity.Quarentena;
-import br.com.fatec.georural.entity.Usuario;
 import br.com.fatec.georural.exception.RecursoNaoEncontradoException;
 import br.com.fatec.georural.exception.RequisicaoInvalidaException;
-import br.com.fatec.georural.repository.AuditoriaRepository;
 import br.com.fatec.georural.repository.QuarentenaRepository;
-import br.com.fatec.georural.repository.UsuarioRepository;
 import br.com.fatec.georural.security.IsolamentoCargaService;
-import br.com.fatec.georural.security.UsuarioAutenticado;
-import br.com.fatec.georural.security.UsuarioAutenticadoProvider;
-import jakarta.servlet.http.HttpServletRequest;
+import br.com.fatec.georural.service.auditoria.AuditoriaService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.context.request.RequestContextHolder;
-import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.time.LocalDateTime;
 import java.util.Set;
@@ -29,10 +21,8 @@ public class QuarentenaSituacaoService {
     private static final Set<String> SITUACOES_FINAIS = Set.of("CORRIGIDO", "DESCARTADO");
 
     private final QuarentenaRepository quarentenaRepository;
-    private final AuditoriaRepository auditoriaRepository;
-    private final UsuarioRepository usuarioRepository;
+    private final AuditoriaService auditoriaService;
     private final IsolamentoCargaService isolamentoCargaService;
-    private final UsuarioAutenticadoProvider usuarioAutenticadoProvider;
 
     @Transactional
     public QuarentenaConsultaResponse alterarSituacao(Long quaId, String novaSituacaoRaw) {
@@ -96,58 +86,16 @@ public class QuarentenaSituacaoService {
             LocalDateTime resolucaoAnterior,
             LocalDateTime dataHora) {
 
-        Auditoria aud = new Auditoria();
-        aud.setOperacao("ATUALIZACAO_SITUACAO");
-        aud.setEntidadeAfetada("QUARENTENA");
-        aud.setRegistroId(q.getId());
-        aud.setDataHora(dataHora);
-        aud.setIpOrigem(extrairIpAtual());
-
-        UsuarioAutenticado auth = usuarioAutenticadoProvider.obterOpcional().orElse(null);
-        if (auth != null && auth.usuId() != null) {
-            Usuario usuario = usuarioRepository.findById(auth.usuId()).orElse(null);
-            if (usuario != null) {
-                aud.setUsuario(usuario);
-                aud.setUsuarioNome(usuario.getNome());
-            } else {
-                aud.setUsuarioNome(auth.keycloakId());
-            }
-        } else {
-            aud.setUsuarioNome("sistema");
-        }
-
-        aud.setDadosAntigos(String.format(
+        String dadosAntigos = String.format(
                 "{\"qua_situacao\":\"%s\",\"qua_data_resolucao\":\"%s\"}",
-                escapar(situacaoAnterior),
+                AuditoriaService.escapar(situacaoAnterior),
                 resolucaoAnterior != null ? resolucaoAnterior.toString() : ""
-        ));
-
-        aud.setDadosNovos(String.format(
+        );
+        String dadosNovos = String.format(
                 "{\"qua_situacao\":\"%s\",\"qua_data_resolucao\":\"%s\"}",
-                escapar(q.getSituacao()),
+                AuditoriaService.escapar(q.getSituacao()),
                 q.getDataResolucao() != null ? q.getDataResolucao().toString() : ""
-        ));
-
-        auditoriaRepository.save(aud);
-    }
-
-    private String extrairIpAtual() {
-        var attrs = RequestContextHolder.getRequestAttributes();
-        if (attrs instanceof ServletRequestAttributes servletAttrs) {
-            HttpServletRequest request = servletAttrs.getRequest();
-            String forwarded = request.getHeader("X-Forwarded-For");
-            if (forwarded != null && !forwarded.isBlank()) {
-                return forwarded.split(",")[0].trim();
-            }
-            return request.getRemoteAddr();
-        }
-        return null;
-    }
-
-    private String escapar(String valor) {
-        if (valor == null) {
-            return "";
-        }
-        return valor.replace("\\", "\\\\").replace("\"", "\\\"");
+        );
+        auditoriaService.registrar("ATUALIZACAO_SITUACAO", "QUARENTENA", q.getId(), dadosAntigos, dadosNovos, dataHora);
     }
 }
