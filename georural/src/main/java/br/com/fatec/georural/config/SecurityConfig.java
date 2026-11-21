@@ -124,6 +124,9 @@ public class SecurityConfig {
 
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/qualidade/**").hasAnyRole(OPERACAO_E_INGESTAO)
 
+                        // US#20 - Historico de auditoria: somente AUDITOR
+                        .requestMatchers(HttpMethod.GET, "/api/v1/auditoria/**").hasRole("AUDITOR")
+
                         // 5. Linhagem e qualidade (ADMIN, GESTOR, OPERADOR, AUDITOR - bloqueia ANALISTA)
                         .requestMatchers(HttpMethod.GET, "/api/v1/linhagem/**").hasAnyRole(QUALIDADE_E_LINHAGEM)
                         .requestMatchers(HttpMethod.GET, "/api/linhagem/**").hasAnyRole(QUALIDADE_E_LINHAGEM)
