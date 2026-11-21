@@ -48,6 +48,36 @@ public class AuditoriaService {
             String dadosNovosJson,
             LocalDateTime dataHora
     ) {
+        gravar(operacao, entidadeAfetada, registroId, dadosAntigosJson, dadosNovosJson, dataHora, null);
+    }
+
+    /**
+     * US#20.01 - Grava em transacao propria, para acoes sem transacao de negocio
+     * (download, upload, chamada de API, disparo de execucao).
+     *
+     * @param autorPadrao nome gravado quando nao ha usuario autenticado na requisicao
+     *                    (ex.: "AIRFLOW" nas execucoes automaticas). Se nulo, grava "sistema".
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void registrarIndependente(
+            String operacao,
+            String entidadeAfetada,
+            Long registroId,
+            String dadosNovosJson,
+            String autorPadrao
+    ) {
+        gravar(operacao, entidadeAfetada, registroId, null, dadosNovosJson, LocalDateTime.now(), autorPadrao);
+    }
+
+    private void gravar(
+            String operacao,
+            String entidadeAfetada,
+            Long registroId,
+            String dadosAntigosJson,
+            String dadosNovosJson,
+            LocalDateTime dataHora,
+            String autorPadrao
+    ) {
         Auditoria aud = new Auditoria();
         aud.setOperacao(operacao);
         aud.setEntidadeAfetada(entidadeAfetada);
@@ -67,7 +97,7 @@ public class AuditoriaService {
                 aud.setUsuarioNome(auth.keycloakId());
             }
         } else {
-            aud.setUsuarioNome("sistema");
+            aud.setUsuarioNome(autorPadrao != null ? autorPadrao : "sistema");
         }
 
         auditoriaRepository.saveAndFlush(aud);

@@ -209,6 +209,22 @@ class SecurityMatrizPermissoesTest {
         }
     }
 
+    @Test
+    @DisplayName("US#20 - Historico de auditoria permite somente AUDITOR (200) e bloqueia os demais perfis (403)")
+    void auditoria_permiteSomenteAuditor() throws Exception {
+        mockMvc.perform(get("/api/v1/auditoria")
+                        .header("Authorization", tokenComRole("AUDITOR")))
+                .andExpect(status().isOk());
+
+        for (String negado : List.of("ADMIN", "GESTOR", "OPERADOR", "ANALISTA")) {
+            mockMvc.perform(get("/api/v1/auditoria")
+                            .header("Authorization", tokenComRole(negado)))
+                    .andExpect(status().isForbidden());
+        }
+
+        mockMvc.perform(get("/api/v1/auditoria")).andExpect(status().isUnauthorized());
+    }
+
     @Configuration
     @EnableWebMvc
     @Import({SecurityConfig.class, KeycloakJwtAuthenticationConverter.class, SegurancaExceptionHandlers.class})
@@ -265,6 +281,9 @@ class SecurityMatrizPermissoesTest {
 
         @PatchMapping("/api/v1/qualidade/quarentena/{id}/situacao")
         String alterarQuarentena(@PathVariable Long id) { return "ok"; }
+
+        @GetMapping("/api/v1/auditoria")
+        String auditoria() { return "ok"; }
 
         @GetMapping("/api/v1/linhagem/resultados")
         String linhagem() { return "ok"; }
