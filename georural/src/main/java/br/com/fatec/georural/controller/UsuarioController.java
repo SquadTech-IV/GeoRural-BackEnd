@@ -5,6 +5,7 @@ import br.com.fatec.georural.dto.request.usuario.EditarUsuarioRequest;
 import br.com.fatec.georural.dto.response.usuario.UsuarioResponse;
 import br.com.fatec.georural.service.usuario.UsuarioCadastroService;
 import br.com.fatec.georural.service.usuario.UsuarioEdicaoService;
+import br.com.fatec.georural.service.usuario.UsuarioStatusService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -23,6 +24,7 @@ public class UsuarioController {
 
     private final UsuarioCadastroService usuarioCadastroService;
     private final UsuarioEdicaoService usuarioEdicaoService;
+    private final UsuarioStatusService usuarioStatusService;
 
     @PostMapping
     @Operation(summary = "Cadastra um novo usuário no Keycloak e no banco local e envia e-mail de definição de senha")
@@ -44,6 +46,20 @@ public class UsuarioController {
             @PathVariable Long id,
             @Valid @RequestBody EditarUsuarioRequest request) {
         UsuarioResponse atualizado = usuarioEdicaoService.editar(id, request);
+        return ResponseEntity.ok(atualizado);
+    }
+
+    @PostMapping("/{id}/desativar")
+    @Operation(summary = "Desativa o usuário no banco e no Keycloak e revoga suas sessões ativas")
+    public ResponseEntity<UsuarioResponse> desativarUsuario(@PathVariable Long id) {
+        UsuarioResponse atualizado = usuarioStatusService.desativar(id);
+        return ResponseEntity.ok(atualizado);
+    }
+
+    @PostMapping("/{id}/reativar")
+    @Operation(summary = "Reativa um usuário previamente desativado no banco e no Keycloak")
+    public ResponseEntity<UsuarioResponse> reativarUsuario(@PathVariable Long id) {
+        UsuarioResponse atualizado = usuarioStatusService.reativar(id);
         return ResponseEntity.ok(atualizado);
     }
 }
