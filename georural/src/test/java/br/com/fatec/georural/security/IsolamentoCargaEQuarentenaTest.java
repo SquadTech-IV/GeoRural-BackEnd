@@ -6,9 +6,9 @@ import br.com.fatec.georural.entity.Quarentena;
 import br.com.fatec.georural.entity.Usuario;
 import br.com.fatec.georural.exception.GlobalExceptionHandler;
 import br.com.fatec.georural.exception.RequisicaoInvalidaException;
-import br.com.fatec.georural.repository.AuditoriaRepository;
 import br.com.fatec.georural.repository.QuarentenaRepository;
 import br.com.fatec.georural.repository.UsuarioRepository;
+import br.com.fatec.georural.service.auditoria.AuditoriaService;
 import br.com.fatec.georural.service.qualidade.ConsultaExecucaoQuarentenaService;
 import br.com.fatec.georural.service.qualidade.QuarentenaSituacaoService;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,6 +31,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -45,7 +46,7 @@ class IsolamentoCargaEQuarentenaTest {
     private QuarentenaRepository quarentenaRepository;
 
     @Mock
-    private AuditoriaRepository auditoriaRepository;
+    private AuditoriaService auditoriaService;
 
     @Mock
     private UsuarioRepository usuarioRepository;
@@ -62,10 +63,8 @@ class IsolamentoCargaEQuarentenaTest {
         isolamentoService = new IsolamentoCargaService(usuarioProvider, quarentenaRepository, jdbcTemplate);
         quarentenaSituacaoService = new QuarentenaSituacaoService(
                 quarentenaRepository,
-                auditoriaRepository,
-                usuarioRepository,
-                isolamentoService,
-                usuarioProvider
+                auditoriaService,
+                isolamentoService
         );
 
         var controller = new ConsultaExecucaoQuarentenaController(
@@ -140,13 +139,23 @@ class IsolamentoCargaEQuarentenaTest {
         assertNotNull(q.getDataResolucao());
 
         ArgumentCaptor<Auditoria> audCaptor = ArgumentCaptor.forClass(Auditoria.class);
-        verify(auditoriaRepository).save(audCaptor.capture());
+
+        ArgumentCaptor<String> dadosAntigosCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> dadosNovosCaptor = ArgumentCaptor.forClass(String.class);
+        verify(auditoriaService).registrar(
+                eq("ATUALIZACAO_SITUACAO"),
+                eq("QUARENTENA"),
+                eq(100L),
+                dadosAntigosCaptor.capture(),
+                dadosNovosCaptor.capture(),
+                any(LocalDateTime.class)
+        );
         Auditoria aud = audCaptor.getValue();
         assertEquals("ATUALIZACAO_SITUACAO", aud.getOperacao());
         assertEquals("QUARENTENA", aud.getEntidadeAfetada());
         assertEquals(100L, aud.getRegistroId());
-        assertTrue(aud.getDadosAntigos().contains("PENDENTE"));
-        assertTrue(aud.getDadosNovos().contains("CORRIGIDO"));
+        assertTrue(dadosAntigosCaptor.getValue().contains("PENDENTE"));
+        assertTrue(dadosNovosCaptor.getValue().contains("CORRIGIDO"));
     }
 
     @Test

@@ -8,7 +8,7 @@ import br.com.fatec.georural.exception.RecursoNaoEncontradoException;
 import br.com.fatec.georural.repository.UsuarioRepository;
 import br.com.fatec.georural.security.UsuarioAutenticado;
 import br.com.fatec.georural.security.UsuarioAutenticadoProvider;
-import br.com.fatec.georural.service.auditoria.UsuarioAuditoriaHelper;
+import br.com.fatec.georural.service.auditoria.AuditoriaService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -28,7 +28,7 @@ public class UsuarioStatusService {
 
     private final UsuarioRepository usuarioRepository;
     private final KeycloakAdminClient keycloakAdminClient;
-    private final UsuarioAuditoriaHelper auditoriaHelper;
+    private final AuditoriaService auditoriaService;
     private final UsuarioAutenticadoProvider usuarioAutenticadoProvider;
     private final TransactionTemplate transactionTemplate;
 
@@ -61,7 +61,7 @@ public class UsuarioStatusService {
                 usuario.setStatus(STATUS_INATIVO);
                 Usuario salvo = usuarioRepository.saveAndFlush(usuario);
 
-                auditoriaHelper.registrar(
+                auditoriaService.registrar(
                         "DESATIVACAO",
                         "USUARIO",
                         salvo.getId(),
@@ -100,7 +100,7 @@ public class UsuarioStatusService {
                 usuario.setStatus(STATUS_ATIVO);
                 Usuario salvo = usuarioRepository.saveAndFlush(usuario);
 
-                auditoriaHelper.registrar(
+                auditoriaService.registrar(
                         "REATIVACAO",
                         "USUARIO",
                         salvo.getId(),

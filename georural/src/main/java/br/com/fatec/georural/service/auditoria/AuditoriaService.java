@@ -8,34 +8,53 @@ import br.com.fatec.georural.security.UsuarioAutenticado;
 import br.com.fatec.georural.security.UsuarioAutenticadoProvider;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Component;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.time.LocalDateTime;
 
-@Component
+@Service
 @RequiredArgsConstructor
-public class UsuarioAuditoriaHelper {
+public class AuditoriaService {
 
     private final AuditoriaRepository auditoriaRepository;
     private final UsuarioRepository usuarioRepository;
     private final UsuarioAutenticadoProvider usuarioAutenticadoProvider;
 
+    /**
+     * Grava um evento na trilha de auditoria obrigatoriamente dentro da transacao ativa.
+     * Se a gravacao falhar, a excecao propaga e desfaz a operacao inteira.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
     public void registrar(
             String operacao,
             String entidadeAfetada,
             Long registroId,
-            String dadosAntigos,
-            String dadosNovos
+            String dadosAntigosJson,
+            String dadosNovosJson
+    ) {
+        registrar(operacao, entidadeAfetada, registroId, dadosAntigosJson, dadosNovosJson, LocalDateTime.now());
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void registrar(
+            String operacao,
+            String entidadeAfetada,
+            Long registroId,
+            String dadosAntigosJson,
+            String dadosNovosJson,
+            LocalDateTime dataHora
     ) {
         Auditoria aud = new Auditoria();
         aud.setOperacao(operacao);
         aud.setEntidadeAfetada(entidadeAfetada);
         aud.setRegistroId(registroId);
-        aud.setDadosAntigos(dadosAntigos);
-        aud.setDadosNovos(dadosNovos);
-        aud.setDataHora(LocalDateTime.now());
+        aud.setDadosAntigos(dadosAntigosJson);
+        aud.setDadosNovos(dadosNovosJson);
+        aud.setDataHora(dataHora != null ? dataHora : LocalDateTime.now());
         aud.setIpOrigem(extrairIpAtual());
 
         UsuarioAutenticado auth = usuarioAutenticadoProvider.obterOpcional().orElse(null);
@@ -51,7 +70,7 @@ public class UsuarioAuditoriaHelper {
             aud.setUsuarioNome("sistema");
         }
 
-        auditoriaRepository.save(aud);
+        auditoriaRepository.saveAndFlush(aud);
     }
 
     public static String escapar(String valor) {

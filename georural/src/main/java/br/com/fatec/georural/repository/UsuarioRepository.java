@@ -56,4 +56,7 @@ public interface UsuarioRepository extends JpaRepository<Usuario, Long>, JpaSpec
             @Param("status") String status,
             Pageable pageable
     );
+
+    @Query("SELECT u FROM Usuario u JOIN FETCH u.perfil ORDER BY u.id ASC")
+    List<Usuario> findAllComPerfil();
 }

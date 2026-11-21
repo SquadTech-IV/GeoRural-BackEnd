@@ -11,7 +11,7 @@ import br.com.fatec.georural.exception.RecursoNaoEncontradoException;
 import br.com.fatec.georural.exception.RequisicaoInvalidaException;
 import br.com.fatec.georural.repository.PerfilRepository;
 import br.com.fatec.georural.repository.UsuarioRepository;
-import br.com.fatec.georural.service.auditoria.UsuarioAuditoriaHelper;
+import br.com.fatec.georural.service.auditoria.AuditoriaService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -21,7 +21,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
 
-import static br.com.fatec.georural.service.auditoria.UsuarioAuditoriaHelper.escapar;
+import static br.com.fatec.georural.service.auditoria.AuditoriaService.escapar;
 
 @Slf4j
 @Service
@@ -33,7 +33,7 @@ public class UsuarioCadastroService {
     private final UsuarioRepository usuarioRepository;
     private final PerfilRepository perfilRepository;
     private final KeycloakAdminClient keycloakAdminClient;
-    private final UsuarioAuditoriaHelper auditoriaHelper;
+    private final AuditoriaService auditoriaService;
     private final TransactionTemplate transactionTemplate;
 
     public UsuarioResponse cadastrar(CriarUsuarioRequest request) {
@@ -75,7 +75,7 @@ public class UsuarioCadastroService {
                         escapar(perfil.getFuncao())
                 );
 
-                auditoriaHelper.registrar("INSERT", "USUARIO", persistido.getId(), null, dadosNovos);
+                auditoriaService.registrar("INSERT", "USUARIO", persistido.getId(), null, dadosNovos);
                 return persistido;
             });
         } catch (RuntimeException ex) {
@@ -122,7 +122,7 @@ public class UsuarioCadastroService {
                     usuario.getId(),
                     escapar(usuario.getEmail())
             );
-            auditoriaHelper.registrar("REENVIO_CONVITE", "USUARIO", usuario.getId(), null, dadosNovos);
+            auditoriaService.registrar("REENVIO_CONVITE", "USUARIO", usuario.getId(), null, dadosNovos);
         });
 
         return UsuarioResponse.de(usuario, true, null);

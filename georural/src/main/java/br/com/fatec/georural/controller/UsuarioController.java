@@ -3,12 +3,14 @@ package br.com.fatec.georural.controller;
 import br.com.fatec.georural.dto.request.usuario.CriarUsuarioRequest;
 import br.com.fatec.georural.dto.request.usuario.EditarUsuarioRequest;
 import br.com.fatec.georural.dto.response.PaginaResponse;
+import br.com.fatec.georural.dto.response.usuario.DivergenciaUsuarioResponse;
 import br.com.fatec.georural.dto.response.usuario.PerfilAcessoResponse;
 import br.com.fatec.georural.dto.response.usuario.UsuarioResponse;
 import br.com.fatec.georural.service.usuario.UsuarioCadastroService;
 import br.com.fatec.georural.service.usuario.UsuarioEdicaoService;
 import br.com.fatec.georural.service.usuario.UsuarioStatusService;
 import br.com.fatec.georural.service.usuario.UsuarioConsultaService;
+import br.com.fatec.georural.service.usuario.UsuarioDivergenciaService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -35,6 +37,7 @@ public class UsuarioController {
     private final UsuarioEdicaoService usuarioEdicaoService;
     private final UsuarioStatusService usuarioStatusService;
     private final UsuarioConsultaService usuarioConsultaService;
+    private final UsuarioDivergenciaService usuarioDivergenciaService;
 
     @GetMapping
     @Operation(summary = "Lista os usuários cadastrados com paginação e filtros por busca (nome/e-mail), perfilId e status")
@@ -98,5 +101,11 @@ public class UsuarioController {
     public ResponseEntity<UsuarioResponse> reativarUsuario(@PathVariable Long id) {
         UsuarioResponse atualizado = usuarioStatusService.reativar(id);
         return ResponseEntity.ok(atualizado);
+    }
+
+    @GetMapping("/divergencias")
+    @Operation(summary = "Lista divergências de sincronização entre a tabela USUARIO (Oracle) e o realm do Keycloak")
+    public List<DivergenciaUsuarioResponse> listarDivergencias() {
+        return usuarioDivergenciaService.listarDivergencias();
     }
 }

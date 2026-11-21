@@ -12,7 +12,7 @@ import br.com.fatec.georural.repository.PerfilRepository;
 import br.com.fatec.georural.repository.UsuarioRepository;
 import br.com.fatec.georural.security.UsuarioAutenticado;
 import br.com.fatec.georural.security.UsuarioAutenticadoProvider;
-import br.com.fatec.georural.service.auditoria.UsuarioAuditoriaHelper;
+import br.com.fatec.georural.service.auditoria.AuditoriaService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -21,7 +21,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static br.com.fatec.georural.service.auditoria.UsuarioAuditoriaHelper.escapar;
+import static br.com.fatec.georural.service.auditoria.AuditoriaService.escapar;
 
 @Slf4j
 @Service
@@ -33,7 +33,7 @@ public class UsuarioEdicaoService {
     private final UsuarioRepository usuarioRepository;
     private final PerfilRepository perfilRepository;
     private final KeycloakAdminClient keycloakAdminClient;
-    private final UsuarioAuditoriaHelper auditoriaHelper;
+    private final AuditoriaService auditoriaService;
     private final UsuarioAutenticadoProvider usuarioAutenticadoProvider;
     private final TransactionTemplate transactionTemplate;
 
@@ -128,7 +128,7 @@ public class UsuarioEdicaoService {
                         escapar(roleNova)
                 );
 
-                auditoriaHelper.registrar("UPDATE", "USUARIO", salvo.getId(), dadosAntigos, dadosNovos);
+                auditoriaService.registrar("UPDATE", "USUARIO", salvo.getId(), dadosAntigos, dadosNovos);
 
                 // Sincroniza Keycloak antes do commit do Oracle
                 if (perfilAlterado) {
