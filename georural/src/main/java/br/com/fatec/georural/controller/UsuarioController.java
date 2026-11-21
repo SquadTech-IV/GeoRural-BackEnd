@@ -2,14 +2,23 @@ package br.com.fatec.georural.controller;
 
 import br.com.fatec.georural.dto.request.usuario.CriarUsuarioRequest;
 import br.com.fatec.georural.dto.request.usuario.EditarUsuarioRequest;
+import br.com.fatec.georural.dto.response.PaginaResponse;
+import br.com.fatec.georural.dto.response.usuario.PerfilAcessoResponse;
 import br.com.fatec.georural.dto.response.usuario.UsuarioResponse;
 import br.com.fatec.georural.service.usuario.UsuarioCadastroService;
 import br.com.fatec.georural.service.usuario.UsuarioEdicaoService;
 import br.com.fatec.georural.service.usuario.UsuarioStatusService;
+import br.com.fatec.georural.service.usuario.UsuarioConsultaService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import java.util.List;
+
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -25,6 +34,34 @@ public class UsuarioController {
     private final UsuarioCadastroService usuarioCadastroService;
     private final UsuarioEdicaoService usuarioEdicaoService;
     private final UsuarioStatusService usuarioStatusService;
+    private final UsuarioConsultaService usuarioConsultaService;
+
+    @GetMapping
+    @Operation(summary = "Lista os usuários cadastrados com paginação e filtros por busca (nome/e-mail), perfilId e status")
+    public PaginaResponse<UsuarioResponse> listarUsuarios(
+            @Parameter(description = "Trecho do nome ou e-mail para busca")
+            @RequestParam(required = false) String busca,
+            @Parameter(description = "Identificador do perfil de acesso (per_id)")
+            @RequestParam(required = false) Long perfilId,
+            @Parameter(description = "Status do usuário: S (ativo) ou N (inativo)")
+            @RequestParam(required = false) String status,
+            @PageableDefault(size = 20, sort = "nome") Pageable pageable) {
+
+        Page<UsuarioResponse> resultado = usuarioConsultaService.listar(busca, perfilId, status, pageable);
+        return PaginaResponse.de(resultado);
+    }
+
+    @GetMapping("/perfis")
+    @Operation(summary = "Lista os perfis de acesso disponíveis para atribuição aos usuários")
+    public List<PerfilAcessoResponse> listarPerfisAcesso() {
+        return usuarioConsultaService.listarPerfis();
+    }
+
+    @GetMapping("/{id}")
+    @Operation(summary = "Retorna os detalhes de um usuário específico pelo identificador")
+    public ResponseEntity<UsuarioResponse> detalharUsuario(@PathVariable Long id) {
+        return ResponseEntity.ok(usuarioConsultaService.detalhar(id));
+    }
 
     @PostMapping
     @Operation(summary = "Cadastra um novo usuário no Keycloak e no banco local e envia e-mail de definição de senha")
