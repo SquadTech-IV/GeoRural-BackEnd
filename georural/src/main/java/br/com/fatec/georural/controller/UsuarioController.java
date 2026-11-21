@@ -1,8 +1,10 @@
 package br.com.fatec.georural.controller;
 
 import br.com.fatec.georural.dto.request.usuario.CriarUsuarioRequest;
+import br.com.fatec.georural.dto.request.usuario.EditarUsuarioRequest;
 import br.com.fatec.georural.dto.response.usuario.UsuarioResponse;
 import br.com.fatec.georural.service.usuario.UsuarioCadastroService;
+import br.com.fatec.georural.service.usuario.UsuarioEdicaoService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -20,6 +22,7 @@ import org.springframework.web.bind.annotation.*;
 public class UsuarioController {
 
     private final UsuarioCadastroService usuarioCadastroService;
+    private final UsuarioEdicaoService usuarioEdicaoService;
 
     @PostMapping
     @Operation(summary = "Cadastra um novo usuário no Keycloak e no banco local e envia e-mail de definição de senha")
@@ -32,6 +35,15 @@ public class UsuarioController {
     @Operation(summary = "Reenvia o e-mail de definição de senha (UPDATE_PASSWORD) para um usuário ativo ainda pendente")
     public ResponseEntity<UsuarioResponse> reenviarConvite(@PathVariable Long id) {
         UsuarioResponse atualizado = usuarioCadastroService.reenviarConvite(id);
+        return ResponseEntity.ok(atualizado);
+    }
+
+    @PatchMapping("/{id}")
+    @Operation(summary = "Atualiza nome e/ou perfil do usuário (e-mail não editável; troca de perfil encerra sessões)")
+    public ResponseEntity<UsuarioResponse> editarUsuario(
+            @PathVariable Long id,
+            @Valid @RequestBody EditarUsuarioRequest request) {
+        UsuarioResponse atualizado = usuarioEdicaoService.editar(id, request);
         return ResponseEntity.ok(atualizado);
     }
 }
