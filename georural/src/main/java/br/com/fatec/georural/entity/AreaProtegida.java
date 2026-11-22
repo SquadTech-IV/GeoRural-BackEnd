@@ -6,6 +6,8 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.locationtech.jts.geom.Geometry;
 
+import java.math.BigDecimal;
+
 @Entity
 @Getter
 @Setter
@@ -29,8 +31,23 @@ public class AreaProtegida {
     @Column(name = "apr_tipo", nullable = false)
     private String tipo;
 
+    @Column(name = "apr_categoria", length = 30)
+    private String categoria;
+
+    @Column(name = "apr_subcategoria", length = 80)
+    private String subcategoria;
+
     @Column(name = "apr_nome")
     private String nome;
+
+    @Column(name = "apr_codigo_origem", length = 80)
+    private String codigoOrigem;
+
+    @Column(name = "apr_esfera", length = 20)
+    private String esfera;
+
+    @Column(name = "apr_area_ha")
+    private BigDecimal areaHa;
 
     @Column(name = "apr_geometria")
     private Geometry geometria;

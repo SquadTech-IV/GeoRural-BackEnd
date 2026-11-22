@@ -39,6 +39,18 @@ public class CalculoOracle {
         return comUmaSaida("PKG_CALCULO.publicar(?, ?)", versaoId);
     }
 
+    public long calcularIsap(Long versaoId, Long execucaoId, Long regraId,
+                             String escopo, Long camadaVersaoId) {
+        return comUmaSaida("PKG_CALCULO.calcular_isap(?, ?, ?, ?, ?, ?)",
+                versaoId, execucaoId, regraId, escopo, camadaVersaoId);
+    }
+
+    public long calcularIsapImovel(Long imovelId, Long versaoId, Long camadaVersaoId,
+                                   Long execucaoId, Long regraId) {
+        return comUmaSaida("PKG_ISAP.calcular_imovel(?, ?, ?, ?, ?, ?)",
+                imovelId, versaoId, camadaVersaoId, execucaoId, regraId);
+    }
+
     // quantos imoveis o escopo alcanca nesta versao
     public long imoveisNoEscopo(Long versaoId, String escopo) {
         Long total = jdbc.queryForObject(

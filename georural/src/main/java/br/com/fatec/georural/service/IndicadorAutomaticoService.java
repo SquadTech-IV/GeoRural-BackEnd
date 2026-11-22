@@ -32,6 +32,7 @@ public class IndicadorAutomaticoService {
     private final ReservaLegalRepository reservaLegalRepository;
     private final CalculoIRLGeoService calculoIRLService;
     private final CalculoIAEService calculoIAEService;
+    private final ISAPService isapService;
 
     /**
      * Dispara o recálculo dos indicadores conforme o tipo do que acabou de ser processado.
@@ -60,6 +61,7 @@ public class IndicadorAutomaticoService {
                             .toList();
                     recalcularIRL(imovelIds);
                     recalcularIAE(imovelIds);
+                    recalcularISAP(imovelIds);
                 }
                 case "RESERVA_LEGAL" -> {
                     // RL recém-processada: recalcula o IRL dos imóveis aos quais ela se ligou.
@@ -74,6 +76,10 @@ public class IndicadorAutomaticoService {
                             .map(ImovelRural::getId)
                             .toList();
                     recalcularIAE(imovelIds);
+                }
+                case "AREA_PROTEGIDA" -> {
+                    List<Long> imovelIds = imovelRepository.findAll().stream().map(ImovelRural::getId).toList();
+                    recalcularISAP(imovelIds);
                 }
                 default -> {
                     // tipo sem indicador automático
@@ -120,5 +126,21 @@ public class IndicadorAutomaticoService {
             }
         }
         log.info("Recálculo automático do IAE concluído: {}/{} imóveis.", ok, imovelIds.size());
+    }
+
+    private void recalcularISAP(List<Long> imovelIds) {
+        if (imovelIds == null || imovelIds.isEmpty()) {
+            return;
+        }
+        int ok = 0;
+        for (Long imovelId : imovelIds) {
+            try {
+                isapService.calcularPorImovel(imovelId, true);
+                ok++;
+            } catch (Exception e) {
+                log.warn("Falha ao recalcular ISAP do imóvel id={}: {}", imovelId, e.getMessage(), e);
+            }
+        }
+        log.info("Recálculo automático do ISAP concluído: {}/{} imóveis.", ok, imovelIds.size());
     }
 }
