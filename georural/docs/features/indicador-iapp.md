@@ -223,3 +223,18 @@ A regra `v1` do indicador `IAPP` suporta os seguintes parâmetros editáveis (pr
   "passivoGeoJson": null
 }
 ```
+
+---
+
+## 3. Massa de Teste e Gabarito Calculado à Mão (US#23.03)
+
+Script versionado: `src/main/resources/db/test/seed_teste_iapp.sql`  
+Na latitude $\varphi \approx -25{,}19^\circ$ (SIRGAS 2000), cada quadrado base de $0{,}02^\circ \times 0{,}02^\circ$ possui área $A_{\text{imóvel}} \approx 446{,}60\text{ ha}$ (cada quadrante $0{,}01^\circ \times 0{,}01^\circ \approx 111{,}65\text{ ha}$).
+
+| Código CAR | Cenário | `status` | `app_total_ha` | `app_vegetada_ha` | `passivo_ha` | `iapp_pct` | `conforme` |
+| :--- | :--- | :--- | :---: | :---: | :---: | :---: | :---: |
+| `PR-TESTE-IAPP-01` | APP totalmente vegetada (metade sul do imóvel 100% coberta) | `CALCULADO` | $\frac{1}{2} A_{\text{imóvel}}$ ($\approx 223{,}30$) | $\frac{1}{2} A_{\text{imóvel}}$ ($\approx 223{,}30$) | `0.0000` | `100.0000` | `true` |
+| `PR-TESTE-IAPP-02` | APP parcialmente vegetada (4 quadrantes de APP, 3 de vegetação) | `CALCULADO` | $A_{\text{imóvel}}$ ($\approx 446{,}60$) | $\frac{3}{4} A_{\text{imóvel}}$ ($\approx 334{,}95$) | $\frac{1}{4} A_{\text{imóvel}}$ ($\approx 111{,}65$) | `75.0000` | `false` |
+| `PR-TESTE-IAPP-03` | APP sem vegetação nativa (passivo integral) | `CALCULADO` | $\frac{1}{2} A_{\text{imóvel}}$ ($\approx 223{,}30$) | `0.0000` | $\frac{1}{2} A_{\text{imóvel}}$ ($\approx 223{,}30$) | `0.0000` | `false` |
+| `PR-TESTE-IAPP-04` | Imóvel sem APP incidente | `SEM_APP` | `NULL` | `NULL` | `NULL` | `NULL` | `NULL` |
+| `PR-TESTE-IAPP-05` | APPs sobrepostas (`A ∪ B`) + trecho fora do imóvel recortado ($3/4$ do imóvel; $2/4$ vegetados) | `CALCULADO` | $\frac{3}{4} A_{\text{imóvel}}$ ($\approx 334{,}95$) | $\frac{2}{4} A_{\text{imóvel}}$ ($\approx 223{,}30$) | $\frac{1}{4} A_{\text{imóvel}}$ ($\approx 111{,}65$) | `66.6667` | `false` |
