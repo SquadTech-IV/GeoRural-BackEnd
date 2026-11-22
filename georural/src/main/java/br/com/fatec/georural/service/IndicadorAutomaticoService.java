@@ -130,6 +130,7 @@ public class IndicadorAutomaticoService {
 
     private void recalcularISAP(List<Long> imovelIds) {
         if (imovelIds == null || imovelIds.isEmpty()) {
+            log.info("Recálculo automático do ISAP: nenhum imóvel afetado.");
             return;
         }
         int ok = 0;
