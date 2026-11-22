@@ -1,5 +1,5 @@
 -- =====================================================================
--- GeoRural DataHub - V6 - Ajuste de USUARIO/PERFIL e vinculo Keycloak (US#13.03)
+-- GeoRural DataHub - V8 - Ajuste de USUARIO/PERFIL e vinculo Keycloak (US#13.03)
 -- =====================================================================
 
 -- 1. Garante os 5 perfis oficiais do sistema (idempotente)
