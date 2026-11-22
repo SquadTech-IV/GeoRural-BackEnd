@@ -71,6 +71,8 @@ BEGIN
                     SDO_DIM_ELEMENT('Latitude',   -90,  90, 0.05)
                 ),
                 4674);
+
+        COMMIT;
     END IF;
 END;
 /
