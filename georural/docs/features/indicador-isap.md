@@ -60,3 +60,147 @@ $$\text{pct\_sobreposicao} = \min\left(100,\ \frac{\text{area\_sobreposta\_ha}}{
 | Camada não publicada / sem versão vigente | `CAMADA_INDISPONIVEL` | `null` | `NULL` | `NULL` |
 
 * **Regra crítica para o `TOTAL`:** Se **qualquer uma** das 4 categorias estiver com status `CAMADA_INDISPONIVEL`, a linha `TOTAL` **deve** receber `status = 'CAMADA_INDISPONIVEL'`, `sobrepoe = null`, `area_sobreposta_ha = NULL` e `pct_sobreposicao = NULL`, evitando subestimar o passivo ambiental do imóvel. As categorias que estiverem disponíveis continuam exibindo seus valores individuais normalmente.
+
+---
+
+## 2. Contrato de Saída do ISAP (US#24.02)
+
+A saída do indicador ISAP é estruturada em **dois níveis** (tanto na persistência relacional quanto no contrato JSON da API REST):
+
+### 2.1 Nível 1 — Resumo por Categoria e TOTAL (`resumo`)
+Contém **obrigatoriamente 5 registros por imóvel** (1 para cada categoria: `UC`, `TERRA_INDIGENA`, `QUILOMBOLA`, `FLORESTA_PUBLICA` + 1 consolidado `TOTAL`).
+
+| Campo JSON | Coluna Oracle | Tipo | Nulável | Descrição |
+| :--- | :--- | :--- | :--- | :--- |
+| `categoria` | `isr_categoria` | `String` (Enum) | Não | `UC`, `TERRA_INDIGENA`, `QUILOMBOLA`, `FLORESTA_PUBLICA` ou `TOTAL` |
+| `sobrepoe` | `isr_sobrepoe` | `Boolean` (`CHAR(1)` `S`/`N`) | Sim | `true` se `COM_SOBREPOSICAO`; `false` se `SEM_SOBREPOSICAO`; `null` se `CAMADA_INDISPONIVEL` |
+| `areaSobrepostaHa` | `isr_area_sobreposta_ha` | `BigDecimal` (`NUMBER(14,4)`) | Sim | Área sobreposta em hectares (`>= 0`). `0` se sem sobreposição; `null` se camada indisponível |
+| `pctSobreposicao` | `isr_pct_sobreposicao` | `BigDecimal` (`NUMBER(7,4)`) | Sim | Percentual sobre a área do imóvel (`0` a `100`). `0` se sem sobreposição; `null` se indisponível |
+| `areaImovelHa` | `isr_area_imovel_ha` | `BigDecimal` (`NUMBER(14,4)`) | Não | Área total do imóvel em hectares usada como denominador |
+| `filtroAplicado` | `isr_filtro_aplicado` | `String` (`VARCHAR2(500)`) | Sim | Filtro de tipos de UC aplicado (preenchido em `UC` e consolidado no `TOTAL`; `null` nas demais) |
+| `status` | `isr_status` | `String` (Enum) | Não | `COM_SOBREPOSICAO`, `SEM_SOBREPOSICAO` ou `CAMADA_INDISPONIVEL` |
+| `rastreabilidade` | *(FKs + metadados)* | `Object` | Não | Versão e competência da camada da categoria, execução (`exeId`), regra (`rcaId` / versão) |
+
+### 2.2 Nível 2 — Detalhe por Feição Atingida (`detalhes`)
+Contém **0 ou N registros por imóvel**, representando cada feição individual de área protegida que intersecciona o imóvel (somente de camadas disponíveis e aprovadas pelo filtro de UC).
+
+| Campo JSON | Coluna Oracle | Tipo | Nulável | Descrição |
+| :--- | :--- | :--- | :--- | :--- |
+| `categoria` | `isd_categoria` | `String` (Enum) | Não | `UC`, `TERRA_INDIGENA`, `QUILOMBOLA` ou `FLORESTA_PUBLICA` |
+| `nomeFeicao` | `isd_nome_feicao` | `String` (`VARCHAR2(255)`) | Sim | Nome oficial da área protegida (ex.: `"Parque Nacional do Iguaçu"`) |
+| `tipoFeicao` | `isd_tipo_feicao` | `String` (`VARCHAR2(100)`) | Sim | Subtipo/categoria específica (ex.: `"PARNA"`, `"APA"`, `"TI Homologada"`, `"Floresta Tipo A"`) |
+| `codigoFeicao` | `isd_codigo_feicao` | `String` (`VARCHAR2(80)`) | Sim | Código identificador na fonte oficial (ex.: código CNUC, código FUNAI, código INCRA/CNFP) |
+| `areaHa` | `isd_area_ha` | `BigDecimal` (`NUMBER(14,4)`) | Não | Área da interseção desta feição isolada com o imóvel, em hectares (`> 0`) |
+| `pct` | `isd_pct_sobreposicao` | `BigDecimal` (`NUMBER(7,4)`) | Não | Percentual da feição isolada sobre a área total do imóvel (`0` a `100`) |
+
+### 2.3 Exemplo de Payload JSON (Contrato REST)
+```json
+{
+  "imovelId": 121,
+  "codigoCar": "PR-4106902-1A2B3C4D5E6F7G8H9I0J",
+  "nomeImovel": "Fazenda Santa Clara",
+  "areaImovelHa": 500.0000,
+  "dataCalculo": "2026-11-22T10:15:30",
+  "vigente": true,
+  "avisoDuplaContagem": "As áreas das feições individuais abaixo representam cada polígono isolado e podem se sobrepor entre si; por isso, sua soma pode exceder o total consolidado da categoria ou o TOTAL geral.",
+  "resumo": [
+    {
+      "categoria": "UC",
+      "sobrepoe": true,
+      "areaSobrepostaHa": 75.0000,
+      "pctSobreposicao": 15.0000,
+      "areaImovelHa": 500.0000,
+      "filtroAplicado": "PROTECAO_INTEGRAL,USO_SUSTENTAVEL",
+      "status": "COM_SOBREPOSICAO",
+      "rastreabilidade": {
+        "versaoId": 14,
+        "versaoNumero": 2,
+        "competencia": "2026-10",
+        "execucaoId": 88,
+        "regraVersao": "v1"
+      }
+    },
+    {
+      "categoria": "TERRA_INDIGENA",
+      "sobrepoe": true,
+      "areaSobrepostaHa": 50.0000,
+      "pctSobreposicao": 10.0000,
+      "areaImovelHa": 500.0000,
+      "filtroAplicado": null,
+      "status": "COM_SOBREPOSICAO",
+      "rastreabilidade": {
+        "versaoId": 15,
+        "versaoNumero": 1,
+        "competencia": "2026-09",
+        "execucaoId": 88,
+        "regraVersao": "v1"
+      }
+    },
+    {
+      "categoria": "QUILOMBOLA",
+      "sobrepoe": false,
+      "areaSobrepostaHa": 0.0000,
+      "pctSobreposicao": 0.0000,
+      "areaImovelHa": 500.0000,
+      "filtroAplicado": null,
+      "status": "SEM_SOBREPOSICAO",
+      "rastreabilidade": {
+        "versaoId": 16,
+        "versaoNumero": 1,
+        "competencia": "2026-08",
+        "execucaoId": 88,
+        "regraVersao": "v1"
+      }
+    },
+    {
+      "categoria": "FLORESTA_PUBLICA",
+      "sobrepoe": false,
+      "areaSobrepostaHa": 0.0000,
+      "pctSobreposicao": 0.0000,
+      "areaImovelHa": 500.0000,
+      "filtroAplicado": null,
+      "status": "SEM_SOBREPOSICAO",
+      "rastreabilidade": {
+        "versaoId": 17,
+        "versaoNumero": 1,
+        "competencia": "2026-08",
+        "execucaoId": 88,
+        "regraVersao": "v1"
+      }
+    },
+    {
+      "categoria": "TOTAL",
+      "sobrepoe": true,
+      "areaSobrepostaHa": 100.0000,
+      "pctSobreposicao": 20.0000,
+      "areaImovelHa": 500.0000,
+      "filtroAplicado": "PROTECAO_INTEGRAL,USO_SUSTENTAVEL",
+      "status": "COM_SOBREPOSICAO",
+      "rastreabilidade": {
+        "versaoId": 10,
+        "versaoNumero": 3,
+        "competencia": "2026-11",
+        "execucaoId": 88,
+        "regraVersao": "v1"
+      }
+    }
+  ],
+  "detalhes": [
+    {
+      "categoria": "UC",
+      "nomeFeicao": "Parque Nacional do Iguaçu",
+      "tipoFeicao": "PARNA",
+      "codigoFeicao": "0000.00.0123",
+      "areaHa": 75.0000,
+      "pct": 15.0000
+    },
+    {
+      "categoria": "TERRA_INDIGENA",
+      "nomeFeicao": "TI Rio das Cobras",
+      "tipoFeicao": "HOMOLOGADA",
+      "codigoFeicao": "TI-41001",
+      "areaHa": 50.0000,
+      "pct": 10.0000
+    }
+  ]
+}
