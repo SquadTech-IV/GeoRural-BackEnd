@@ -71,6 +71,11 @@ public class IndicadorAutomaticoService {
                             .map(i -> i.getVersao().getId())
                             .distinct()
                             .forEach(versaoId -> recalcularISAPVersao(versaoId, "IMOVEL", null));
+                    imoveis.stream()
+                            .filter(i -> i.getVersao() != null)
+                            .map(i -> i.getVersao().getId())
+                            .distinct()
+                            .forEach(versaoId -> recalcularIAPPVersao(versaoId, "IMOVEL", null, null));
                 }
                 case "RESERVA_LEGAL" -> {
                     List<Long> imovelIds = reservaLegalRepository.findImovelIdsByArquivoBrutoId(arquivoBrutoId);
@@ -89,6 +94,13 @@ public class IndicadorAutomaticoService {
                             .map(i -> i.getVersao().getId())
                             .distinct()
                             .forEach(versaoId -> recalcularISAPVersao(versaoId, "TODOS", null));
+                }
+                case "APP", "VEGETACAO" -> {
+                    imovelRepository.findAll().stream()
+                            .filter(i -> i.getVersao() != null)
+                            .map(i -> i.getVersao().getId())
+                            .distinct()
+                            .forEach(versaoId -> recalcularIAPPVersao(versaoId, "TODOS", null, null));
                 }
                 default -> {
                     // tipo sem indicador automático
@@ -159,5 +171,32 @@ public class IndicadorAutomaticoService {
             }
         }
         log.info("Recálculo automático do IAE concluído: {}/{} imóveis.", ok, imovelIds.size());
+    }
+
+    private void recalcularIAPPVersao(Long versaoId, String escopo,
+                                      Long appVersaoId, Long vegVersaoId) {
+        try {
+            Indicador indicador = indicadorRepository.findBySigla("IAPP").orElse(null);
+            if (indicador == null) {
+                log.warn("Indicador IAPP não cadastrado; recálculo automático ignorado.");
+                return;
+            }
+
+            RegraCalculo regra = regraCalculoRepository.findByIndicadorAndVigente(indicador, "S").orElse(null);
+            if (regra == null) {
+                log.warn("Nenhuma regra vigente encontrada para IAPP; recálculo automático ignorado.");
+                return;
+            }
+
+            long calculados = calculoOracle.calcularIapp(
+                    versaoId, null, regra.getId(), escopo, appVersaoId, vegVersaoId);
+            if (calculados > 0) {
+                calculoOracle.publicar(versaoId);
+            }
+            log.info("Recálculo automático do IAPP concluído na versão id={}: {} imóvel(eis).",
+                    versaoId, calculados);
+        } catch (Exception e) {
+            log.warn("Falha ao recalcular IAPP na versão id={}: {}", versaoId, e.getMessage(), e);
+        }
     }
 }

@@ -121,6 +121,22 @@ public class CalculoEtapa implements EtapaPipeline {
                     "AREA_PROTEGIDA + IMOVEL_RURAL", "RESULTADO_ISAP_RESUMO");
         }
 
+        if (indicadores.contains("IAPP")) {
+            RegraVigenteService.RegraEmUso regra =
+                    regras.emUso("IAPP", regraForcada(ctx, "rcaIdIapp"));
+            Long appVersaoId = "APP".equals(escopo) ? versaoId : null;
+            Long vegVersaoId = "VEGETACAO".equals(escopo) ? versaoId : null;
+
+            long feitos = oracle.calcularIapp(
+                    versaoId, execucaoId, regra.id(), escopo, appVersaoId, vegVersaoId);
+            resumos.add("IAPP " + regra.versao() + " em " + feitos + " imovel(eis)");
+            ctx.comParametro("regraIapp", regra.versao());
+            trilha.passo("CRUZAMENTO", "IAPP pela regra " + regra.versao()
+                            + " (dissolucao de APP e VEGETACAO_NATIVA, recorte da APP no imovel"
+                            + " e calculo de passivo ambiental em ha): " + feitos + " resultado(s).",
+                    "APP + VEGETACAO_NATIVA + IMOVEL_RURAL", "RESULTADO_IAPP");
+        }
+
         transformacoes.gravar(execucaoId, trilha.passos());
         ctx.comParametro("escopoCalculo", escopo);
 
@@ -132,11 +148,12 @@ public class CalculoEtapa implements EtapaPipeline {
 
     private List<String> indicadoresDoEscopo(String tipoConjunto) {
         return switch (tipoConjunto == null ? "" : tipoConjunto) {
-            case "IMOVEL" -> List.of("IRL", "IAE", "ICV", "ISAP");
+            case "IMOVEL" -> List.of("IRL", "IAE", "ICV", "ISAP", "IAPP");
             case "RESERVA_LEGAL" -> List.of("IRL");
             case "EMBARGO" -> List.of("IAE");
-            case "VEGETACAO" -> List.of("ICV");
+            case "VEGETACAO" -> List.of("ICV", "IAPP");
             case "AREA_PROTEGIDA" -> List.of("ISAP");
+            case "APP" -> List.of("IAPP");
             default -> List.of();
         };
     }

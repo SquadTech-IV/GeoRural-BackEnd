@@ -13,6 +13,7 @@ import br.com.fatec.georural.repository.ResultadoIndicadorRepository;
 import br.com.fatec.georural.repository.ResultadoIsapResumoRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.sql.Clob;
 import java.util.ArrayList;
@@ -25,21 +26,24 @@ public class ImovelIndicadoresService {
     private final ResultadoIndicadorRepository resultadoRepository;
     private final ResultadoIsapResumoRepository isapResumoRepository;
     private final IndicadorRepository indicadorRepository;
+    private final JdbcTemplate jdbcTemplate;
 
     public ImovelIndicadoresService(ImovelRuralRepository imovelRepository,
                                     ResultadoIndicadorRepository resultadoRepository) {
-        this(imovelRepository, resultadoRepository, null, null);
+        this(imovelRepository, resultadoRepository, null, null, null);
     }
 
     @Autowired
     public ImovelIndicadoresService(ImovelRuralRepository imovelRepository,
                                     ResultadoIndicadorRepository resultadoRepository,
                                     ResultadoIsapResumoRepository isapResumoRepository,
-                                    IndicadorRepository indicadorRepository) {
+                                    IndicadorRepository indicadorRepository,
+                                    JdbcTemplate jdbcTemplate) {
         this.imovelRepository = imovelRepository;
         this.resultadoRepository = resultadoRepository;
         this.isapResumoRepository = isapResumoRepository;
         this.indicadorRepository = indicadorRepository;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     public ImovelIndicadoresResponse detalharPorCar(String codigoCar) {
@@ -84,6 +88,7 @@ public class ImovelIndicadoresService {
                     .findFirst()
                     .ifPresent(isap -> lista.add(toIndicadorIsap(isap)));
         }
+        adicionarIappVigente(imovelId, lista);
 
         return lista;
     }
@@ -151,5 +156,37 @@ public class ImovelIndicadoresService {
             }
         }
         return valor.toString();
+    }
+
+    private void adicionarIappVigente(Long imovelId, List<IndicadorVigenteResponse> lista) {
+        if (jdbcTemplate == null) {
+            return;
+        }
+
+        Indicador ind = indicadorRepository != null
+                ? indicadorRepository.findBySigla("IAPP").orElse(null)
+                : null;
+        String nome = ind != null ? ind.getNome() : "Índice de APP Preservada";
+        String unidade = ind != null ? ind.getUnidade() : "%";
+
+        jdbcTemplate.query(
+                "SELECT r.iap_status, r.iap_iapp_pct, r.iap_app_vegetada_ha, r.iap_passivo_ha, rc.rca_versao "
+                        + "  FROM RESULTADO_IAPP r "
+                        + "  LEFT JOIN REGRA_CALCULO rc ON rc.rca_id = r.rca_id "
+                        + " WHERE r.imo_id = ? AND r.iap_vigente = 'S' "
+                        + " ORDER BY r.iap_data_calculo DESC, r.iap_id DESC FETCH FIRST 1 ROWS ONLY",
+                rs -> {
+                    lista.add(new IndicadorVigenteResponse(
+                            "IAPP",
+                            nome,
+                            unidade,
+                            rs.getString("iap_status"),
+                            rs.getBigDecimal("iap_iapp_pct"),
+                            rs.getBigDecimal("iap_app_vegetada_ha"),
+                            rs.getBigDecimal("iap_passivo_ha"),
+                            rs.getString("rca_versao"),
+                            null));
+                },
+                imovelId);
     }
 }
