@@ -12,6 +12,9 @@ CREATE OR REPLACE PACKAGE PKG_ISAP AS
     -- Obtem o valor configurado do parametro tipos_uc_incluidos da regra ISAP
     FUNCTION obter_filtro_uc(p_rca_id NUMBER DEFAULT NULL) RETURN VARCHAR2;
 
+    -- Resolve a versao vigente/mais recente disponivel para uma categoria especifica (US#24.07)
+    FUNCTION resolver_versao_categoria(p_categoria VARCHAR2) RETURN NUMBER;
+
     -- Dissolve poligonos de AREA_PROTEGIDA por categoria (UC, TERRA_INDIGENA, QUILOMBOLA, FLORESTA_PUBLICA)
     -- eliminando dupla contagem intra-categoria via SDO_AGGR_UNION + RECTIFY_GEOMETRY (US#24.05)
     PROCEDURE dissolver_areas_protegidas(
@@ -21,25 +24,31 @@ CREATE OR REPLACE PACKAGE PKG_ISAP AS
     );
 
     -- Calcula as 4 categorias + TOTAL (sem dupla contagem inter-categorias) e o detalhe por feicao
-    -- para um imovel especifico (US#24.06)
+    -- para um imovel especifico. Se p_camada_ver_id for NULL, resolve por categoria (US#24.06 / US#24.07)
     PROCEDURE calcular_imovel(
         p_imo_id        IN NUMBER,
         p_ver_id        IN NUMBER,
-        p_camada_ver_id IN NUMBER,
+        p_camada_ver_id IN NUMBER DEFAULT NULL,
         p_exe_id        IN NUMBER DEFAULT NULL,
         p_rca_id        IN NUMBER DEFAULT NULL,
         p_filtro_uc     IN VARCHAR2 DEFAULT NULL
     );
 
-    -- Calcula o ISAP em lote para os imoveis no escopo (US#24.06)
+    -- Calcula o ISAP em lote para os imoveis no escopo (US#24.06 / US#24.07)
     -- p_escopo: 'IMOVEL' (imoveis da versao p_ver_id) ou 'TODOS' (todos os imoveis com geometria)
     PROCEDURE calcular_lote(
         p_ver_id        IN  NUMBER,
-        p_camada_ver_id IN  NUMBER,
+        p_camada_ver_id IN  NUMBER DEFAULT NULL,
         p_exe_id        IN  NUMBER DEFAULT NULL,
         p_rca_id        IN  NUMBER DEFAULT NULL,
         p_escopo        IN  VARCHAR2 DEFAULT 'TODOS',
         p_calculados    OUT NUMBER
+    );
+
+    -- Recalcula o ISAP de todos os imoveis apos alteracao do parametro tipos_uc_incluidos (US#24.07)
+    PROCEDURE recalcular_por_parametro(
+        p_rca_id     IN  NUMBER,
+        p_calculados OUT NUMBER
     );
 
 END PKG_ISAP;
@@ -99,6 +108,64 @@ CREATE OR REPLACE PACKAGE BODY PKG_ISAP AS
         WHEN NO_DATA_FOUND THEN
             RETURN '*';
     END obter_filtro_uc;
+
+    FUNCTION resolver_versao_categoria(p_categoria VARCHAR2) RETURN NUMBER IS
+        v_ver_id NUMBER;
+    BEGIN
+        SELECT MAX(v.ver_id)
+          INTO v_ver_id
+          FROM VERSAO v
+         WHERE v.ver_situacao = 'VIGENTE'
+           AND EXISTS (
+               SELECT 1
+                 FROM AREA_PROTEGIDA a
+                WHERE a.ver_id = v.ver_id
+                  AND a.apr_tipo = p_categoria
+                  AND a.apr_geometria IS NOT NULL
+           );
+
+        IF v_ver_id IS NOT NULL THEN
+            RETURN v_ver_id;
+        END IF;
+
+        SELECT MAX(a.ver_id)
+          INTO v_ver_id
+          FROM AREA_PROTEGIDA a
+         WHERE a.apr_tipo = p_categoria
+           AND a.apr_geometria IS NOT NULL;
+
+        RETURN v_ver_id;
+    END resolver_versao_categoria;
+
+    FUNCTION validar_versao_existente(p_ver_id NUMBER) RETURN NUMBER IS
+        v_id NUMBER;
+    BEGIN
+        IF p_ver_id IS NULL THEN
+            RETURN NULL;
+        END IF;
+        SELECT ver_id INTO v_id
+          FROM VERSAO
+         WHERE ver_id = p_ver_id;
+        RETURN v_id;
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            RETURN NULL;
+    END validar_versao_existente;
+
+    FUNCTION obter_competencia_versao(p_ver_id NUMBER) RETURN VARCHAR2 IS
+        v_comp VARCHAR2(20);
+    BEGIN
+        IF p_ver_id IS NULL THEN
+            RETURN NULL;
+        END IF;
+        SELECT ver_competencia INTO v_comp
+          FROM VERSAO
+         WHERE ver_id = p_ver_id;
+        RETURN v_comp;
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            RETURN NULL;
+    END obter_competencia_versao;
 
     PROCEDURE dissolver_areas_protegidas(
         p_ver_id      IN  NUMBER,
@@ -172,7 +239,6 @@ CREATE OR REPLACE PACKAGE BODY PKG_ISAP AS
         p_dissolvidas := v_total;
     END dissolver_areas_protegidas;
 
-    -- Helper interno para persistir uma linha de resumo (categoria ou TOTAL)
     PROCEDURE gravar_resumo(
         p_imo_id           IN  NUMBER,
         p_ver_id           IN  NUMBER,
@@ -225,35 +291,38 @@ CREATE OR REPLACE PACKAGE BODY PKG_ISAP AS
     PROCEDURE calcular_imovel(
         p_imo_id        IN NUMBER,
         p_ver_id        IN NUMBER,
-        p_camada_ver_id IN NUMBER,
+        p_camada_ver_id IN NUMBER DEFAULT NULL,
         p_exe_id        IN NUMBER DEFAULT NULL,
         p_rca_id        IN NUMBER DEFAULT NULL,
         p_filtro_uc     IN VARCHAR2 DEFAULT NULL
     ) IS
         TYPE t_categorias IS VARRAY(4) OF VARCHAR2(20);
-        v_categorias       t_categorias := t_categorias('UC', 'TERRA_INDIGENA', 'QUILOMBOLA', 'FLORESTA_PUBLICA');
-        v_tol              NUMBER := PKG_GEO.c_tol;
-        v_imo_geom         SDO_GEOMETRY;
-        v_imo_area_ha      NUMBER;
-        v_filtro_uc        VARCHAR2(500);
-        v_competencia      VARCHAR2(20);
-        v_cat              VARCHAR2(20);
-        v_filtro_cat       VARCHAR2(500);
-        v_apd_geom         SDO_GEOMETRY;
-        v_inter_geom       SDO_GEOMETRY;
-        v_total_geom       SDO_GEOMETRY;
-        v_area_cat_ha      NUMBER;
-        v_pct_cat          NUMBER;
-        v_isr_id           NUMBER;
-        v_feat_area_ha     NUMBER;
-        v_feat_pct         NUMBER;
-        v_cats_disponiveis NUMBER := 0;
-        v_cats_sobrepostas NUMBER := 0;
-        v_ultima_area_ha   NUMBER := 0;
-        v_area_total_ha    NUMBER;
-        v_pct_total        NUMBER;
-        v_status_total     VARCHAR2(25);
-        v_sobrepoe_total   CHAR(1);
+        v_categorias         t_categorias := t_categorias('UC', 'TERRA_INDIGENA', 'QUILOMBOLA', 'FLORESTA_PUBLICA');
+        v_tol                NUMBER := PKG_GEO.c_tol;
+        v_imo_geom           SDO_GEOMETRY;
+        v_imo_area_ha        NUMBER;
+        v_filtro_uc          VARCHAR2(500);
+        v_cat                VARCHAR2(20);
+        v_cat_ver_id         NUMBER;
+        v_cat_competencia    VARCHAR2(20);
+        v_total_ver_id       NUMBER := validar_versao_existente(p_camada_ver_id);
+        v_total_competencia  VARCHAR2(20);
+        v_filtro_cat         VARCHAR2(500);
+        v_apd_geom           SDO_GEOMETRY;
+        v_inter_geom         SDO_GEOMETRY;
+        v_total_geom         SDO_GEOMETRY;
+        v_area_cat_ha        NUMBER;
+        v_pct_cat            NUMBER;
+        v_isr_id             NUMBER;
+        v_feat_area_ha       NUMBER;
+        v_feat_pct           NUMBER;
+        v_cats_disponiveis   NUMBER := 0;
+        v_cats_sobrepostas   NUMBER := 0;
+        v_ultima_area_ha     NUMBER := 0;
+        v_area_total_ha      NUMBER;
+        v_pct_total          NUMBER;
+        v_status_total       VARCHAR2(25);
+        v_sobrepoe_total     CHAR(1);
     BEGIN
         SELECT imo_geometria,
                NVL(imo_area_total, PKG_GEO.area_ha(imo_geometria))
@@ -271,17 +340,6 @@ CREATE OR REPLACE PACKAGE BODY PKG_ISAP AS
 
         v_filtro_uc := normalizar_filtro_uc(NVL(p_filtro_uc, obter_filtro_uc(p_rca_id)));
 
-        IF p_camada_ver_id IS NOT NULL THEN
-            BEGIN
-                SELECT ver_competencia INTO v_competencia
-                  FROM VERSAO
-                 WHERE ver_id = p_camada_ver_id;
-            EXCEPTION
-                WHEN NO_DATA_FOUND THEN v_competencia := NULL;
-            END;
-        END IF;
-
-        -- Remove detalhes anteriores desta rodada para evitar sobras em recalculo
         DELETE FROM RESULTADO_ISAP_DETALHE
          WHERE imo_id = p_imo_id
            AND ver_id = p_ver_id;
@@ -289,14 +347,19 @@ CREATE OR REPLACE PACKAGE BODY PKG_ISAP AS
         FOR idx IN 1 .. v_categorias.COUNT LOOP
             v_cat := v_categorias(idx);
             v_filtro_cat := CASE WHEN v_cat = 'UC' THEN v_filtro_uc ELSE NULL END;
+            v_cat_ver_id := validar_versao_existente(NVL(p_camada_ver_id, resolver_versao_categoria(v_cat)));
+            v_cat_competencia := obter_competencia_versao(v_cat_ver_id);
 
-            -- Busca geometria dissolvida da categoria na versao da camada
+            IF v_cat_ver_id IS NOT NULL AND (v_total_ver_id IS NULL OR v_cat_ver_id > v_total_ver_id) THEN
+                v_total_ver_id := v_cat_ver_id;
+            END IF;
+
             v_apd_geom := NULL;
-            IF p_camada_ver_id IS NOT NULL THEN
+            IF v_cat_ver_id IS NOT NULL THEN
                 BEGIN
                     SELECT apd_geometria INTO v_apd_geom
                       FROM AREA_PROTEGIDA_DISSOLVIDA
-                     WHERE ver_id = p_camada_ver_id
+                     WHERE ver_id = v_cat_ver_id
                        AND apd_categoria = v_cat
                        AND apd_filtro_aplicado = NVL(v_filtro_cat, '*');
                 EXCEPTION
@@ -309,7 +372,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_ISAP AS
                 gravar_resumo(
                     p_imo_id          => p_imo_id,
                     p_ver_id          => p_ver_id,
-                    p_camada_ver_id   => p_camada_ver_id,
+                    p_camada_ver_id   => v_cat_ver_id,
                     p_exe_id          => p_exe_id,
                     p_rca_id          => p_rca_id,
                     p_categoria       => v_cat,
@@ -318,7 +381,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_ISAP AS
                     p_pct_sobrep      => NULL,
                     p_area_imovel_ha  => ROUND(v_imo_area_ha, 4),
                     p_filtro_aplicado => v_filtro_cat,
-                    p_competencia     => v_competencia,
+                    p_competencia     => v_cat_competencia,
                     p_status          => 'CAMADA_INDISPONIVEL',
                     p_isr_id          => v_isr_id
                 );
@@ -327,7 +390,6 @@ CREATE OR REPLACE PACKAGE BODY PKG_ISAP AS
 
             v_cats_disponiveis := v_cats_disponiveis + 1;
 
-            -- Verifica intersecao com a camada dissolvida da categoria
             v_inter_geom := NULL;
             v_area_cat_ha := 0;
 
@@ -345,7 +407,6 @@ CREATE OR REPLACE PACKAGE BODY PKG_ISAP AS
                 v_cats_sobrepostas := v_cats_sobrepostas + 1;
                 v_ultima_area_ha := v_area_cat_ha;
 
-                -- Acumula geometria de intersecao para calcular o TOTAL sem dupla contagem
                 IF v_total_geom IS NULL THEN
                     v_total_geom := v_inter_geom;
                 ELSE
@@ -355,7 +416,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_ISAP AS
                 gravar_resumo(
                     p_imo_id          => p_imo_id,
                     p_ver_id          => p_ver_id,
-                    p_camada_ver_id   => p_camada_ver_id,
+                    p_camada_ver_id   => v_cat_ver_id,
                     p_exe_id          => p_exe_id,
                     p_rca_id          => p_rca_id,
                     p_categoria       => v_cat,
@@ -364,12 +425,11 @@ CREATE OR REPLACE PACKAGE BODY PKG_ISAP AS
                     p_pct_sobrep      => v_pct_cat,
                     p_area_imovel_ha  => ROUND(v_imo_area_ha, 4),
                     p_filtro_aplicado => v_filtro_cat,
-                    p_competencia     => v_competencia,
+                    p_competencia     => v_cat_competencia,
                     p_status          => 'COM_SOBREPOSICAO',
                     p_isr_id          => v_isr_id
                 );
 
-                -- Detalhamento por feicao atingida dentro da categoria
                 FOR feat IN (
                     SELECT a.apr_id,
                            a.apr_nome,
@@ -377,7 +437,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_ISAP AS
                            a.apr_codigo,
                            a.apr_geometria
                       FROM AREA_PROTEGIDA a
-                     WHERE a.ver_id = p_camada_ver_id
+                     WHERE a.ver_id = v_cat_ver_id
                        AND a.apr_tipo = v_cat
                        AND a.apr_geometria IS NOT NULL
                        AND (v_cat <> 'UC' OR PKG_ISAP.uc_permitida(a.apr_subtipo, v_filtro_uc) = 1)
@@ -407,7 +467,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_ISAP AS
                 gravar_resumo(
                     p_imo_id          => p_imo_id,
                     p_ver_id          => p_ver_id,
-                    p_camada_ver_id   => p_camada_ver_id,
+                    p_camada_ver_id   => v_cat_ver_id,
                     p_exe_id          => p_exe_id,
                     p_rca_id          => p_rca_id,
                     p_categoria       => v_cat,
@@ -416,14 +476,15 @@ CREATE OR REPLACE PACKAGE BODY PKG_ISAP AS
                     p_pct_sobrep      => 0,
                     p_area_imovel_ha  => ROUND(v_imo_area_ha, 4),
                     p_filtro_aplicado => v_filtro_cat,
-                    p_competencia     => v_competencia,
+                    p_competencia     => v_cat_competencia,
                     p_status          => 'SEM_SOBREPOSICAO',
                     p_isr_id          => v_isr_id
                 );
             END IF;
         END LOOP;
 
-        -- Consolidacao do TOTAL sem dupla contagem entre categorias distintas
+        v_total_competencia := obter_competencia_versao(v_total_ver_id);
+
         IF v_cats_disponiveis = 0 THEN
             v_status_total   := 'CAMADA_INDISPONIVEL';
             v_sobrepoe_total := NULL;
@@ -461,7 +522,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_ISAP AS
         gravar_resumo(
             p_imo_id          => p_imo_id,
             p_ver_id          => p_ver_id,
-            p_camada_ver_id   => p_camada_ver_id,
+            p_camada_ver_id   => v_total_ver_id,
             p_exe_id          => p_exe_id,
             p_rca_id          => p_rca_id,
             p_categoria       => 'TOTAL',
@@ -470,7 +531,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_ISAP AS
             p_pct_sobrep      => v_pct_total,
             p_area_imovel_ha  => ROUND(v_imo_area_ha, 4),
             p_filtro_aplicado => v_filtro_uc,
-            p_competencia     => v_competencia,
+            p_competencia     => v_total_competencia,
             p_status          => v_status_total,
             p_isr_id          => v_isr_id
         );
@@ -478,18 +539,28 @@ CREATE OR REPLACE PACKAGE BODY PKG_ISAP AS
 
     PROCEDURE calcular_lote(
         p_ver_id        IN  NUMBER,
-        p_camada_ver_id IN  NUMBER,
+        p_camada_ver_id IN  NUMBER DEFAULT NULL,
         p_exe_id        IN  NUMBER DEFAULT NULL,
         p_rca_id        IN  NUMBER DEFAULT NULL,
         p_escopo        IN  VARCHAR2 DEFAULT 'TODOS',
         p_calculados    OUT NUMBER
     ) IS
+        TYPE t_categorias IS VARRAY(4) OF VARCHAR2(20);
+        v_categorias  t_categorias := t_categorias('UC', 'TERRA_INDIGENA', 'QUILOMBOLA', 'FLORESTA_PUBLICA');
         v_filtro_uc   VARCHAR2(500) := obter_filtro_uc(p_rca_id);
+        v_ver_cat     NUMBER;
         v_dissolvidas NUMBER;
         v_count       NUMBER := 0;
     BEGIN
-        IF p_camada_ver_id IS NOT NULL THEN
+        IF validar_versao_existente(p_camada_ver_id) IS NOT NULL THEN
             dissolver_areas_protegidas(p_camada_ver_id, v_filtro_uc, v_dissolvidas);
+        ELSIF p_camada_ver_id IS NULL THEN
+            FOR idx IN 1 .. v_categorias.COUNT LOOP
+                v_ver_cat := resolver_versao_categoria(v_categorias(idx));
+                IF v_ver_cat IS NOT NULL THEN
+                    dissolver_areas_protegidas(v_ver_cat, v_filtro_uc, v_dissolvidas);
+                END IF;
+            END LOOP;
         END IF;
 
         FOR r IN (
@@ -512,6 +583,37 @@ CREATE OR REPLACE PACKAGE BODY PKG_ISAP AS
 
         p_calculados := v_count;
     END calcular_lote;
+
+    PROCEDURE recalcular_por_parametro(
+        p_rca_id     IN  NUMBER,
+        p_calculados OUT NUMBER
+    ) IS
+        v_ver_imovel NUMBER;
+    BEGIN
+        SELECT MAX(v.ver_id)
+          INTO v_ver_imovel
+          FROM VERSAO v
+         WHERE v.ver_situacao = 'VIGENTE'
+           AND EXISTS (SELECT 1 FROM IMOVEL_RURAL i WHERE i.ver_id = v.ver_id);
+
+        IF v_ver_imovel IS NULL THEN
+            SELECT MAX(ver_id) INTO v_ver_imovel FROM IMOVEL_RURAL;
+        END IF;
+
+        IF v_ver_imovel IS NULL THEN
+            p_calculados := 0;
+            RETURN;
+        END IF;
+
+        calcular_lote(
+            p_ver_id        => v_ver_imovel,
+            p_camada_ver_id => NULL,
+            p_exe_id        => NULL,
+            p_rca_id        => p_rca_id,
+            p_escopo        => 'TODOS',
+            p_calculados    => p_calculados
+        );
+    END recalcular_por_parametro;
 
 END PKG_ISAP;
 /
