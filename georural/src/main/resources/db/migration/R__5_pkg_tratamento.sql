@@ -48,6 +48,9 @@ CREATE OR REPLACE PACKAGE PKG_TRATAMENTO AS
     PROCEDURE carregar_embargo(p_exe_id NUMBER, p_ver_id NUMBER, p_gravadas OUT NUMBER,
                                p_arq_id NUMBER DEFAULT NULL);
 
+    PROCEDURE carregar_area_protegida(p_exe_id NUMBER, p_ver_id NUMBER, p_gravadas OUT NUMBER,
+                                      p_arq_id NUMBER DEFAULT NULL);
+
     PROCEDURE carregar_municipio(p_exe_id NUMBER, p_gravadas OUT NUMBER,
                                  p_arq_id NUMBER DEFAULT NULL);
 
@@ -86,12 +89,13 @@ CREATE OR REPLACE PACKAGE BODY PKG_TRATAMENTO AS
     END sanear;
 
     PROCEDURE rejeitar_invalidas(p_exe_id NUMBER, p_val_id NUMBER, p_rejeitadas OUT NUMBER) IS
+        v_reg_id NUMBER := id_regra('Geometria invalida');
     BEGIN
         INSERT INTO QUARENTENA (val_id, reg_id, qua_etapa, qua_identificador, qua_linha_origem,
                                 qua_coluna_erro, qua_valor_encontrado, qua_valor_esperado,
                                 qua_motivo_erro, qua_dado_original, qua_situacao)
         SELECT p_val_id,
-               id_regra('Geometria invalida'),
+               v_reg_id,
                'TRATAMENTO',
                SUBSTR(s.stg_identificador, 1, 120),
                s.stg_linha,
@@ -128,7 +132,8 @@ CREATE OR REPLACE PACKAGE BODY PKG_TRATAMENTO AS
 
         UPDATE FEICAO_STAGING s
            SET s.stg_geometria = PKG_GEO.recorte_uf(s.stg_geometria, p_uf)
-         WHERE s.exe_id = p_exe_id AND (p_arq_id IS NULL OR s.stg_arq_bruto_id = p_arq_id)
+         WHERE s.exe_id = p_exe_id
+           AND (p_arq_id IS NULL OR s.stg_arq_bruto_id = p_arq_id)
            AND s.stg_geometria IS NOT NULL
            AND PKG_GEO.contida_na_uf(s.stg_geometria, p_uf) = 'FALSE';
         p_recortadas := SQL%ROWCOUNT;
@@ -139,12 +144,13 @@ CREATE OR REPLACE PACKAGE BODY PKG_TRATAMENTO AS
     -- depois do recorte, geometria nula significa totalmente fora da UF
     PROCEDURE rejeitar_fora_da_uf(p_exe_id NUMBER, p_val_id NUMBER, p_uf VARCHAR2,
                                   p_rejeitadas OUT NUMBER) IS
+        v_reg_id NUMBER := id_regra('Coordenada fora da area de interesse');
     BEGIN
         INSERT INTO QUARENTENA (val_id, reg_id, qua_etapa, qua_identificador, qua_linha_origem,
                                 qua_coluna_erro, qua_valor_encontrado, qua_valor_esperado,
                                 qua_motivo_erro, qua_dado_original, qua_situacao)
         SELECT p_val_id,
-               id_regra('Coordenada fora da area de interesse'),
+               v_reg_id,
                'TRATAMENTO',
                SUBSTR(s.stg_identificador, 1, 120),
                s.stg_linha,
@@ -176,12 +182,13 @@ CREATE OR REPLACE PACKAGE BODY PKG_TRATAMENTO AS
 
     PROCEDURE rejeitar_area_nula(p_exe_id NUMBER, p_val_id NUMBER, p_rejeitadas OUT NUMBER,
                                  p_arq_id NUMBER DEFAULT NULL) IS
+        v_reg_id NUMBER := id_regra('Area nula ou negativa');
     BEGIN
         INSERT INTO QUARENTENA (val_id, reg_id, qua_etapa, qua_identificador, qua_linha_origem,
                                 qua_coluna_erro, qua_valor_encontrado, qua_valor_esperado,
                                 qua_motivo_erro, qua_dado_original, qua_situacao)
         SELECT p_val_id,
-               id_regra('Area nula ou negativa'),
+               v_reg_id,
                'TRATAMENTO',
                SUBSTR(s.stg_identificador, 1, 120),
                s.stg_linha,
@@ -194,25 +201,26 @@ CREATE OR REPLACE PACKAGE BODY PKG_TRATAMENTO AS
                'PENDENTE'
           FROM FEICAO_STAGING s
          WHERE s.exe_id = p_exe_id
- AND (p_arq_id IS NULL OR s.stg_arq_bruto_id = p_arq_id)
+           AND (p_arq_id IS NULL OR s.stg_arq_bruto_id = p_arq_id)
            AND NVL(s.stg_area_ha, 0) <= 0;
         p_rejeitadas := SQL%ROWCOUNT;
 
         DELETE FROM FEICAO_STAGING s
          WHERE s.exe_id = p_exe_id
- AND (p_arq_id IS NULL OR s.stg_arq_bruto_id = p_arq_id)
+           AND (p_arq_id IS NULL OR s.stg_arq_bruto_id = p_arq_id)
            AND NVL(s.stg_area_ha, 0) <= 0;
     END rejeitar_area_nula;
 
     -- reserva legal sem o imovel na base nao tem onde se pendurar
     PROCEDURE rejeitar_rl_sem_imovel(p_exe_id NUMBER, p_val_id NUMBER, p_rejeitadas OUT NUMBER,
                                      p_arq_id NUMBER DEFAULT NULL) IS
+        v_reg_id NUMBER := id_regra('Valor fora do dominio');
     BEGIN
         INSERT INTO QUARENTENA (val_id, reg_id, qua_etapa, qua_identificador, qua_linha_origem,
                                 qua_coluna_erro, qua_valor_encontrado, qua_valor_esperado,
                                 qua_motivo_erro, qua_dado_original, qua_situacao)
         SELECT p_val_id,
-               id_regra('Valor fora do dominio'),
+               v_reg_id,
                'TRATAMENTO',
                SUBSTR(s.stg_identificador, 1, 120),
                s.stg_linha,
@@ -225,14 +233,14 @@ CREATE OR REPLACE PACKAGE BODY PKG_TRATAMENTO AS
                'PENDENTE'
           FROM FEICAO_STAGING s
          WHERE s.exe_id = p_exe_id
- AND (p_arq_id IS NULL OR s.stg_arq_bruto_id = p_arq_id)
+           AND (p_arq_id IS NULL OR s.stg_arq_bruto_id = p_arq_id)
            AND NOT EXISTS (SELECT 1 FROM IMOVEL_RURAL i
                             WHERE i.imo_codigo_car = JSON_VALUE(s.stg_atributos, '$.codigo_car'));
         p_rejeitadas := SQL%ROWCOUNT;
 
         DELETE FROM FEICAO_STAGING s
          WHERE s.exe_id = p_exe_id
- AND (p_arq_id IS NULL OR s.stg_arq_bruto_id = p_arq_id)
+           AND (p_arq_id IS NULL OR s.stg_arq_bruto_id = p_arq_id)
            AND NOT EXISTS (SELECT 1 FROM IMOVEL_RURAL i
                             WHERE i.imo_codigo_car = JSON_VALUE(s.stg_atributos, '$.codigo_car'));
     END rejeitar_rl_sem_imovel;
@@ -241,12 +249,13 @@ CREATE OR REPLACE PACKAGE BODY PKG_TRATAMENTO AS
     PROCEDURE avisar_area_incompativel(p_exe_id NUMBER, p_val_id NUMBER,
                                        p_tolerancia_pct NUMBER, p_avisos OUT NUMBER,
                                        p_arq_id NUMBER DEFAULT NULL) IS
+        v_reg_id NUMBER := id_regra('Area incompativel');
     BEGIN
         INSERT INTO QUARENTENA (val_id, reg_id, qua_etapa, qua_identificador, qua_linha_origem,
                                 qua_coluna_erro, qua_valor_encontrado, qua_valor_esperado,
                                 qua_motivo_erro, qua_dado_original, qua_situacao)
         SELECT p_val_id,
-               id_regra('Area incompativel'),
+               v_reg_id,
                'TRATAMENTO',
                SUBSTR(o.identificador, 1, 120),
                o.linha,
@@ -280,19 +289,24 @@ CREATE OR REPLACE PACKAGE BODY PKG_TRATAMENTO AS
     -- impressao do conteudo tratado: XOR dos hashes de linha + hash da contagem
     FUNCTION impressao(p_exe_id NUMBER) RETURN VARCHAR2 IS
         v_acumulado RAW(32) := HEXTORAW(RPAD('0', 64, '0'));
+        v_hash      RAW(32);
         v_total     NUMBER := 0;
     BEGIN
         FOR r IN (SELECT NVL(stg_identificador, 'linha-' || stg_linha) AS chave,
                          TO_CHAR(ROUND(NVL(stg_area_ha, 0), 4)) AS area
                     FROM FEICAO_STAGING
                    WHERE exe_id = p_exe_id) LOOP
-            v_acumulado := UTL_RAW.BIT_XOR(v_acumulado,
-                               STANDARD_HASH(r.chave || '|' || r.area, 'SHA256'));
+            SELECT STANDARD_HASH(r.chave || '|' || r.area, 'SHA256')
+              INTO v_hash
+              FROM DUAL;
+            v_acumulado := UTL_RAW.BIT_XOR(v_acumulado, v_hash);
             v_total := v_total + 1;
         END LOOP;
 
-        v_acumulado := UTL_RAW.BIT_XOR(v_acumulado,
-                           STANDARD_HASH('total=' || TO_CHAR(v_total), 'SHA256'));
+        SELECT STANDARD_HASH('total=' || TO_CHAR(v_total), 'SHA256')
+          INTO v_hash
+          FROM DUAL;
+        v_acumulado := UTL_RAW.BIT_XOR(v_acumulado, v_hash);
         RETURN LOWER(RAWTOHEX(v_acumulado));
     END impressao;
 
@@ -332,7 +346,6 @@ CREATE OR REPLACE PACKAGE BODY PKG_TRATAMENTO AS
                          d.imo_data_informada = o.data_informada,
                          d.ver_id             = p_ver_id,
                          d.arq_bruto_id       = o.arq_bruto_id,
-                         -- nome digitado na tela (MANUAL) nao e apagado por arquivo que vem sem nome
                          d.imo_nome = CASE
                              WHEN o.nome IS NOT NULL THEN o.nome
                              WHEN d.imo_nome_origem = 'ARQUIVO' THEN NULL
@@ -389,7 +402,6 @@ CREATE OR REPLACE PACKAGE BODY PKG_TRATAMENTO AS
     PROCEDURE carregar_reserva_legal(p_exe_id NUMBER, p_ver_id NUMBER, p_gravadas OUT NUMBER,
                                      p_arq_id NUMBER DEFAULT NULL) IS
     BEGIN
-        -- substitui a reserva legal dos imoveis que vieram neste arquivo
         DELETE FROM RESERVA_LEGAL r
          WHERE r.imo_id IN (SELECT i.imo_id
                               FROM FEICAO_STAGING s
@@ -413,7 +425,6 @@ CREATE OR REPLACE PACKAGE BODY PKG_TRATAMENTO AS
     PROCEDURE carregar_embargo(p_exe_id NUMBER, p_ver_id NUMBER, p_gravadas OUT NUMBER,
                                p_arq_id NUMBER DEFAULT NULL) IS
     BEGIN
-        -- substitui os embargos com o mesmo identificador
         DELETE FROM EMBARGO b
          WHERE b.emb_identificador IN (SELECT SUBSTR(s.stg_identificador, 1, 80)
                                          FROM FEICAO_STAGING s
@@ -430,6 +441,67 @@ CREATE OR REPLACE PACKAGE BODY PKG_TRATAMENTO AS
          WHERE s.exe_id = p_exe_id AND (p_arq_id IS NULL OR s.stg_arq_bruto_id = p_arq_id);
         p_gravadas := SQL%ROWCOUNT;
     END carregar_embargo;
+
+    PROCEDURE carregar_area_protegida(p_exe_id NUMBER, p_ver_id NUMBER, p_gravadas OUT NUMBER,
+                                      p_arq_id NUMBER DEFAULT NULL) IS
+    BEGIN
+        DELETE FROM AREA_PROTEGIDA a
+         WHERE (p_arq_id IS NOT NULL AND a.arq_bruto_id = p_arq_id)
+            OR (p_arq_id IS NULL AND a.ver_id = p_ver_id);
+
+        INSERT INTO AREA_PROTEGIDA (
+            arq_bruto_id, ver_id, apr_tipo, apr_subtipo, apr_nome,
+            apr_codigo, apr_competencia, apr_geometria
+        )
+        SELECT NVL(s.stg_arq_bruto_id, e.arq_bruto_id),
+               p_ver_id,
+               CASE
+                   WHEN UPPER(TRANSLATE(NVL(JSON_VALUE(s.stg_atributos, '$.categoria'),
+                                            JSON_VALUE(s.stg_atributos, '$.tipo')),
+                                        'áàâãçéêíóôõúüÁÀÂÃÇÉÊÍÓÔÕÚÜ',
+                                        'aaaaceeiooouuAAAACEEIOOOUU'))
+                        IN ('UC', 'UNIDADE DE CONSERVACAO', 'UNIDADES DE CONSERVACAO') THEN 'UC'
+                   WHEN UPPER(TRANSLATE(NVL(JSON_VALUE(s.stg_atributos, '$.categoria'),
+                                            JSON_VALUE(s.stg_atributos, '$.tipo')),
+                                        'áàâãçéêíóôõúüÁÀÂÃÇÉÊÍÓÔÕÚÜ',
+                                        'aaaaceeiooouuAAAACEEIOOOUU'))
+                        IN ('TI', 'TERRA INDIGENA', 'TERRA_INDIGENA', 'TERRAS INDIGENAS') THEN 'TERRA_INDIGENA'
+                   WHEN UPPER(TRANSLATE(NVL(JSON_VALUE(s.stg_atributos, '$.categoria'),
+                                            JSON_VALUE(s.stg_atributos, '$.tipo')),
+                                        'áàâãçéêíóôõúüÁÀÂÃÇÉÊÍÓÔÕÚÜ',
+                                        'aaaaceeiooouuAAAACEEIOOOUU'))
+                        IN ('TQ', 'QUILOMBOLA', 'TERRITORIO QUILOMBOLA', 'AREA QUILOMBOLA') THEN 'QUILOMBOLA'
+                   WHEN UPPER(TRANSLATE(NVL(JSON_VALUE(s.stg_atributos, '$.categoria'),
+                                            JSON_VALUE(s.stg_atributos, '$.tipo')),
+                                        'áàâãçéêíóôõúüÁÀÂÃÇÉÊÍÓÔÕÚÜ',
+                                        'aaaaceeiooouuAAAACEEIOOOUU'))
+                        IN ('FP', 'FLORESTA PUBLICA', 'FLORESTA_PUBLICA', 'FLORESTAS PUBLICAS') THEN 'FLORESTA_PUBLICA'
+                   ELSE UPPER(TRIM(NVL(JSON_VALUE(s.stg_atributos, '$.categoria'),
+                                       JSON_VALUE(s.stg_atributos, '$.tipo'))))
+               END AS apr_tipo,
+               SUBSTR(NVL(JSON_VALUE(s.stg_atributos, '$.subtipo'),
+                          NVL(JSON_VALUE(s.stg_atributos, '$.categoria_uc'),
+                              JSON_VALUE(s.stg_atributos, '$.grupo'))), 1, 100) AS apr_subtipo,
+               SUBSTR(NVL(JSON_VALUE(s.stg_atributos, '$.nome'),
+                          NVL(JSON_VALUE(s.stg_atributos, '$.nome_uc'),
+                              s.stg_identificador)), 1, 200) AS apr_nome,
+               SUBSTR(NVL(JSON_VALUE(s.stg_atributos, '$.codigo'),
+                          NVL(JSON_VALUE(s.stg_atributos, '$.cod_cnuc'),
+                              s.stg_identificador)), 1, 80) AS apr_codigo,
+               SUBSTR(NVL(JSON_VALUE(s.stg_atributos, '$.competencia'), ab.arq_competencia), 1, 20) AS apr_competencia,
+               CASE
+                   WHEN PKG_GEO.valida(s.stg_geometria) = 'TRUE' THEN s.stg_geometria
+                   ELSE PKG_GEO.saneada(s.stg_geometria)
+               END AS apr_geometria
+          FROM FEICAO_STAGING s
+          JOIN EXECUCAO_PIPELINE e ON e.exe_id = s.exe_id
+          LEFT JOIN ARQUIVO_BRUTO ab ON ab.arq_bruto_id = NVL(s.stg_arq_bruto_id, e.arq_bruto_id)
+         WHERE s.exe_id = p_exe_id
+           AND (p_arq_id IS NULL OR s.stg_arq_bruto_id = p_arq_id)
+           AND s.stg_geometria IS NOT NULL;
+
+        p_gravadas := SQL%ROWCOUNT;
+    END carregar_area_protegida;
 
     PROCEDURE carregar_municipio(p_exe_id NUMBER, p_gravadas OUT NUMBER,
                                  p_arq_id NUMBER DEFAULT NULL) IS

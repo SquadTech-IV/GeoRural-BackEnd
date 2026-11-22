@@ -225,6 +225,19 @@ class SecurityMatrizPermissoesTest {
         mockMvc.perform(get("/api/v1/auditoria")).andExpect(status().isUnauthorized());
     }
 
+    @Test
+    @DisplayName("US#24 - /api/v1/isap/** permite os 5 perfis autenticados (200) e rejeita sem token (401)")
+    void isap_permiteTodosOsPerfisAutenticados() throws Exception {
+        for (String role : List.of("ADMIN", "GESTOR", "OPERADOR", "ANALISTA", "AUDITOR")) {
+            mockMvc.perform(get("/api/v1/isap")
+                            .header("Authorization", tokenComRole(role)))
+                    .andExpect(status().isOk());
+        }
+
+        mockMvc.perform(get("/api/v1/isap"))
+                .andExpect(status().isUnauthorized());
+    }
+
     @Configuration
     @EnableWebMvc
     @Import({SecurityConfig.class, KeycloakJwtAuthenticationConverter.class, SegurancaExceptionHandlers.class})
@@ -302,5 +315,8 @@ class SecurityMatrizPermissoesTest {
 
         @GetMapping("/api/usuarios")
         String usuarios() { return "ok"; }
+
+        @GetMapping("/api/v1/isap")
+        String isap() { return "ok"; }
     }
 }

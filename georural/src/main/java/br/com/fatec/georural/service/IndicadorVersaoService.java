@@ -95,6 +95,23 @@ public class IndicadorVersaoService {
                     c.porSituacao.put(rs.getString("situacao"), rs.getLong("quantos"));
                 }, versaoId);
 
+        jdbc.query("SELECT NVL(i.ind_sigla, 'ISAP') AS ind_sigla, "
+                        + "       NVL(i.ind_nome, 'Índice de Sobreposição a Áreas Protegidas') AS ind_nome, "
+                        + "       NVL(r.isr_status, 'SEM_SITUACAO') AS situacao, "
+                        + "       COUNT(*) AS quantos "
+                        + "  FROM RESULTADO_ISAP_RESUMO r "
+                        + "  LEFT JOIN INDICADOR i ON i.ind_sigla = 'ISAP' "
+                        + " WHERE r.ver_id = ? "
+                        + "   AND r.isr_categoria = 'TOTAL' "
+                        + " GROUP BY i.ind_sigla, i.ind_nome, r.isr_status "
+                        + " ORDER BY situacao",
+                rs -> {
+                    String sigla = rs.getString("ind_sigla");
+                    String nome = rs.getString("ind_nome");
+                    Contagens c = porIndicador.computeIfAbsent(sigla, k -> new Contagens(nome));
+                    c.porSituacao.put(rs.getString("situacao"), rs.getLong("quantos"));
+                }, versaoId);
+
         return porIndicador;
     }
 

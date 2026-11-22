@@ -4,7 +4,7 @@
 
 CREATE OR REPLACE PACKAGE PKG_CALCULO AS
 
-    -- imoveis alcancados por esta rodada; escopo = IMOVEL, RESERVA_LEGAL ou EMBARGO
+    -- imoveis alcancados por esta rodada; escopo = IMOVEL, RESERVA_LEGAL, VEGETACAO ou EMBARGO
     FUNCTION imoveis_no_escopo(p_ver_id NUMBER, p_escopo VARCHAR2) RETURN SYS.ODCINUMBERLIST;
 
     PROCEDURE calcular_irl(p_ver_id NUMBER, p_exe_id NUMBER, p_rca_id NUMBER,
@@ -15,6 +15,10 @@ CREATE OR REPLACE PACKAGE PKG_CALCULO AS
 
     PROCEDURE calcular_icv(p_ver_id NUMBER, p_exe_id NUMBER, p_rca_id NUMBER,
                            p_minimo_pct NUMBER, p_escopo VARCHAR2, p_calculados OUT NUMBER);
+
+    PROCEDURE calcular_isap(p_ver_id NUMBER, p_exe_id NUMBER, p_rca_id NUMBER,
+                            p_escopo VARCHAR2, p_calculados OUT NUMBER,
+                            p_camada_ver_id NUMBER DEFAULT NULL);
 
     PROCEDURE agregar_municipio(p_ver_id NUMBER, p_sigla VARCHAR2, p_agregados OUT NUMBER);
 
@@ -60,8 +64,6 @@ CREATE OR REPLACE PACKAGE BODY PKG_CALCULO AS
                               AND SDO_RELATE(b.emb_geometria, i.imo_geometria,
                                              'mask=ANYINTERACT') = 'TRUE');
         ELSIF p_escopo = 'VEGETACAO' THEN
-            -- imoveis tocados pela vegetacao que ENTROU nesta versao; o indice espacial
-            -- esta em VEGETACAO_NATIVA, por isso ela e o primeiro argumento do SDO_RELATE
             SELECT DISTINCT i.imo_id BULK COLLECT INTO v_ids
               FROM IMOVEL_RURAL i
              WHERE i.imo_geometria IS NOT NULL
@@ -215,7 +217,6 @@ CREATE OR REPLACE PACKAGE BODY PKG_CALCULO AS
                         || ',"dissolvido":true}' AS detalhes
                  FROM (SELECT i.imo_id,
                               NVL(i.imo_area_total, 0) AS area_imovel,
-                              -- une a vegetacao que toca o imovel e so entao recorta
                               NVL(PKG_GEO.area_intersecao_ha(
                                     i.imo_geometria,
                                     (SELECT SDO_AGGR_UNION(SDOAGGRTYPE(v.veg_geometria, 0.05))
@@ -250,6 +251,32 @@ CREATE OR REPLACE PACKAGE BODY PKG_CALCULO AS
                       SYSTIMESTAMP, 'N');
         p_calculados := SQL%ROWCOUNT;
     END calcular_icv;
+
+    PROCEDURE calcular_isap(p_ver_id NUMBER, p_exe_id NUMBER, p_rca_id NUMBER,
+                            p_escopo VARCHAR2, p_calculados OUT NUMBER,
+                            p_camada_ver_id NUMBER DEFAULT NULL) IS
+        v_ind         NUMBER := id_indicador('ISAP');
+        v_escopo_lote VARCHAR2(20);
+    BEGIN
+        IF v_ind IS NULL THEN
+            p_calculados := 0;
+            RETURN;
+        END IF;
+
+        v_escopo_lote := CASE UPPER(NVL(p_escopo, 'TODOS'))
+                            WHEN 'IMOVEL' THEN 'IMOVEL'
+                            ELSE 'TODOS'
+                         END;
+
+        PKG_ISAP.calcular_lote(
+            p_ver_id        => p_ver_id,
+            p_camada_ver_id => p_camada_ver_id,
+            p_exe_id        => p_exe_id,
+            p_rca_id        => p_rca_id,
+            p_escopo        => v_escopo_lote,
+            p_calculados    => p_calculados
+        );
+    END calcular_isap;
 
     PROCEDURE agregar_municipio(p_ver_id NUMBER, p_sigla VARCHAR2, p_agregados OUT NUMBER) IS
         v_ind NUMBER := id_indicador(p_sigla);
@@ -291,11 +318,11 @@ CREATE OR REPLACE PACKAGE BODY PKG_CALCULO AS
     END agregar_municipio;
 
     PROCEDURE publicar(p_ver_id NUMBER, p_publicados OUT NUMBER) IS
-        v_con_id NUMBER;
+        v_con_id   NUMBER;
+        v_isap_pub NUMBER := 0;
     BEGIN
         SELECT con_id INTO v_con_id FROM VERSAO WHERE ver_id = p_ver_id;
 
-        -- resultados das versoes anteriores do mesmo conjunto saem de vigentes
         UPDATE RESULTADO_INDICADOR r
            SET r.rin_vigente = 'N'
          WHERE r.rin_vigente = 'S'
@@ -312,6 +339,10 @@ CREATE OR REPLACE PACKAGE BODY PKG_CALCULO AS
         p_publicados := SQL%ROWCOUNT;
 
         UPDATE RESULTADO_MUNICIPIO m SET m.rmu_vigente = 'S' WHERE m.ver_id = p_ver_id;
+
+        -- Publica resultados do ISAP vinculados a esta versao mantendo historico anterior
+        PKG_ISAP.publicar(p_ver_id, v_isap_pub);
+        p_publicados := p_publicados + NVL(v_isap_pub, 0);
     END publicar;
 
 END PKG_CALCULO;
