@@ -1,6 +1,6 @@
 -- =====================================================================
--- GeoRural DataHub - PKG_IAPP (US#23.05, US#23.06 e US#23.07)
--- Preparacao espacial, calculo do IAPP e tratamento de SEM_APP / CAMADA_INDISPONIVEL
+-- GeoRural DataHub - PKG_IAPP (US#23.05, US#23.06, US#23.07 e US#23.08)
+-- Preparacao espacial, calculo do IAPP, rastreabilidade e publicacao
 -- =====================================================================
 
 CREATE OR REPLACE PACKAGE PKG_IAPP AS
@@ -36,7 +36,7 @@ CREATE OR REPLACE PACKAGE PKG_IAPP AS
         p_veg_feicoes_validas OUT NUMBER
     );
 
-    -- Calcula o cruzamento APP x VEGETACAO_NATIVA dentro do perimetro de um imovel (US#23.06 / US#23.07)
+    -- Calcula o cruzamento APP x VEGETACAO_NATIVA dentro do perimetro de um imovel (US#23.06 / US#23.07 / US#23.08)
     PROCEDURE calcular_imovel(
         p_imo_id             IN NUMBER,
         p_ver_id             IN NUMBER,
@@ -48,7 +48,7 @@ CREATE OR REPLACE PACKAGE PKG_IAPP AS
         p_filtro_classes_veg IN VARCHAR2 DEFAULT NULL
     );
 
-    -- Calcula o IAPP em lote para os imoveis no escopo (US#23.06 / US#23.07)
+    -- Calcula o IAPP em lote para os imoveis no escopo (US#23.06 / US#23.07 / US#23.08)
     PROCEDURE calcular_lote(
         p_ver_id        IN  NUMBER,
         p_app_ver_id    IN  NUMBER DEFAULT NULL,
@@ -57,6 +57,18 @@ CREATE OR REPLACE PACKAGE PKG_IAPP AS
         p_rca_id        IN  NUMBER DEFAULT NULL,
         p_escopo        IN  VARCHAR2 DEFAULT 'TODOS',
         p_calculados    OUT NUMBER
+    );
+
+    -- Recalcula o IAPP de todos os imoveis apos alteracao de parametro da regra (US#23.08)
+    PROCEDURE recalcular_por_parametro(
+        p_rca_id     IN  NUMBER,
+        p_calculados OUT NUMBER
+    );
+
+    -- Promove os resultados do IAPP da versao publicada sem apagar o historico anterior (US#23.08)
+    PROCEDURE publicar(
+        p_ver_id     IN  NUMBER,
+        p_publicados OUT NUMBER
     );
 END PKG_IAPP;
 /
@@ -114,6 +126,21 @@ CREATE OR REPLACE PACKAGE BODY PKG_IAPP AS
         WHEN NO_DATA_FOUND THEN
             RETURN p_default;
     END obter_parametro;
+
+    FUNCTION obter_regra_vigente_id RETURN NUMBER IS
+        v_rca_id NUMBER;
+    BEGIN
+        SELECT r.rca_id INTO v_rca_id
+          FROM REGRA_CALCULO r
+          JOIN INDICADOR i ON i.ind_id = r.ind_id
+         WHERE i.ind_sigla = 'IAPP'
+           AND r.rca_vigente = 'S'
+         FETCH FIRST 1 ROWS ONLY;
+        RETURN v_rca_id;
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            RETURN NULL;
+    END obter_regra_vigente_id;
 
     FUNCTION validar_versao_existente(p_ver_id NUMBER) RETURN NUMBER IS
         v_id NUMBER;
@@ -439,6 +466,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_IAPP AS
         v_arq_bruto_id      NUMBER;
         v_imo_codigo_car    VARCHAR2(100);
         v_imo_area_ha       NUMBER;
+        v_rca_id            NUMBER;
         v_app_ver_id        NUMBER;
         v_veg_ver_id        NUMBER;
         v_filtro_app        VARCHAR2(500);
@@ -470,14 +498,14 @@ CREATE OR REPLACE PACKAGE BODY PKG_IAPP AS
             RETURN;
         END IF;
 
+        v_rca_id     := NVL(p_rca_id, obter_regra_vigente_id());
         v_app_ver_id := validar_versao_existente(NVL(p_app_ver_id, resolver_versao_camada('APP')));
         v_veg_ver_id := validar_versao_existente(NVL(p_veg_ver_id, resolver_versao_camada('VEGETACAO')));
-        v_filtro_app := normalizar_filtro(NVL(p_filtro_tipos_app, obter_parametro('tipos_app_incluidos', p_rca_id, '*')));
-        v_filtro_veg := normalizar_filtro(NVL(p_filtro_classes_veg, obter_parametro('classes_vegetacao_incluidas', p_rca_id, '*')));
+        v_filtro_app := normalizar_filtro(NVL(p_filtro_tipos_app, obter_parametro('tipos_app_incluidos', v_rca_id, '*')));
+        v_filtro_veg := normalizar_filtro(NVL(p_filtro_classes_veg, obter_parametro('classes_vegetacao_incluidas', v_rca_id, '*')));
         v_comp_app   := obter_competencia_versao(v_app_ver_id);
         v_comp_veg   := obter_competencia_versao(v_veg_ver_id);
 
-        -- US#23.07: Tratamento de camada indisponivel (APP ou VEGETACAO_NATIVA ausente/nao publicada)
         IF v_app_ver_id IS NULL OR v_veg_ver_id IS NULL THEN
             v_mensagem := CASE
                 WHEN v_app_ver_id IS NULL AND v_veg_ver_id IS NULL THEN
@@ -494,7 +522,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_IAPP AS
                 p_app_ver_id      => v_app_ver_id,
                 p_veg_ver_id      => v_veg_ver_id,
                 p_exe_id          => p_exe_id,
-                p_rca_id          => p_rca_id,
+                p_rca_id          => v_rca_id,
                 p_app_total_ha    => NULL,
                 p_app_vegetada_ha => NULL,
                 p_passivo_ha      => NULL,
@@ -512,7 +540,6 @@ CREATE OR REPLACE PACKAGE BODY PKG_IAPP AS
             RETURN;
         END IF;
 
-        -- Busca camadas dissolvidas
         BEGIN
             SELECT apd_geometria INTO v_apd_geom
               FROM APP_DISSOLVIDA
@@ -533,7 +560,6 @@ CREATE OR REPLACE PACKAGE BODY PKG_IAPP AS
                 v_ved_geom := NULL;
         END;
 
-        -- 1. Recorte da APP dissolvida pelo perimetro do imovel
         v_app_total_ha := 0;
         IF v_apd_geom IS NOT NULL AND SDO_GEOM.RELATE(v_imo_geom, 'ANYINTERACT', v_apd_geom, v_tol) = 'TRUE' THEN
             v_app_imovel_geom := PKG_GEO.intersecao(v_imo_geom, v_apd_geom);
@@ -543,7 +569,6 @@ CREATE OR REPLACE PACKAGE BODY PKG_IAPP AS
         END IF;
         v_app_total_ha := ROUND(NVL(v_app_total_ha, 0), 4);
 
-        -- US#23.07: Imovel sem APP (app_total_ha = 0) -> status SEM_APP com campos numericos NULL
         IF v_app_total_ha <= 0 THEN
             gravar_resultado(
                 p_imo_id          => p_imo_id,
@@ -551,7 +576,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_IAPP AS
                 p_app_ver_id      => v_app_ver_id,
                 p_veg_ver_id      => v_veg_ver_id,
                 p_exe_id          => p_exe_id,
-                p_rca_id          => p_rca_id,
+                p_rca_id          => v_rca_id,
                 p_app_total_ha    => NULL,
                 p_app_vegetada_ha => NULL,
                 p_passivo_ha      => NULL,
@@ -569,7 +594,6 @@ CREATE OR REPLACE PACKAGE BODY PKG_IAPP AS
             RETURN;
         END IF;
 
-        -- 2. Intersecao da APP recortada com a vegetacao nativa dissolvida
         v_app_vegetada_ha := 0;
         v_app_veg_geom    := NULL;
         IF v_ved_geom IS NOT NULL AND SDO_GEOM.RELATE(v_app_imovel_geom, 'ANYINTERACT', v_ved_geom, v_tol) = 'TRUE' THEN
@@ -607,7 +631,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_IAPP AS
             p_app_ver_id      => v_app_ver_id,
             p_veg_ver_id      => v_veg_ver_id,
             p_exe_id          => p_exe_id,
-            p_rca_id          => p_rca_id,
+            p_rca_id          => v_rca_id,
             p_app_total_ha    => v_app_total_ha,
             p_app_vegetada_ha => v_app_vegetada_ha,
             p_passivo_ha      => v_passivo_ha,
@@ -633,10 +657,11 @@ CREATE OR REPLACE PACKAGE BODY PKG_IAPP AS
         p_escopo        IN  VARCHAR2 DEFAULT 'TODOS',
         p_calculados    OUT NUMBER
     ) IS
+        v_rca_id     NUMBER := NVL(p_rca_id, obter_regra_vigente_id());
         v_app_ver_id NUMBER := validar_versao_existente(NVL(p_app_ver_id, resolver_versao_camada('APP')));
         v_veg_ver_id NUMBER := validar_versao_existente(NVL(p_veg_ver_id, resolver_versao_camada('VEGETACAO')));
-        v_filtro_app VARCHAR2(500) := normalizar_filtro(obter_parametro('tipos_app_incluidos', p_rca_id, '*'));
-        v_filtro_veg VARCHAR2(500) := normalizar_filtro(obter_parametro('classes_vegetacao_incluidas', p_rca_id, '*'));
+        v_filtro_app VARCHAR2(500) := normalizar_filtro(obter_parametro('tipos_app_incluidos', v_rca_id, '*'));
+        v_filtro_veg VARCHAR2(500) := normalizar_filtro(obter_parametro('classes_vegetacao_incluidas', v_rca_id, '*'));
         v_q_app      NUMBER;
         v_q_veg      NUMBER;
         v_count      NUMBER := 0;
@@ -658,7 +683,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_IAPP AS
                 p_app_ver_id         => v_app_ver_id,
                 p_veg_ver_id         => v_veg_ver_id,
                 p_exe_id             => p_exe_id,
-                p_rca_id             => p_rca_id,
+                p_rca_id             => v_rca_id,
                 p_filtro_tipos_app   => v_filtro_app,
                 p_filtro_classes_veg => v_filtro_veg
             );
@@ -667,6 +692,76 @@ CREATE OR REPLACE PACKAGE BODY PKG_IAPP AS
 
         p_calculados := v_count;
     END calcular_lote;
+
+    PROCEDURE recalcular_por_parametro(
+        p_rca_id     IN  NUMBER,
+        p_calculados OUT NUMBER
+    ) IS
+        v_ver_imovel NUMBER;
+    BEGIN
+        SELECT MAX(v.ver_id)
+          INTO v_ver_imovel
+          FROM VERSAO v
+         WHERE v.ver_situacao = 'VIGENTE'
+           AND EXISTS (SELECT 1 FROM IMOVEL_RURAL i WHERE i.ver_id = v.ver_id);
+
+        IF v_ver_imovel IS NULL THEN
+            SELECT MAX(ver_id) INTO v_ver_imovel FROM IMOVEL_RURAL;
+        END IF;
+
+        IF v_ver_imovel IS NULL THEN
+            p_calculados := 0;
+            RETURN;
+        END IF;
+
+        calcular_lote(
+            p_ver_id        => v_ver_imovel,
+            p_app_ver_id    => NULL,
+            p_veg_ver_id    => NULL,
+            p_exe_id        => NULL,
+            p_rca_id        => p_rca_id,
+            p_escopo        => 'TODOS',
+            p_calculados    => p_calculados
+        );
+    END recalcular_por_parametro;
+
+    PROCEDURE publicar(
+        p_ver_id     IN  NUMBER,
+        p_publicados OUT NUMBER
+    ) IS
+        v_con_id NUMBER;
+        v_qtd    NUMBER := 0;
+    BEGIN
+        SELECT COUNT(*) INTO v_qtd
+          FROM RESULTADO_IAPP
+         WHERE ver_id = p_ver_id;
+
+        IF v_qtd = 0 THEN
+            p_publicados := 0;
+            RETURN;
+        END IF;
+
+        SELECT con_id INTO v_con_id
+          FROM VERSAO
+         WHERE ver_id = p_ver_id;
+
+        -- Desativa vigencia apenas de versoes anteriores do mesmo conjunto, preservando historico
+        UPDATE RESULTADO_IAPP r
+           SET r.iap_vigente = 'N'
+         WHERE r.iap_vigente = 'S'
+           AND r.ver_id IN (
+               SELECT ver_id
+                 FROM VERSAO
+                WHERE con_id = v_con_id
+                  AND ver_id <> p_ver_id
+           );
+
+        UPDATE RESULTADO_IAPP r
+           SET r.iap_vigente = 'S'
+         WHERE r.ver_id = p_ver_id;
+
+        p_publicados := SQL%ROWCOUNT;
+    END publicar;
 
 END PKG_IAPP;
 /

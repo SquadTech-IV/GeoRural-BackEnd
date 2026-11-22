@@ -20,6 +20,11 @@ CREATE OR REPLACE PACKAGE PKG_CALCULO AS
                             p_escopo VARCHAR2, p_calculados OUT NUMBER,
                             p_camada_ver_id NUMBER DEFAULT NULL);
 
+    PROCEDURE calcular_iapp(p_ver_id NUMBER, p_exe_id NUMBER, p_rca_id NUMBER,
+                            p_escopo VARCHAR2, p_calculados OUT NUMBER,
+                            p_app_ver_id NUMBER DEFAULT NULL,
+                            p_veg_ver_id NUMBER DEFAULT NULL);
+
     PROCEDURE agregar_municipio(p_ver_id NUMBER, p_sigla VARCHAR2, p_agregados OUT NUMBER);
 
     -- liga a versao: resultados viram vigentes e a anterior deixa de ser
@@ -278,6 +283,34 @@ CREATE OR REPLACE PACKAGE BODY PKG_CALCULO AS
         );
     END calcular_isap;
 
+    PROCEDURE calcular_iapp(p_ver_id NUMBER, p_exe_id NUMBER, p_rca_id NUMBER,
+                            p_escopo VARCHAR2, p_calculados OUT NUMBER,
+                            p_app_ver_id NUMBER DEFAULT NULL,
+                            p_veg_ver_id NUMBER DEFAULT NULL) IS
+        v_ind         NUMBER := id_indicador('IAPP');
+        v_escopo_lote VARCHAR2(20);
+    BEGIN
+        IF v_ind IS NULL THEN
+            p_calculados := 0;
+            RETURN;
+        END IF;
+
+        v_escopo_lote := CASE UPPER(NVL(p_escopo, 'TODOS'))
+                            WHEN 'IMOVEL' THEN 'IMOVEL'
+                            ELSE 'TODOS'
+                         END;
+
+        PKG_IAPP.calcular_lote(
+            p_ver_id     => p_ver_id,
+            p_app_ver_id => p_app_ver_id,
+            p_veg_ver_id => p_veg_ver_id,
+            p_exe_id     => p_exe_id,
+            p_rca_id     => p_rca_id,
+            p_escopo     => v_escopo_lote,
+            p_calculados => p_calculados
+        );
+    END calcular_iapp;
+
     PROCEDURE agregar_municipio(p_ver_id NUMBER, p_sigla VARCHAR2, p_agregados OUT NUMBER) IS
         v_ind NUMBER := id_indicador(p_sigla);
         v_boa VARCHAR2(20) := CASE p_sigla
@@ -320,6 +353,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_CALCULO AS
     PROCEDURE publicar(p_ver_id NUMBER, p_publicados OUT NUMBER) IS
         v_con_id   NUMBER;
         v_isap_pub NUMBER := 0;
+        v_iapp_pub NUMBER := 0;
     BEGIN
         SELECT con_id INTO v_con_id FROM VERSAO WHERE ver_id = p_ver_id;
 
@@ -340,9 +374,11 @@ CREATE OR REPLACE PACKAGE BODY PKG_CALCULO AS
 
         UPDATE RESULTADO_MUNICIPIO m SET m.rmu_vigente = 'S' WHERE m.ver_id = p_ver_id;
 
-        -- Publica resultados do ISAP vinculados a esta versao mantendo historico anterior
         PKG_ISAP.publicar(p_ver_id, v_isap_pub);
         p_publicados := p_publicados + NVL(v_isap_pub, 0);
+
+        PKG_IAPP.publicar(p_ver_id, v_iapp_pub);
+        p_publicados := p_publicados + NVL(v_iapp_pub, 0);
     END publicar;
 
 END PKG_CALCULO;
