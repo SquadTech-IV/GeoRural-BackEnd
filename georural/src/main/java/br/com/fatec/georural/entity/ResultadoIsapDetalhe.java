@@ -24,31 +24,32 @@ public class ResultadoIsapDetalhe {
     private ResultadoIsapResumo resumo;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "apr_id", nullable = false)
-    private AreaProtegida areaProtegida;
+    @JoinColumn(name = "imo_id", nullable = false)
+    private ImovelRural imovel;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "ver_camada_id", nullable = false)
-    private Versao versaoCamada;
+    @JoinColumn(name = "ver_id", nullable = false)
+    private Versao versao;
 
-    @Column(name = "isd_categoria", nullable = false, length = 30)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "apr_id")
+    private AreaProtegida areaProtegida;
+
+    @Column(name = "isd_categoria", nullable = false, length = 20)
     private String categoria;
 
-    @Column(name = "isd_subcategoria", length = 80)
-    private String subcategoria;
+    @Column(name = "isd_nome_feicao", length = 255)
+    private String nomeFeicao;
 
-    @Column(name = "isd_nome_area", nullable = false, length = 200)
-    private String nomeArea;
+    @Column(name = "isd_tipo_feicao", length = 100)
+    private String tipoFeicao;
 
-    @Column(name = "isd_codigo_origem", length = 80)
-    private String codigoOrigem;
+    @Column(name = "isd_codigo_feicao", length = 80)
+    private String codigoFeicao;
 
-    @Column(name = "isd_esfera", length = 20)
-    private String esfera;
+    @Column(name = "isd_area_ha", nullable = false)
+    private BigDecimal areaHa;
 
-    @Column(name = "isd_area_sobreposta_ha", nullable = false)
-    private BigDecimal areaSobrepostaHa;
-
-    @Column(name = "isd_percentual_imovel", nullable = false)
-    private BigDecimal percentualImovel;
+    @Column(name = "isd_pct_sobreposicao", nullable = false)
+    private BigDecimal pctSobreposicao;
 }

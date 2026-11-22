@@ -11,10 +11,11 @@ public interface ResultadoIsapDetalheRepository extends JpaRepository<ResultadoI
 
     @Query("""
         SELECT d FROM ResultadoIsapDetalhe d
-          JOIN FETCH d.areaProtegida a
-          JOIN FETCH d.versaoCamada vc
-         WHERE d.resumo.id = :resumoId
-         ORDER BY d.areaSobrepostaHa DESC, d.categoria ASC, d.nomeArea ASC
+         WHERE d.imovel.id = :imovelId
+           AND d.versao.id = :versaoId
+         ORDER BY d.areaHa DESC, d.categoria ASC, d.nomeFeicao ASC
         """)
-    List<ResultadoIsapDetalhe> findPorResumoId(@Param("resumoId") Long resumoId);
+    List<ResultadoIsapDetalhe> findPorImovelEVersao(
+            @Param("imovelId") Long imovelId,
+            @Param("versaoId") Long versaoId);
 }

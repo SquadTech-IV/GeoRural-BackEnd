@@ -1,72 +1,54 @@
 package br.com.fatec.georural.controller;
 
 import br.com.fatec.georural.dto.response.PaginaResponse;
-import br.com.fatec.georural.dto.response.indicador.IsapResumoResponse;
-import br.com.fatec.georural.service.ISAPService;
-import br.com.fatec.georural.service.ISAPService.ResultadoLoteISAP;
+import br.com.fatec.georural.dto.response.isap.IsapImovelConsultaResponse;
+import br.com.fatec.georural.dto.response.isap.IsapListaItemResponse;
+import br.com.fatec.georural.service.indicador.IsapConsultaService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
-import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
-
 @RestController
-@RequestMapping("/api/indicadores/isap")
+@RequestMapping("/api/v1/isap")
 @RequiredArgsConstructor
-@Tag(name = "ISAP - Áreas Protegidas", description = "Cálculo e consulta do Índice de Sobreposição a Áreas Protegidas (US#24)")
-public class ISAPController {
+@Tag(name = "ISAP - Áreas Protegidas",
+     description = "Consulta do Índice de Sobreposição a Áreas Protegidas por imóvel e listagem paginada (US#24.10)")
+public class IsapController {
 
-    private final ISAPService isapService;
+    private final IsapConsultaService service;
 
     @GetMapping
-    @Operation(summary = "Lista paginada dos resultados vigentes do ISAP por imóvel")
-    public PaginaResponse<IsapResumoResponse> listar(
-            @RequestParam(required = false) String situacao,
+    @Operation(summary = "Lista paginada dos resultados vigentes do ISAP (linha TOTAL por imóvel)")
+    public PaginaResponse<IsapListaItemResponse> listar(
+            @Parameter(description = "Filtro por status: COM_SOBREPOSICAO, SEM_SOBREPOSICAO ou CAMADA_INDISPONIVEL")
+            @RequestParam(required = false) String status,
+            @Parameter(description = "Filtro opcional por ID do município")
             @RequestParam(required = false) Long municipioId,
+            @Parameter(description = "Busca por código CAR ou nome do imóvel")
             @RequestParam(required = false) String busca,
             @PageableDefault(size = 20, sort = "dataCalculo") Pageable pageable) {
-        return PaginaResponse.de(isapService.listarPaginado(situacao, municipioId, busca, pageable));
+        return service.listar(status, municipioId, busca, pageable);
     }
 
-    @GetMapping("/{imovelId}")
-    @Operation(summary = "Consulta o resultado vigente do ISAP e detalhamento por área protegida de um imóvel")
-    public IsapResumoResponse consultarPorImovel(@PathVariable Long imovelId) {
-        return isapService.consultarPorImovelId(imovelId);
-    }
-
-    @GetMapping("/car/{codigoCar}")
-    @Operation(summary = "Consulta o resultado vigente do ISAP pelo código CAR do imóvel")
-    public IsapResumoResponse consultarPorCar(@PathVariable String codigoCar) {
-        return isapService.consultarPorCodigoCar(codigoCar);
-    }
-
-    @GetMapping("/{imovelId}/historico")
-    @Operation(summary = "Lista o histórico de versões calculadas do ISAP para um imóvel")
-    public List<IsapResumoResponse> listarHistorico(@PathVariable Long imovelId) {
-        return isapService.listarHistoricoPorImovelId(imovelId);
-    }
-
-    @PostMapping("/{imovelId}")
-    @ResponseStatus(HttpStatus.CREATED)
-    @Operation(summary = "Calcula (e opcionalmente publica) o ISAP para um imóvel rural")
-    public IsapResumoResponse calcularImovel(
+    @GetMapping("/imoveis/{imovelId}")
+    @Operation(summary = "Detalha o ISAP de um imóvel por ID (4 categorias + TOTAL e lista de feições atingidas)")
+    public IsapImovelConsultaResponse detalharPorId(
             @PathVariable Long imovelId,
-            @RequestParam(defaultValue = "true") boolean publicar) {
-        return isapService.calcularPorImovel(imovelId, publicar);
+            @Parameter(description = "Versão opcional; se omitida, retorna os resultados vigentes")
+            @RequestParam(required = false) Long versaoId) {
+        return service.consultarPorImovelId(imovelId, versaoId);
     }
 
-    @PostMapping("/lote")
-    @ResponseStatus(HttpStatus.CREATED)
-    @Operation(summary = "Dispara o cálculo em lote do ISAP para uma versão")
-    public ResultadoLoteISAP calcularLote(
-            @RequestParam Long versaoId,
-            @RequestParam(required = false) Long camadaVersaoId,
-            @RequestParam(defaultValue = "TODOS") String escopo,
-            @RequestParam(defaultValue = "true") boolean publicar) {
-        return isapService.calcularLote(versaoId, camadaVersaoId, escopo, publicar);
+    @GetMapping("/imoveis/car/{codigoCar}")
+    @Operation(summary = "Detalha o ISAP de um imóvel pelo código CAR (4 categorias + TOTAL e lista de feições atingidas)")
+    public IsapImovelConsultaResponse detalharPorCar(
+            @PathVariable String codigoCar,
+            @Parameter(description = "Versão opcional; se omitida, retorna os resultados vigentes")
+            @RequestParam(required = false) Long versaoId) {
+        return service.consultarPorCodigoCar(codigoCar, versaoId);
     }
 }

@@ -16,8 +16,16 @@ public interface ResultadoIsapResumoRepository extends JpaRepository<ResultadoIs
           JOIN FETCH r.imovel i
           LEFT JOIN FETCH i.municipio m
           JOIN FETCH r.versao v
+          LEFT JOIN FETCH r.regraCalculo rc
          WHERE i.id = :imovelId AND r.vigente = 'S'
-         ORDER BY r.dataCalculo DESC
+         ORDER BY CASE r.categoria
+                    WHEN 'UC' THEN 1
+                    WHEN 'TERRA_INDIGENA' THEN 2
+                    WHEN 'QUILOMBOLA' THEN 3
+                    WHEN 'FLORESTA_PUBLICA' THEN 4
+                    WHEN 'TOTAL' THEN 5
+                    ELSE 6
+                  END
         """)
     List<ResultadoIsapResumo> findVigentesPorImovelId(@Param("imovelId") Long imovelId);
 
@@ -26,8 +34,16 @@ public interface ResultadoIsapResumoRepository extends JpaRepository<ResultadoIs
           JOIN FETCH r.imovel i
           LEFT JOIN FETCH i.municipio m
           JOIN FETCH r.versao v
+          LEFT JOIN FETCH r.regraCalculo rc
          WHERE UPPER(i.codigoCar) = UPPER(:codigoCar) AND r.vigente = 'S'
-         ORDER BY r.dataCalculo DESC
+         ORDER BY CASE r.categoria
+                    WHEN 'UC' THEN 1
+                    WHEN 'TERRA_INDIGENA' THEN 2
+                    WHEN 'QUILOMBOLA' THEN 3
+                    WHEN 'FLORESTA_PUBLICA' THEN 4
+                    WHEN 'TOTAL' THEN 5
+                    ELSE 6
+                  END
         """)
     List<ResultadoIsapResumo> findVigentesPorCodigoCar(@Param("codigoCar") String codigoCar);
 
@@ -36,10 +52,20 @@ public interface ResultadoIsapResumoRepository extends JpaRepository<ResultadoIs
           JOIN FETCH r.imovel i
           LEFT JOIN FETCH i.municipio m
           JOIN FETCH r.versao v
-         WHERE i.id = :imovelId
-         ORDER BY v.numero DESC, r.dataCalculo DESC
+          LEFT JOIN FETCH r.regraCalculo rc
+         WHERE i.id = :imovelId AND r.versao.id = :versaoId
+         ORDER BY CASE r.categoria
+                    WHEN 'UC' THEN 1
+                    WHEN 'TERRA_INDIGENA' THEN 2
+                    WHEN 'QUILOMBOLA' THEN 3
+                    WHEN 'FLORESTA_PUBLICA' THEN 4
+                    WHEN 'TOTAL' THEN 5
+                    ELSE 6
+                  END
         """)
-    List<ResultadoIsapResumo> findHistoricoPorImovelId(@Param("imovelId") Long imovelId);
+    List<ResultadoIsapResumo> findPorImovelIdEVersaoId(
+            @Param("imovelId") Long imovelId,
+            @Param("versaoId") Long versaoId);
 
     @Query(value = """
         SELECT r FROM ResultadoIsapResumo r
@@ -47,7 +73,8 @@ public interface ResultadoIsapResumoRepository extends JpaRepository<ResultadoIs
           LEFT JOIN FETCH i.municipio m
           JOIN FETCH r.versao v
          WHERE r.vigente = 'S'
-           AND (:situacao IS NULL OR UPPER(r.situacao) = UPPER(:situacao))
+           AND r.categoria = 'TOTAL'
+           AND (:status IS NULL OR UPPER(r.status) = UPPER(:status))
            AND (:municipioId IS NULL OR m.id = :municipioId)
            AND (:busca IS NULL
                 OR UPPER(i.codigoCar) LIKE CONCAT('%', UPPER(:busca), '%')
@@ -58,14 +85,15 @@ public interface ResultadoIsapResumoRepository extends JpaRepository<ResultadoIs
           JOIN r.imovel i
           LEFT JOIN i.municipio m
          WHERE r.vigente = 'S'
-           AND (:situacao IS NULL OR UPPER(r.situacao) = UPPER(:situacao))
+           AND r.categoria = 'TOTAL'
+           AND (:status IS NULL OR UPPER(r.status) = UPPER(:status))
            AND (:municipioId IS NULL OR m.id = :municipioId)
            AND (:busca IS NULL
                 OR UPPER(i.codigoCar) LIKE CONCAT('%', UPPER(:busca), '%')
                 OR UPPER(COALESCE(i.nome, '')) LIKE CONCAT('%', UPPER(:busca), '%'))
         """)
     Page<ResultadoIsapResumo> consultarVigentesPaginado(
-            @Param("situacao") String situacao,
+            @Param("status") String status,
             @Param("municipioId") Long municipioId,
             @Param("busca") String busca,
             Pageable pageable);

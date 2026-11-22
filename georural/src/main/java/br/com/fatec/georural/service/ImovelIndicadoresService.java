@@ -80,6 +80,7 @@ public class ImovelIndicadoresService {
         if (isapResumoRepository != null) {
             isapResumoRepository.findVigentesPorImovelId(imovelId)
                     .stream()
+                    .filter(r -> "TOTAL".equalsIgnoreCase(r.getCategoria()))
                     .findFirst()
                     .ifPresent(isap -> lista.add(toIndicadorIsap(isap)));
         }
@@ -126,10 +127,10 @@ public class ImovelIndicadoresService {
                 "ISAP",
                 nome,
                 unidade,
-                r.getSituacao(),
-                r.getPercentualTotal(),
-                r.getAreaSobrepostaTotalHa(),
-                r.getAreaSobrepostaTotalHa(),
+                r.getStatus(),
+                r.getPctSobreposicao(),
+                r.getAreaSobrepostaHa(),
+                r.getAreaSobrepostaHa(),
                 versaoRegra,
                 null);
     }
