@@ -1,8 +1,4 @@
 -- V6: para que lado o indicador melhora, e a escala fixa dele.
---
--- Sem isso nao da para ordenar "pior primeiro": em IRL um valor alto e bom, em
--- IAE um valor alto e problema. Deixar isso num mapa dentro do Java faria todo
--- indicador novo nascer com a ordenacao errada em silencio.
 
 ALTER TABLE INDICADOR ADD (
     ind_sentido    VARCHAR2(13) DEFAULT 'MAIOR_MELHOR' NOT NULL,
