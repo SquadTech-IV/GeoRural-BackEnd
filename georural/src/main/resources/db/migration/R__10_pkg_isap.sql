@@ -51,6 +51,12 @@ CREATE OR REPLACE PACKAGE PKG_ISAP AS
         p_calculados OUT NUMBER
     );
 
+    -- Promove os resultados do ISAP de p_ver_id a vigentes sem apagar o historico anterior (US#24.08)
+    PROCEDURE publicar(
+        p_ver_id     IN  NUMBER,
+        p_publicados OUT NUMBER
+    );
+
 END PKG_ISAP;
 /
 
@@ -614,6 +620,34 @@ CREATE OR REPLACE PACKAGE BODY PKG_ISAP AS
             p_calculados    => p_calculados
         );
     END recalcular_por_parametro;
+
+    PROCEDURE publicar(
+        p_ver_id     IN  NUMBER,
+        p_publicados OUT NUMBER
+    ) IS
+    BEGIN
+        IF p_ver_id IS NULL THEN
+            p_publicados := 0;
+            RETURN;
+        END IF;
+
+        -- Desativa vigencia anterior apenas dos imoveis presentes nesta rodada, preservando historico
+        UPDATE RESULTADO_ISAP_RESUMO r
+           SET r.isr_vigente = 'N'
+         WHERE r.isr_vigente = 'S'
+           AND r.ver_id <> p_ver_id
+           AND r.imo_id IN (
+               SELECT DISTINCT imo_id
+                 FROM RESULTADO_ISAP_RESUMO
+                WHERE ver_id = p_ver_id
+           );
+
+        UPDATE RESULTADO_ISAP_RESUMO r
+           SET r.isr_vigente = 'S'
+         WHERE r.ver_id = p_ver_id;
+
+        p_publicados := SQL%ROWCOUNT;
+    END publicar;
 
 END PKG_ISAP;
 /
