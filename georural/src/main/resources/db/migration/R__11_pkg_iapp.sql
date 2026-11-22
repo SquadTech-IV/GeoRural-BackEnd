@@ -1,6 +1,6 @@
 -- =====================================================================
--- GeoRural DataHub - PKG_IAPP (US#23.05 e US#23.06)
--- Preparacao espacial, dissolucao e calculo do Indicador IAPP
+-- GeoRural DataHub - PKG_IAPP (US#23.05, US#23.06 e US#23.07)
+-- Preparacao espacial, calculo do IAPP e tratamento de SEM_APP / CAMADA_INDISPONIVEL
 -- =====================================================================
 
 CREATE OR REPLACE PACKAGE PKG_IAPP AS
@@ -11,6 +11,9 @@ CREATE OR REPLACE PACKAGE PKG_IAPP AS
 
     -- Obtem o valor de um parametro da regra IAPP em PARAMETRO_REGRA_CALCULO
     FUNCTION obter_parametro(p_nome_param VARCHAR2, p_rca_id NUMBER DEFAULT NULL, p_default VARCHAR2 DEFAULT '*') RETURN VARCHAR2;
+
+    -- Resolve a versao vigente de APP ou VEGETACAO_NATIVA quando nao informada explicitamente
+    FUNCTION resolver_versao_camada(p_tipo_camada VARCHAR2) RETURN NUMBER;
 
     -- Garante SRID 4674 (reprojeta via SDO_CS.TRANSFORM quando necessario)
     FUNCTION normalizar_srid(p_geom SDO_GEOMETRY) RETURN SDO_GEOMETRY;
@@ -33,23 +36,23 @@ CREATE OR REPLACE PACKAGE PKG_IAPP AS
         p_veg_feicoes_validas OUT NUMBER
     );
 
-    -- Calcula o cruzamento APP x VEGETACAO_NATIVA dentro do perimetro de um imovel (US#23.06)
+    -- Calcula o cruzamento APP x VEGETACAO_NATIVA dentro do perimetro de um imovel (US#23.06 / US#23.07)
     PROCEDURE calcular_imovel(
         p_imo_id             IN NUMBER,
         p_ver_id             IN NUMBER,
-        p_app_ver_id         IN NUMBER,
-        p_veg_ver_id         IN NUMBER,
+        p_app_ver_id         IN NUMBER DEFAULT NULL,
+        p_veg_ver_id         IN NUMBER DEFAULT NULL,
         p_exe_id             IN NUMBER DEFAULT NULL,
         p_rca_id             IN NUMBER DEFAULT NULL,
         p_filtro_tipos_app   IN VARCHAR2 DEFAULT NULL,
         p_filtro_classes_veg IN VARCHAR2 DEFAULT NULL
     );
 
-    -- Calcula o IAPP em lote para os imoveis no escopo (US#23.06)
+    -- Calcula o IAPP em lote para os imoveis no escopo (US#23.06 / US#23.07)
     PROCEDURE calcular_lote(
         p_ver_id        IN  NUMBER,
-        p_app_ver_id    IN  NUMBER,
-        p_veg_ver_id    IN  NUMBER,
+        p_app_ver_id    IN  NUMBER DEFAULT NULL,
+        p_veg_ver_id    IN  NUMBER DEFAULT NULL,
         p_exe_id        IN  NUMBER DEFAULT NULL,
         p_rca_id        IN  NUMBER DEFAULT NULL,
         p_escopo        IN  VARCHAR2 DEFAULT 'TODOS',
@@ -111,6 +114,55 @@ CREATE OR REPLACE PACKAGE BODY PKG_IAPP AS
         WHEN NO_DATA_FOUND THEN
             RETURN p_default;
     END obter_parametro;
+
+    FUNCTION validar_versao_existente(p_ver_id NUMBER) RETURN NUMBER IS
+        v_id NUMBER;
+    BEGIN
+        IF p_ver_id IS NULL THEN
+            RETURN NULL;
+        END IF;
+        SELECT ver_id INTO v_id
+          FROM VERSAO
+         WHERE ver_id = p_ver_id;
+        RETURN v_id;
+    EXCEPTION
+        WHEN NO_DATA_FOUND THEN
+            RETURN NULL;
+    END validar_versao_existente;
+
+    FUNCTION resolver_versao_camada(p_tipo_camada VARCHAR2) RETURN NUMBER IS
+        v_ver_id NUMBER;
+    BEGIN
+        IF UPPER(p_tipo_camada) = 'APP' THEN
+            SELECT MAX(v.ver_id) INTO v_ver_id
+              FROM VERSAO v
+              JOIN CONJUNTO_DADOS c ON c.con_id = v.con_id
+              JOIN TIPO_CONJUNTO t ON t.tip_id = c.tip_id
+             WHERE t.tip_codigo = 'APP'
+               AND v.ver_situacao = 'VIGENTE'
+               AND EXISTS (SELECT 1 FROM APP a WHERE a.ver_id = v.ver_id);
+
+            IF v_ver_id IS NULL THEN
+                SELECT MAX(ver_id) INTO v_ver_id FROM APP;
+            END IF;
+            RETURN v_ver_id;
+        ELSIF UPPER(p_tipo_camada) = 'VEGETACAO' THEN
+            SELECT MAX(v.ver_id) INTO v_ver_id
+              FROM VERSAO v
+              JOIN CONJUNTO_DADOS c ON c.con_id = v.con_id
+              JOIN TIPO_CONJUNTO t ON t.tip_id = c.tip_id
+             WHERE t.tip_codigo = 'VEGETACAO'
+               AND v.ver_situacao = 'VIGENTE'
+               AND EXISTS (SELECT 1 FROM VEGETACAO_NATIVA vn WHERE vn.ver_id = v.ver_id);
+
+            IF v_ver_id IS NULL THEN
+                SELECT MAX(ver_id) INTO v_ver_id FROM VEGETACAO_NATIVA;
+            END IF;
+            RETURN v_ver_id;
+        END IF;
+
+        RETURN NULL;
+    END resolver_versao_camada;
 
     FUNCTION obter_competencia_versao(p_ver_id NUMBER) RETURN VARCHAR2 IS
         v_comp VARCHAR2(20);
@@ -375,8 +427,8 @@ CREATE OR REPLACE PACKAGE BODY PKG_IAPP AS
     PROCEDURE calcular_imovel(
         p_imo_id             IN NUMBER,
         p_ver_id             IN NUMBER,
-        p_app_ver_id         IN NUMBER,
-        p_veg_ver_id         IN NUMBER,
+        p_app_ver_id         IN NUMBER DEFAULT NULL,
+        p_veg_ver_id         IN NUMBER DEFAULT NULL,
         p_exe_id             IN NUMBER DEFAULT NULL,
         p_rca_id             IN NUMBER DEFAULT NULL,
         p_filtro_tipos_app   IN VARCHAR2 DEFAULT NULL,
@@ -387,6 +439,8 @@ CREATE OR REPLACE PACKAGE BODY PKG_IAPP AS
         v_arq_bruto_id      NUMBER;
         v_imo_codigo_car    VARCHAR2(100);
         v_imo_area_ha       NUMBER;
+        v_app_ver_id        NUMBER;
+        v_veg_ver_id        NUMBER;
         v_filtro_app        VARCHAR2(500);
         v_filtro_veg        VARCHAR2(500);
         v_comp_app          VARCHAR2(20);
@@ -416,16 +470,53 @@ CREATE OR REPLACE PACKAGE BODY PKG_IAPP AS
             RETURN;
         END IF;
 
+        v_app_ver_id := validar_versao_existente(NVL(p_app_ver_id, resolver_versao_camada('APP')));
+        v_veg_ver_id := validar_versao_existente(NVL(p_veg_ver_id, resolver_versao_camada('VEGETACAO')));
         v_filtro_app := normalizar_filtro(NVL(p_filtro_tipos_app, obter_parametro('tipos_app_incluidos', p_rca_id, '*')));
         v_filtro_veg := normalizar_filtro(NVL(p_filtro_classes_veg, obter_parametro('classes_vegetacao_incluidas', p_rca_id, '*')));
-        v_comp_app   := obter_competencia_versao(p_app_ver_id);
-        v_comp_veg   := obter_competencia_versao(p_veg_ver_id);
+        v_comp_app   := obter_competencia_versao(v_app_ver_id);
+        v_comp_veg   := obter_competencia_versao(v_veg_ver_id);
+
+        -- US#23.07: Tratamento de camada indisponivel (APP ou VEGETACAO_NATIVA ausente/nao publicada)
+        IF v_app_ver_id IS NULL OR v_veg_ver_id IS NULL THEN
+            v_mensagem := CASE
+                WHEN v_app_ver_id IS NULL AND v_veg_ver_id IS NULL THEN
+                    'Camadas de APP e Vegetacao Nativa indisponiveis/nao publicadas para o calculo.'
+                WHEN v_app_ver_id IS NULL THEN
+                    'Camada de APP indisponivel/nao publicada para o calculo.'
+                ELSE
+                    'Camada de Vegetacao Nativa indisponivel/nao publicada para o calculo.'
+            END;
+
+            gravar_resultado(
+                p_imo_id          => p_imo_id,
+                p_ver_id          => p_ver_id,
+                p_app_ver_id      => v_app_ver_id,
+                p_veg_ver_id      => v_veg_ver_id,
+                p_exe_id          => p_exe_id,
+                p_rca_id          => p_rca_id,
+                p_app_total_ha    => NULL,
+                p_app_vegetada_ha => NULL,
+                p_passivo_ha      => NULL,
+                p_iapp_pct        => NULL,
+                p_area_imovel_ha  => ROUND(v_imo_area_ha, 4),
+                p_filtro_app      => v_filtro_app,
+                p_filtro_veg      => v_filtro_veg,
+                p_comp_app        => v_comp_app,
+                p_comp_veg        => v_comp_veg,
+                p_status          => 'CAMADA_INDISPONIVEL',
+                p_mensagem        => v_mensagem,
+                p_app_veg_geom    => NULL,
+                p_passivo_geom    => NULL
+            );
+            RETURN;
+        END IF;
 
         -- Busca camadas dissolvidas
         BEGIN
             SELECT apd_geometria INTO v_apd_geom
               FROM APP_DISSOLVIDA
-             WHERE ver_id = p_app_ver_id
+             WHERE ver_id = v_app_ver_id
                AND apd_filtro_aplicado = v_filtro_app;
         EXCEPTION
             WHEN NO_DATA_FOUND THEN
@@ -435,7 +526,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_IAPP AS
         BEGIN
             SELECT ved_geometria INTO v_ved_geom
               FROM VEGETACAO_DISSOLVIDA
-             WHERE ver_id = p_veg_ver_id
+             WHERE ver_id = v_veg_ver_id
                AND ved_filtro_aplicado = v_filtro_veg;
         EXCEPTION
             WHEN NO_DATA_FOUND THEN
@@ -452,13 +543,13 @@ CREATE OR REPLACE PACKAGE BODY PKG_IAPP AS
         END IF;
         v_app_total_ha := ROUND(NVL(v_app_total_ha, 0), 4);
 
-        -- Se nao ha APP no imovel (app_total_ha = 0)
+        -- US#23.07: Imovel sem APP (app_total_ha = 0) -> status SEM_APP com campos numericos NULL
         IF v_app_total_ha <= 0 THEN
             gravar_resultado(
                 p_imo_id          => p_imo_id,
                 p_ver_id          => p_ver_id,
-                p_app_ver_id      => p_app_ver_id,
-                p_veg_ver_id      => p_veg_ver_id,
+                p_app_ver_id      => v_app_ver_id,
+                p_veg_ver_id      => v_veg_ver_id,
                 p_exe_id          => p_exe_id,
                 p_rca_id          => p_rca_id,
                 p_app_total_ha    => NULL,
@@ -471,7 +562,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_IAPP AS
                 p_comp_app        => v_comp_app,
                 p_comp_veg        => v_comp_veg,
                 p_status          => 'SEM_APP',
-                p_mensagem        => 'O imovel nao possui Area de Preservação Permanente (APP) incidente na versao avaliada.',
+                p_mensagem        => 'O imovel nao possui Area de Preservacao Permanente (APP) incidente na versao avaliada.',
                 p_app_veg_geom    => NULL,
                 p_passivo_geom    => NULL
             );
@@ -492,7 +583,6 @@ CREATE OR REPLACE PACKAGE BODY PKG_IAPP AS
         v_passivo_ha      := ROUND(GREATEST(v_app_total_ha - v_app_vegetada_ha, 0), 4);
         v_iapp_pct        := LEAST(ROUND((v_app_vegetada_ha / NULLIF(v_app_total_ha, 0)) * 100, 4), 100);
 
-        -- Geometria do passivo ambiental (APP_imovel \ APP_vegetada) para o mapa
         IF v_passivo_ha <= 0 THEN
             v_passivo_geom := NULL;
             v_mensagem     := 'APP integralmente coberta por vegetacao nativa (passivo ambiental zero).';
@@ -514,8 +604,8 @@ CREATE OR REPLACE PACKAGE BODY PKG_IAPP AS
         gravar_resultado(
             p_imo_id          => p_imo_id,
             p_ver_id          => p_ver_id,
-            p_app_ver_id      => p_app_ver_id,
-            p_veg_ver_id      => p_veg_ver_id,
+            p_app_ver_id      => v_app_ver_id,
+            p_veg_ver_id      => v_veg_ver_id,
             p_exe_id          => p_exe_id,
             p_rca_id          => p_rca_id,
             p_app_total_ha    => v_app_total_ha,
@@ -536,20 +626,24 @@ CREATE OR REPLACE PACKAGE BODY PKG_IAPP AS
 
     PROCEDURE calcular_lote(
         p_ver_id        IN  NUMBER,
-        p_app_ver_id    IN  NUMBER,
-        p_veg_ver_id    IN  NUMBER,
+        p_app_ver_id    IN  NUMBER DEFAULT NULL,
+        p_veg_ver_id    IN  NUMBER DEFAULT NULL,
         p_exe_id        IN  NUMBER DEFAULT NULL,
         p_rca_id        IN  NUMBER DEFAULT NULL,
         p_escopo        IN  VARCHAR2 DEFAULT 'TODOS',
         p_calculados    OUT NUMBER
     ) IS
+        v_app_ver_id NUMBER := validar_versao_existente(NVL(p_app_ver_id, resolver_versao_camada('APP')));
+        v_veg_ver_id NUMBER := validar_versao_existente(NVL(p_veg_ver_id, resolver_versao_camada('VEGETACAO')));
         v_filtro_app VARCHAR2(500) := normalizar_filtro(obter_parametro('tipos_app_incluidos', p_rca_id, '*'));
         v_filtro_veg VARCHAR2(500) := normalizar_filtro(obter_parametro('classes_vegetacao_incluidas', p_rca_id, '*'));
         v_q_app      NUMBER;
         v_q_veg      NUMBER;
         v_count      NUMBER := 0;
     BEGIN
-        dissolver_camadas(p_app_ver_id, p_veg_ver_id, v_filtro_app, v_filtro_veg, v_q_app, v_q_veg);
+        IF v_app_ver_id IS NOT NULL AND v_veg_ver_id IS NOT NULL THEN
+            dissolver_camadas(v_app_ver_id, v_veg_ver_id, v_filtro_app, v_filtro_veg, v_q_app, v_q_veg);
+        END IF;
 
         FOR r IN (
             SELECT i.imo_id
@@ -561,8 +655,8 @@ CREATE OR REPLACE PACKAGE BODY PKG_IAPP AS
             calcular_imovel(
                 p_imo_id             => r.imo_id,
                 p_ver_id             => p_ver_id,
-                p_app_ver_id         => p_app_ver_id,
-                p_veg_ver_id         => p_veg_ver_id,
+                p_app_ver_id         => v_app_ver_id,
+                p_veg_ver_id         => v_veg_ver_id,
                 p_exe_id             => p_exe_id,
                 p_rca_id             => p_rca_id,
                 p_filtro_tipos_app   => v_filtro_app,
