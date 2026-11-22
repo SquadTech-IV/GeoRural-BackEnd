@@ -51,6 +51,29 @@ public class CalculoOracle {
                 imovelId, versaoId, camadaVersaoId, execucaoId, regraId);
     }
 
+    public long calcularIapp(Long versaoId, Long execucaoId, Long regraId,
+                             String escopo, Long appVersaoId, Long vegVersaoId) {
+        return comUmaSaida("PKG_CALCULO.calcular_iapp(?, ?, ?, ?, ?, ?, ?)",
+                versaoId, execucaoId, regraId, escopo, appVersaoId, vegVersaoId);
+    }
+
+    public void calcularIappImovel(Long imovelId, Long versaoId, Long appVersaoId,
+                                   Long vegVersaoId, Long execucaoId, Long regraId) {
+        jdbc.execute((java.sql.Connection conexao) -> {
+            try (CallableStatement cs = conexao.prepareCall(
+                    "BEGIN PKG_IAPP.calcular_imovel(?, ?, ?, ?, ?, ?); END;")) {
+                cs.setObject(1, imovelId);
+                cs.setObject(2, versaoId);
+                cs.setObject(3, appVersaoId);
+                cs.setObject(4, vegVersaoId);
+                cs.setObject(5, execucaoId);
+                cs.setObject(6, regraId);
+                cs.execute();
+            }
+            return null;
+        });
+    }
+
     // quantos imoveis o escopo alcanca nesta versao
     public long imoveisNoEscopo(Long versaoId, String escopo) {
         Long total = jdbc.queryForObject(

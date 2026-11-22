@@ -112,6 +112,22 @@ public class IndicadorVersaoService {
                     c.porSituacao.put(rs.getString("situacao"), rs.getLong("quantos"));
                 }, versaoId);
 
+        jdbc.query("SELECT NVL(i.ind_sigla, 'IAPP') AS ind_sigla, "
+                        + "       NVL(i.ind_nome, 'Índice de APP Preservada') AS ind_nome, "
+                        + "       NVL(r.iap_status, 'SEM_SITUACAO') AS situacao, "
+                        + "       COUNT(*) AS quantos "
+                        + "  FROM RESULTADO_IAPP r "
+                        + "  LEFT JOIN INDICADOR i ON i.ind_sigla = 'IAPP' "
+                        + " WHERE r.ver_id = ? "
+                        + " GROUP BY i.ind_sigla, i.ind_nome, r.iap_status "
+                        + " ORDER BY situacao",
+                rs -> {
+                    String sigla = rs.getString("ind_sigla");
+                    String nome = rs.getString("ind_nome");
+                    Contagens c = porIndicador.computeIfAbsent(sigla, k -> new Contagens(nome));
+                    c.porSituacao.put(rs.getString("situacao"), rs.getLong("quantos"));
+                }, versaoId);
+
         return porIndicador;
     }
 

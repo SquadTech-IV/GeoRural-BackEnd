@@ -152,6 +152,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/execucoes/**").hasAnyRole(TODOS_PERFIS)
                         .requestMatchers(HttpMethod.GET, "/api/pipeline/**").hasAnyRole(TODOS_PERFIS)
                         .requestMatchers(HttpMethod.GET, "/api/v1/isap/**").hasAnyRole(TODOS_PERFIS)
+                        .requestMatchers(HttpMethod.GET, "/api/v1/iapp/**").hasAnyRole(TODOS_PERFIS)
 
                         // 7. Negar por padrao qualquer rota nao mapeada na matriz
                         .anyRequest().denyAll())

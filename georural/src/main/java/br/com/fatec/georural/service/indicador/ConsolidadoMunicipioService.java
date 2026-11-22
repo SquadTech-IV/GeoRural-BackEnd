@@ -91,6 +91,13 @@ public class ConsolidadoMunicipioService {
     private List<MunicipioConsolidadoResponse> listar(
             Long indicadorId, Long versaoId, boolean incluirSemDados) {
 
+        String sigla = siglaIndicador(indicadorId);
+        if ("IAPP".equalsIgnoreCase(sigla)) {
+            List<MunicipioConsolidadoResponse> iapp = listarIappPorMunicipio(versaoId, incluirSemDados);
+            if (!iapp.isEmpty()) {
+                return iapp;
+            }
+        }
 
         String recorteDaVersao = versaoId == null
                 ? " AND r.rmu_vigente = 'S' "
@@ -138,6 +145,58 @@ public class ConsolidadoMunicipioService {
                     dataHora(rs.getTimestamp("rmu_data_calculo")),
                     null, null, null);
         }, parametros);
+    }
+
+    private String siglaIndicador(Long indicadorId) {
+        return jdbc.queryForObject(
+                "SELECT ind_sigla FROM INDICADOR WHERE ind_id = ?", String.class, indicadorId);
+    }
+
+    private List<MunicipioConsolidadoResponse> listarIappPorMunicipio(Long versaoId, boolean incluirSemDados) {
+        String filtroVersao = versaoId == null
+                ? " AND r.iap_vigente = 'S' "
+                : " AND r.ver_id = ? ";
+        String juncao = incluirSemDados ? " LEFT JOIN " : " JOIN ";
+
+        String sql = "SELECT m.mun_id, m.mun_codigo_origem, m.mun_nome, m.mun_uf, m.mun_area_ha, "
+                + "       AVG(CASE WHEN r.iap_status = 'CALCULADO' THEN r.iap_iapp_pct END) AS media_pct, "
+                + "       COUNT(CASE WHEN r.iap_status = 'CALCULADO' THEN 1 END) AS imoveis, "
+                + "       COUNT(CASE WHEN r.iap_status = 'CALCULADO' AND NVL(r.iap_passivo_ha, 0) = 0 THEN 1 END) AS conformes, "
+                + "       SUM(CASE WHEN r.iap_status = 'CALCULADO' THEN NVL(r.iap_app_vegetada_ha, 0) ELSE 0 END) AS soma_ha, "
+                + "       MAX(r.ver_id) AS ver_id, "
+                + "       MAX(r.iap_data_calculo) AS data_calc "
+                + "  FROM MUNICIPIO m "
+                + juncao + " IMOVEL_RURAL ir ON ir.mun_id = m.mun_id "
+                + juncao + " RESULTADO_IAPP r ON r.imo_id = ir.imo_id " + filtroVersao
+                + " GROUP BY m.mun_id, m.mun_codigo_origem, m.mun_nome, m.mun_uf, m.mun_area_ha "
+                + (incluirSemDados ? "" : " HAVING COUNT(CASE WHEN r.iap_status = 'CALCULADO' THEN 1 END) > 0 ")
+                + " ORDER BY m.mun_nome, m.mun_codigo_origem";
+
+        Object[] params = versaoId == null ? new Object[]{} : new Object[]{versaoId};
+
+        return jdbc.query(sql, (rs, linha) -> {
+            long qtdCalc = rs.getLong("imoveis");
+            boolean temDados = qtdCalc > 0;
+            BigDecimal imoveis = BigDecimal.valueOf(qtdCalc);
+            BigDecimal conformes = BigDecimal.valueOf(rs.getLong("conformes"));
+
+            return new MunicipioConsolidadoResponse(
+                    numero(rs.getObject("mun_id")),
+                    rs.getString("mun_codigo_origem"),
+                    rs.getString("mun_nome"),
+                    rs.getString("mun_uf"),
+                    rs.getBigDecimal("mun_area_ha"),
+                    temDados,
+                    temDados ? rs.getBigDecimal("media_pct") : null,
+                    temDados ? qtdCalc : null,
+                    temDados ? conformes.longValue() : null,
+                    temDados ? percentual(conformes, imoveis) : null,
+                    temDados ? rs.getBigDecimal("soma_ha") : null,
+                    temDados ? "CALCULADO" : null,
+                    numero(rs.getObject("ver_id")),
+                    dataHora(rs.getTimestamp("data_calc")),
+                    null, null, null);
+        }, params);
     }
 
     private ConsolidadoMunicipiosResponse montar(
