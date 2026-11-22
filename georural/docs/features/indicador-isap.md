@@ -1,206 +1,116 @@
-# Especificação Funcional e Técnica — Indicador ISAP (US#24)
+# Indicador ISAP — Índice de Sobreposição a Áreas Protegidas (US#24)
 
-**Indicador:** Índice de Sobreposição a Áreas Protegidas (`ISAP`)  
-**Objetivo:** Avaliar se e quanto cada imóvel rural (`IMOVEL_RURAL`) se sobrepõe a áreas legalmente protegidas, detalhando o consolidado por categoria, o total sem dupla contagem e cada feição atingida.
+## 1. Visão Geral
+
+O **ISAP (Índice de Sobreposição a Áreas Protegidas)** apura, para cada imóvel rural cadastrado no GeoRural DataHub, a existência, a área em hectares e o percentual de sobreposição territorial com quatro categorias de áreas protegidas e territórios especiais, além de um consolidado total do imóvel (`TOTAL`).
 
 ---
 
-## 1. Regras de Cálculo do ISAP (US#24.01)
+## 2. Memória de Cálculo
 
-### 1.1 Categorias e Fontes Oficiais
-O ISAP avalia quatro categorias distintas de áreas protegidas, armazenadas na tabela `AREA_PROTEGIDA` (`apr_tipo`):
+### 2.1. Categorias e Fontes Oficiais
 
-| Código Categoria (`apr_tipo`) | Descrição | Fonte Oficial |
+| Categoria (`isr_categoria` / `isd_categoria`) | Descrição | Fonte de Referência |
 | :--- | :--- | :--- |
-| `UC` | Unidades de Conservação (Proteção Integral e Uso Sustentável) | ICMBio / MMA (CNUC) |
+| `UC` | Unidades de Conservação Federais, Estaduais e Municipais | ICMBio / MMA (CNUC) |
 | `TERRA_INDIGENA` | Terras Indígenas (regularizadas, homologadas, declaradas, delimitadas) | FUNAI |
-| `QUILOMBOLA` | Territórios Quilombolas (titulados e delimitados) | INCRA |
-| `FLORESTA_PUBLICA` | Florestas Públicas (Tipo A e Tipo B — CNFP) | SFB (Serviço Florestal Brasileiro) |
+| `QUILOMBOLA` | Territórios Quilombolas titulados e delimitados | INCRA |
+| `FLORESTA_PUBLICA` | Florestas Públicas Federais e Estaduais cadastradas | SFB (CNFP) |
+| `TOTAL` | Consolidado geométrico do imóvel considerando todas as categorias | União das 4 camadas |
 
-### 1.2 Sistema de Referência Espacial (SRID) e Recorte
-* **SRID:** Utiliza o mesmo SRID consolidado do projeto nas tabelas espaciais (`IMOVEL_RURAL`, `LIMITE_TERRITORIAL`, `AREA_PROTEGIDA`), com reprojeção garantida via `SDO_CS.TRANSFORM` quando a camada de origem divergir do SRID alvo, e tolerância geodésica/planar padrão `c_tol = 0.05` (`PKG_GEO.c_tol`).
-* **Recorte Territorial (UF):** Durante o tratamento da camada (`PKG_TRATAMENTO`), as feições que cruzam a fronteira do Estado são recortadas pelo limite oficial da UF (`LIMITE_TERRITORIAL` onde `lim_tipo = 'UF'`) e feições totalmente externas são descartadas para quarentena.
-* **Recorte pelo Perímetro do Imóvel:** No cálculo do indicador, toda medição ocorre estritamente sobre a interseção geométrica (`SDO_GEOM.SDO_INTERSECTION`) recortada pelo polígono do imóvel (`IMOVEL_RURAL.imo_geometria`).
+### 2.2. Fórmulas, SRID e Recorte Espacial
 
-### 1.3 Tratamento de Dupla Contagem (União Dissolvida vs. Feição Isolada)
-Para evitar superestimativa de área sobreposta:
-1. **Resumo por Categoria (Sem dupla contagem intra-categoria):**
-   * Todas as feições válidas da categoria (já filtradas, no caso de `UC`) são dissolvidas em uma única geometria consolidada via `SDO_AGGR_UNION` (por categoria e versão).
-   * A área sobreposta da categoria é obtida pela interseção do perímetro do imóvel com essa **geometria dissolvida**:
-     $$\text{Área Sobreposta}_{\text{cat}}\text{ (ha)} = \text{SDO\_AREA}\Big(\text{SDO\_INTERSECTION}(\text{Imóvel}, \text{CamadaDissolvida}_{\text{cat}}),\ \text{'unit=HECTARE'}\Big)$$
-2. **Resumo `TOTAL` (Sem dupla contagem inter-categorias):**
-   * Quando uma Terra Indígena sobrepõe uma Unidade de Conservação dentro do mesmo imóvel, a área comum **não pode ser somada duas vezes**.
-   * O `TOTAL` é calculado sobre a **união geométrica das 4 camadas dissolvidas** (`SDO_AGGR_UNION` das 4 categorias) interseccionada com o imóvel:
-     $$\text{Área Sobreposta}_{\text{TOTAL}}\text{ (ha)} = \text{SDO\_AREA}\Big(\text{SDO\_INTERSECTION}\Big(\text{Imóvel}, \bigcup_{c=1}^{4} \text{CamadaDissolvida}_{c}\Big),\ \text{'unit=HECTARE'}\Big)$$
-   * **Invariantes matemáticas garantidas:**
-     * $\text{Área Sobreposta}_{\text{TOTAL}} \le \sum_{c=1}^{4} \text{Área Sobreposta}_{c}$
-     * $\text{Área Sobreposta}_{\text{TOTAL}} \le \text{Área Imóvel}$
-     * $\text{pct\_sobreposicao} \in [0,\ 100]$ (com `LEAST(..., 100)` para mitigar arredondamentos de tolerância espacial).
-3. **Detalhe por Feição (Feição Isolada):**
-   * O detalhamento lista **cada feição individual** da tabela `AREA_PROTEGIDA` que intersecciona o imóvel (`SDO_RELATE(..., 'mask=ANYINTERACT') = 'TRUE'`).
-   * A área e o percentual de cada linha de detalhe são calculados sobre a **feição isolada** recortada pelo imóvel.
-   * **Regra de exibição:** Como duas feições podem se sobrepor entre si dentro da mesma categoria ou entre categorias distintas, **a soma das áreas das feições no detalhe pode ser maior que `area_sobreposta_ha` do resumo**.
+* **Sistema de Referência Espacial (SRID):** `4674` (SIRGAS 2000), padronizado na etapa de tratamento e mantido nos metadados espaciais (`USER_SDO_GEOM_METADATA`). O cálculo de área geodésica em hectares é executado via `SDO_GEOM.SDO_AREA(..., 0.05, 'unit=HECTARE')` (encapsulado em `PKG_GEO.area_intersecao_ha`), garantindo precisão planar equivalente sem distorção angular.
+* **Recorte pelo perímetro do imóvel:** Toda interseção é recortada estritamente pelo polígono válido do imóvel rural (`IMOVEL_RURAL.imo_geometria`) via `SDO_GEOM.SDO_INTERSECTION`.
+* **Fórmulas do Resumo (`RESULTADO_ISAP_RESUMO`):**
+  $$\text{area\_sobreposta\_ha}_{c} = \text{Área}\left(\text{Imóvel} \cap \text{CamadaDissolvida}_{c}\right)$$
+  $$\text{pct\_sobreposicao}_{c} = \min\left(\frac{\text{area\_sobreposta\_ha}_{c}}{\text{area\_imovel\_ha}} \times 100,\; 100\right)$$
+* **Fórmulas do Detalhe (`RESULTADO_ISAP_DETALHE`):**
+  $$\text{area\_ha}_{f} = \text{Área}\left(\text{Imóvel} \cap \text{FeiçãoOriginal}_{f}\right)$$
+  $$\text{pct\_sobreposicao}_{f} = \min\left(\frac{\text{area\_ha}_{f}}{\text{area\_imovel\_ha}} \times 100,\; 100\right)$$
 
-### 1.4 Fórmula Percentual
-Para cada categoria e para o `TOTAL`:
-$$\text{pct\_sobreposicao} = \min\left(100,\ \frac{\text{area\_sobreposta\_ha}}{\text{area\_imovel\_ha}} \times 100\right)$$
-*(Caso `area_imovel_ha <= 0` ou nulo, `pct_sobreposicao = 0`.)*
+### 2.3. Dupla Contagem e União vs. Feição Isolada
 
-### 1.5 Filtro Parametrizável por Tipo de Unidade de Conservação (`UC`)
-* O filtro de tipos de UC incluídos no cálculo é parametrizado na regra de cálculo vigente do indicador `ISAP` (`PARAMETRO_REGRA_CALCULO`, parâmetro `tipos_uc_incluidos`, ex.: lista separada por vírgula de grupos/categorias do SNUC como `PROTECAO_INTEGRAL,USO_SUSTENTAVEL` ou categorias específicas como `PARNA,ESEC,REBIO,MONA,REVIS,APA,ARIE,FLONA,RESEX,RDS,RPPN`, ou `*` para todas).
-* Todos os tipos incluídos pelo filtro são dissolvidos **em conjunto** na única categoria `UC`.
-* Feições de `UC` cujo subtipo/categoria não esteja na lista do filtro são desconsideradas tanto no resumo quanto no detalhe.
-* O valor efetivo do filtro aplicado na execução é gravado na coluna `filtro_aplicado` do resultado da categoria `UC` (e refletido na rastreabilidade) para transparência ao analista.
+Áreas protegidas frequentemente se sobrepõem no território (por exemplo, uma Terra Indígena dentro de uma Unidade de Conservação de Uso Sustentável, ou duas UCs sobrepostas). Para evitar superestimativa dos percentuais e manter transparência analítica, o cálculo opera em **dois níveis distintos**:
 
-### 1.6 Tratamento de Ausência de Sobreposição e Camada Indisponível
-| Situação da Camada / Interseção | `status` | `sobrepoe` | `area_sobreposta_ha` | `pct_sobreposicao` |
-| :--- | :--- | :--- | :--- | :--- |
-| Camada publicada e há interseção (`area > 0`) | `COM_SOBREPOSICAO` | `true` (`S`) | Valor calculado (`> 0`) | Valor calculado (`> 0`) |
-| Camada publicada e não há interseção (`area = 0`) | `SEM_SOBREPOSICAO` | `false` (`N`) | `0.0000` | `0.0000` |
-| Camada não publicada / sem versão vigente | `CAMADA_INDISPONIVEL` | `null` | `NULL` | `NULL` |
+1. **Nível de Resumo (`RESULTADO_ISAP_RESUMO` — União/Dissolução):**
+   * **Intra-categoria:** Antes do cruzamento, as feições válidas de cada categoria são dissolvidas em uma única multigeometria na tabela `AREA_PROTEGIDA_DISSOLVIDA` (`SDO_AGGR_UNION`). Assim, duas feições sobrepostas da mesma categoria não são somadas duas vezes.
+   * **Inter-categorias (`TOTAL`):** A linha `TOTAL` é calculada pela interseção do imóvel com a **união geométrica das quatro camadas dissolvidas**, nunca pela soma aritmética das linhas das categorias. Por isso:
+     $$\text{area\_sobreposta\_ha}_{\text{TOTAL}} \le \sum_{c \in \{\text{UC, TI, QUI, FP}\}} \text{area\_sobreposta\_ha}_{c} \quad \text{e} \quad \text{area\_sobreposta\_ha}_{\text{TOTAL}} \le \text{area\_imovel\_ha}$$
+2. **Nível de Detalhe (`RESULTADO_ISAP_DETALHE` — Feição Isolada):**
+   * Cada feição original que intersecta o imóvel (`SDO_RELATE(..., 'mask=ANYINTERACT') = 'TRUE'`) tem sua interseção calculada individualmente, preservando `apr_id`, nome, subtipo e código oficial.
+   * **Regra de interpretação:** Como duas feições podem ocupar a mesma porção do imóvel, a soma de `isd_area_ha` das feições listadas no detalhe **pode ser maior** que `isr_area_sobreposta_ha` da categoria ou do `TOTAL`. A API REST retorna o campo `avisoDuplaContagem` explicitando essa característica.
 
-* **Regra crítica para o `TOTAL`:** Se **qualquer uma** das 4 categorias estiver com status `CAMADA_INDISPONIVEL`, a linha `TOTAL` **deve** receber `status = 'CAMADA_INDISPONIVEL'`, `sobrepoe = null`, `area_sobreposta_ha = NULL` e `pct_sobreposicao = NULL`, evitando subestimar o passivo ambiental do imóvel. As categorias que estiverem disponíveis continuam exibindo seus valores individuais normalmente.
+### 2.4. Filtro Configurável de Unidades de Conservação (`tipos_uc_incluidos`)
+
+* A regra vigente do ISAP (`REGRA_CALCULO` com `ind_sigla = 'ISAP'`) possui o parâmetro configurável `tipos_uc_incluidos` na tabela `PARAMETRO_REGRA_CALCULO` (valor padrão `'*'`, significando todas as UCs).
+* Quando configurado com uma lista delimitada (ex.: `'PARNA,ESEC,REBIO'` para Proteção Integral), somente as feições de `AREA_PROTEGIDA` com `apr_tipo = 'UC'` cujo `apr_subtipo` corresponda ao filtro participam da dissolução (`AREA_PROTEGIDA_DISSOLVIDA.apd_filtro_aplicado`) e do detalhamento.
+* Todas as UCs filtradas são consolidadas conjuntamente na única categoria `UC`, e o filtro efetivamente aplicado fica gravado em `RESULTADO_ISAP_RESUMO.isr_filtro_aplicado` para auditoria e reprodutibilidade.
+
+### 2.5. Tratamento de Ausência de Sobreposição e Camada Indisponível
+
+| Status (`isr_status`) | Condição | `isr_sobrepoe` | `isr_area_sobreposta_ha` | `isr_pct_sobreposicao` | Comportamento no `TOTAL` |
+| :--- | :--- | :---: | :---: | :---: | :--- |
+| `COM_SOBREPOSICAO` | Camada publicada e interseção $> 0\text{ ha}$ | `'S'` | $> 0$ | $> 0$ e $\le 100$ | `'COM_SOBREPOSICAO'` (se nenhuma categoria estiver indisponível) |
+| `SEM_SOBREPOSICAO` | Camada publicada e sem interseção ($0\text{ ha}$) | `'N'` | `0.0000` | `0.0000` | `'SEM_SOBREPOSICAO'` (se todas as 4 estiverem sem sobreposição) |
+| `CAMADA_INDISPONIVEL` | Camada da categoria ausente ou sem versão publicada | `NULL` | `NULL` | `NULL` | **Propaga `'CAMADA_INDISPONIVEL'`** com `NULL` para não subestimar o índice |
 
 ---
 
-## 2. Contrato de Saída do ISAP (US#24.02)
+## 3. Dicionário de Dados
 
-A saída do indicador ISAP é estruturada em **dois níveis** (tanto na persistência relacional quanto no contrato JSON da API REST):
+### 3.1. `RESULTADO_ISAP_RESUMO`
 
-### 2.1 Nível 1 — Resumo por Categoria e TOTAL (`resumo`)
-Contém **obrigatoriamente 5 registros por imóvel** (1 para cada categoria: `UC`, `TERRA_INDIGENA`, `QUILOMBOLA`, `FLORESTA_PUBLICA` + 1 consolidado `TOTAL`).
+Armazena o resultado consolidado por imóvel, versão e categoria (4 categorias + `TOTAL`), incluindo rastreabilidade completa da camada e da regra aplicada.
 
-| Campo JSON | Coluna Oracle | Tipo | Nulável | Descrição |
-| :--- | :--- | :--- | :--- | :--- |
-| `categoria` | `isr_categoria` | `String` (Enum) | Não | `UC`, `TERRA_INDIGENA`, `QUILOMBOLA`, `FLORESTA_PUBLICA` ou `TOTAL` |
-| `sobrepoe` | `isr_sobrepoe` | `Boolean` (`CHAR(1)` `S`/`N`) | Sim | `true` se `COM_SOBREPOSICAO`; `false` se `SEM_SOBREPOSICAO`; `null` se `CAMADA_INDISPONIVEL` |
-| `areaSobrepostaHa` | `isr_area_sobreposta_ha` | `BigDecimal` (`NUMBER(14,4)`) | Sim | Área sobreposta em hectares (`>= 0`). `0` se sem sobreposição; `null` se camada indisponível |
-| `pctSobreposicao` | `isr_pct_sobreposicao` | `BigDecimal` (`NUMBER(7,4)`) | Sim | Percentual sobre a área do imóvel (`0` a `100`). `0` se sem sobreposição; `null` se indisponível |
-| `areaImovelHa` | `isr_area_imovel_ha` | `BigDecimal` (`NUMBER(14,4)`) | Não | Área total do imóvel em hectares usada como denominador |
-| `filtroAplicado` | `isr_filtro_aplicado` | `String` (`VARCHAR2(500)`) | Sim | Filtro de tipos de UC aplicado (preenchido em `UC` e consolidado no `TOTAL`; `null` nas demais) |
-| `status` | `isr_status` | `String` (Enum) | Não | `COM_SOBREPOSICAO`, `SEM_SOBREPOSICAO` ou `CAMADA_INDISPONIVEL` |
-| `rastreabilidade` | *(FKs + metadados)* | `Object` | Não | Versão e competência da camada da categoria, execução (`exeId`), regra (`rcaId` / versão) |
+| Coluna | Tipo Oracle | Nulo | Padrão | Descrição / Restrições |
+| :--- | :--- | :---: | :---: | :--- |
+| `isr_id` | `NUMBER` | Não | `IDENTITY` | Chave primária (`pk_resultado_isap_resumo`). |
+| `imo_id` | `NUMBER` | Não | — | FK para `IMOVEL_RURAL(imo_id)` (`fk_isr_imovel`). |
+| `ver_id` | `NUMBER` | Não | — | FK para `VERSAO(ver_id)` da rodada de cálculo (`fk_isr_versao`). |
+| `isr_camada_ver_id` | `NUMBER` | Sim | — | FK para `VERSAO(ver_id)` da camada de áreas protegidas utilizada na categoria (`fk_isr_camada_ver`). |
+| `exe_id` | `NUMBER` | Sim | — | FK para `EXECUCAO_PIPELINE(exe_id)` que gerou o cálculo (`fk_isr_execucao`). |
+| `rca_id` | `NUMBER` | Sim | — | FK para `REGRA_CALCULO(rca_id)` aplicada (`fk_isr_regra`). |
+| `isr_categoria` | `VARCHAR2(20)` | Não | — | Domínio: `'UC'`, `'TERRA_INDIGENA'`, `'QUILOMBOLA'`, `'FLORESTA_PUBLICA'`, `'TOTAL'` (`ck_isr_categoria`). Única por `(imo_id, ver_id, isr_categoria)`. |
+| `isr_sobrepoe` | `CHAR(1)` | Sim | — | `'S'` (há sobreposição), `'N'` (sem sobreposição) ou `NULL` (camada indisponível). |
+| `isr_area_sobreposta_ha` | `NUMBER(14,4)` | Sim | — | Área sobreposta dissolvida em hectares (`>= 0`, ou `NULL` se indisponível). |
+| `isr_pct_sobreposicao` | `NUMBER(7,4)` | Sim | — | Percentual sobre a área do imóvel (`0` a `100`, ou `NULL` se indisponível). |
+| `isr_area_imovel_ha` | `NUMBER(14,4)` | Não | — | Área total do imóvel em hectares usada como denominador (`>= 0`). |
+| `isr_filtro_aplicado` | `VARCHAR2(500)` | Sim | — | Filtro de subtipos de UC aplicado na categoria `UC` (ex.: `'*'` ou `'PARNA,ESEC'`). |
+| `isr_competencia_camada` | `VARCHAR2(20)` | Sim | — | Competência (ex.: `'2026-11'`) da camada utilizada na categoria. |
+| `isr_status` | `VARCHAR2(25)` | Não | — | `'COM_SOBREPOSICAO'`, `'SEM_SOBREPOSICAO'` ou `'CAMADA_INDISPONIVEL'` (`ck_isr_coerencia_status`). |
+| `isr_vigente` | `CHAR(1)` | Não | `'N'` | `'S'` se pertence à versão publicada vigente; `'N'` caso contrário. |
+| `isr_data_calculo` | `TIMESTAMP` | Não | `SYSTIMESTAMP` | Data e hora da execução do cálculo. |
 
-### 2.2 Nível 2 — Detalhe por Feição Atingida (`detalhes`)
-Contém **0 ou N registros por imóvel**, representando cada feição individual de área protegida que intersecciona o imóvel (somente de camadas disponíveis e aprovadas pelo filtro de UC).
+### 3.2. `RESULTADO_ISAP_DETALHE`
 
-| Campo JSON | Coluna Oracle | Tipo | Nulável | Descrição |
-| :--- | :--- | :--- | :--- | :--- |
-| `categoria` | `isd_categoria` | `String` (Enum) | Não | `UC`, `TERRA_INDIGENA`, `QUILOMBOLA` ou `FLORESTA_PUBLICA` |
-| `nomeFeicao` | `isd_nome_feicao` | `String` (`VARCHAR2(255)`) | Sim | Nome oficial da área protegida (ex.: `"Parque Nacional do Iguaçu"`) |
-| `tipoFeicao` | `isd_tipo_feicao` | `String` (`VARCHAR2(100)`) | Sim | Subtipo/categoria específica (ex.: `"PARNA"`, `"APA"`, `"TI Homologada"`, `"Floresta Tipo A"`) |
-| `codigoFeicao` | `isd_codigo_feicao` | `String` (`VARCHAR2(80)`) | Sim | Código identificador na fonte oficial (ex.: código CNUC, código FUNAI, código INCRA/CNFP) |
-| `areaHa` | `isd_area_ha` | `BigDecimal` (`NUMBER(14,4)`) | Não | Área da interseção desta feição isolada com o imóvel, em hectares (`> 0`) |
-| `pct` | `isd_pct_sobreposicao` | `BigDecimal` (`NUMBER(7,4)`) | Não | Percentual da feição isolada sobre a área total do imóvel (`0` a `100`) |
+Armazena o detalhamento por feição individual atingida dentro de cada categoria (não gera linhas para `TOTAL`).
 
-### 2.3 Exemplo de Payload JSON (Contrato REST)
-```json
-{
-  "imovelId": 121,
-  "codigoCar": "PR-4106902-1A2B3C4D5E6F7G8H9I0J",
-  "nomeImovel": "Fazenda Santa Clara",
-  "areaImovelHa": 500.0000,
-  "dataCalculo": "2026-11-22T10:15:30",
-  "vigente": true,
-  "avisoDuplaContagem": "As áreas das feições individuais abaixo representam cada polígono isolado e podem se sobrepor entre si; por isso, sua soma pode exceder o total consolidado da categoria ou o TOTAL geral.",
-  "resumo": [
-    {
-      "categoria": "UC",
-      "sobrepoe": true,
-      "areaSobrepostaHa": 75.0000,
-      "pctSobreposicao": 15.0000,
-      "areaImovelHa": 500.0000,
-      "filtroAplicado": "PROTECAO_INTEGRAL,USO_SUSTENTAVEL",
-      "status": "COM_SOBREPOSICAO",
-      "rastreabilidade": {
-        "versaoId": 14,
-        "versaoNumero": 2,
-        "competencia": "2026-10",
-        "execucaoId": 88,
-        "regraVersao": "v1"
-      }
-    },
-    {
-      "categoria": "TERRA_INDIGENA",
-      "sobrepoe": true,
-      "areaSobrepostaHa": 50.0000,
-      "pctSobreposicao": 10.0000,
-      "areaImovelHa": 500.0000,
-      "filtroAplicado": null,
-      "status": "COM_SOBREPOSICAO",
-      "rastreabilidade": {
-        "versaoId": 15,
-        "versaoNumero": 1,
-        "competencia": "2026-09",
-        "execucaoId": 88,
-        "regraVersao": "v1"
-      }
-    },
-    {
-      "categoria": "QUILOMBOLA",
-      "sobrepoe": false,
-      "areaSobrepostaHa": 0.0000,
-      "pctSobreposicao": 0.0000,
-      "areaImovelHa": 500.0000,
-      "filtroAplicado": null,
-      "status": "SEM_SOBREPOSICAO",
-      "rastreabilidade": {
-        "versaoId": 16,
-        "versaoNumero": 1,
-        "competencia": "2026-08",
-        "execucaoId": 88,
-        "regraVersao": "v1"
-      }
-    },
-    {
-      "categoria": "FLORESTA_PUBLICA",
-      "sobrepoe": false,
-      "areaSobrepostaHa": 0.0000,
-      "pctSobreposicao": 0.0000,
-      "areaImovelHa": 500.0000,
-      "filtroAplicado": null,
-      "status": "SEM_SOBREPOSICAO",
-      "rastreabilidade": {
-        "versaoId": 17,
-        "versaoNumero": 1,
-        "competencia": "2026-08",
-        "execucaoId": 88,
-        "regraVersao": "v1"
-      }
-    },
-    {
-      "categoria": "TOTAL",
-      "sobrepoe": true,
-      "areaSobrepostaHa": 100.0000,
-      "pctSobreposicao": 20.0000,
-      "areaImovelHa": 500.0000,
-      "filtroAplicado": "PROTECAO_INTEGRAL,USO_SUSTENTAVEL",
-      "status": "COM_SOBREPOSICAO",
-      "rastreabilidade": {
-        "versaoId": 10,
-        "versaoNumero": 3,
-        "competencia": "2026-11",
-        "execucaoId": 88,
-        "regraVersao": "v1"
-      }
-    }
-  ],
-  "detalhes": [
-    {
-      "categoria": "UC",
-      "nomeFeicao": "Parque Nacional do Iguaçu",
-      "tipoFeicao": "PARNA",
-      "codigoFeicao": "0000.00.0123",
-      "areaHa": 75.0000,
-      "pct": 15.0000
-    },
-    {
-      "categoria": "TERRA_INDIGENA",
-      "nomeFeicao": "TI Rio das Cobras",
-      "tipoFeicao": "HOMOLOGADA",
-      "codigoFeicao": "TI-41001",
-      "areaHa": 50.0000,
-      "pct": 10.0000
-    }
-  ]
-}
+| Coluna | Tipo Oracle | Nulo | Padrão | Descrição / Restrições |
+| :--- | :--- | :---: | :---: | :--- |
+| `isd_id` | `NUMBER` | Não | `IDENTITY` | Chave primária (`pk_resultado_isap_detalhe`). |
+| `isr_id` | `NUMBER` | Não | — | FK para `RESULTADO_ISAP_RESUMO(isr_id)` com `ON DELETE CASCADE` (`fk_isd_resumo`). |
+| `imo_id` | `NUMBER` | Não | — | FK para `IMOVEL_RURAL(imo_id)` (`fk_isd_imovel`). |
+| `ver_id` | `NUMBER` | Não | — | FK para `VERSAO(ver_id)` (`fk_isd_versao`). |
+| `apr_id` | `NUMBER` | Sim | — | FK para `AREA_PROTEGIDA(apr_id)` com `ON DELETE SET NULL` (`fk_isd_area_pro`). |
+| `isd_categoria` | `VARCHAR2(20)` | Não | — | Domínio: `'UC'`, `'TERRA_INDIGENA'`, `'QUILOMBOLA'`, `'FLORESTA_PUBLICA'` (`ck_isd_categoria`). |
+| `isd_nome_feicao` | `VARCHAR2(255)` | Sim | — | Nome oficial da área protegida atingida (ex.: `'PARNA Campos Gerais'`). |
+| `isd_tipo_feicao` | `VARCHAR2(100)` | Sim | — | Subtipo/grupo da feição (ex.: `'PARNA'`, `'Homologada'`, `'Titulada'`). |
+| `isd_codigo_feicao` | `VARCHAR2(80)` | Sim | — | Código identificador na fonte oficial (CNUC, FUNAI, INCRA, CNFP). |
+| `isd_area_ha` | `NUMBER(14,4)` | Não | — | Área da interseção do imóvel com esta feição isolada em hectares (`>= 0`). |
+| `isd_pct_sobreposicao` | `NUMBER(7,4)` | Não | — | Percentual da feição isolada em relação à área do imóvel (`0` a `100`). |
+
+### 3.3. Tabela Auxiliar `AREA_PROTEGIDA_DISSOLVIDA`
+
+Cache espacial da união (`SDO_AGGR_UNION`) por `(ver_id, apd_categoria, apd_filtro_aplicado)` para evitar recomputação da dissolução a cada imóvel e eliminar dupla contagem intra-categoria.
+
+---
+
+## 4. Contrato REST e Controle de Acesso (OpenAPI / Swagger)
+
+* **Base path:** `/api/v1/isap` (documentado no Swagger UI em `/swagger-ui.html` e `/v3/api-docs` sob a tag `ISAP - Áreas Protegidas`).
+* **Perfis autorizados:** `ADMIN`, `GESTOR`, `OPERADOR`, `ANALISTA` e `AUDITOR` (requisições sem token JWT válido retornam `401 Unauthorized`).
+* **Endpoints:**
+  * `GET /api/v1/isap` — Lista paginada (`PaginaResponse<IsapListaItemResponse>`) da linha `TOTAL` vigente de cada imóvel, com filtros opcionais `status`, `municipioId` e `busca` (código CAR ou nome do imóvel).
+  * `GET /api/v1/isap/imoveis/{imovelId}?versaoId=` — Detalhamento completo (`IsapImovelConsultaResponse`) contendo metadados do imóvel, `avisoDuplaContagem`, array `resumo` (4 categorias + `TOTAL`) e array `detalhes` (feições atingidas).
+  * `GET /api/v1/isap/imoveis/car/{codigoCar}?versaoId=` — Mesmo contrato acima consultado pelo código CAR.
