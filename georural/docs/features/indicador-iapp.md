@@ -70,3 +70,156 @@ A regra `v1` do indicador `IAPP` suporta os seguintes parâmetros editáveis (pr
 5. **Camada Indisponível (`CAMADA_INDISPONIVEL`):**
    * Quando não existe versão publicada/vigente de `APP` ou de `VEGETACAO_NATIVA` (ou nenhuma feição válida após filtro na camada)[cite: 6]:
    * `status = 'CAMADA_INDISPONIVEL'`; `app_total_ha = NULL`, `app_vegetada_ha = NULL`, `passivo_ha = NULL`, `iapp_pct = NULL`[cite: 6].
+
+---
+
+## 2. Contrato de Saída do IAPP (US#23.02)
+
+### 2.1. Estados de Saída (`status`) e Regras de Nulabilidade
+
+| `status` | Condição de Ocorrência | Campos Numéricos (`appTotalHa`, `appVegetadaHa`, `passivoHa`, `iappPct`) | Geometrias (`appVegetadaGeoJson`, `passivoGeoJson`) | `mensagem` (Exemplo) |
+| :--- | :--- | :---: | :---: | :--- |
+| `CALCULADO` | Camadas `APP` e `VEGETACAO_NATIVA` publicadas e `app_total_ha > 0` no imóvel | Preenchidos (`>= 0`) | Preenchidas (ou `null` se feição vazia) | `"Cálculo concluído com sucesso."` ou `"APP sem cobertura de vegetação nativa (passivo integral)."` |
+| `SEM_APP` | Camadas publicadas, porém o imóvel não possui APP incidente (`app_total_ha = 0`) | `NULL` | `NULL` | `"O imóvel não possui Área de Preservação Permanente (APP) incidente na versão avaliada."` |
+| `CAMADA_INDISPONIVEL` | Não há versão publicada/vigente de `APP` ou de `VEGETACAO_NATIVA` | `NULL` | `NULL` | `"Camada de APP ou Vegetação Nativa indisponível/não publicada para o cálculo."` |
+
+---
+
+### 2.2. Mapeamento dos Campos (JSON REST x Oracle `RESULTADO_IAPP`)
+
+| Campo JSON | Coluna Oracle | Tipo | Nulável | Descrição |
+| :--- | :--- | :--- | :---: | :--- |
+| `appTotalHa` | `iap_app_total_ha` | `BigDecimal` (`NUMBER(14,4)`) | Sim | Área total de APP recortada dentro do imóvel, em hectares (`> 0` quando `CALCULADO`; `null` nos demais status). |
+| `appVegetadaHa` | `iap_app_vegetada_ha` | `BigDecimal` (`NUMBER(14,4)`) | Sim | Área de APP coberta por vegetação nativa, em hectares (`0 <= appVegetadaHa <= appTotalHa`). |
+| `passivoHa` | `iap_passivo_ha` | `BigDecimal` (`NUMBER(14,4)`) | Sim | Área de passivo ambiental a recuperar (`appTotalHa - appVegetadaHa`), em hectares. |
+| `iappPct` | `iap_iapp_pct` | `BigDecimal` (`NUMBER(7,4)`) | Sim | Percentual de APP conservada (`0` a `100`). |
+| `status` | `iap_status` | `String` (Enum) | Não | `CALCULADO`, `SEM_APP` ou `CAMADA_INDISPONIVEL`. |
+| `mensagem` | `iap_mensagem` | `String` (`VARCHAR2(500)`) | Não | Explicação textual legível do resultado ou motivo de ausência/indisponibilidade. |
+| `conforme` | *(derivado)* | `Boolean` | Sim | `true` se `status == CALCULADO` e `iappPct >= minimo_iapp_conforme_pct` (padrão `100%`, i.e., `passivoHa == 0`); `false` se `CALCULADO` e abaixo do mínimo; `null` se `SEM_APP` ou `CAMADA_INDISPONIVEL`. |
+| `filtroTiposApp` | `iap_filtro_tipos_app` | `String` (`VARCHAR2(500)`) | Sim | Filtro de tipos de APP aplicado na execução (ex.: `'*'` ou `'CURSO_DAGUA,NASCENTE'`). |
+| `filtroClassesVegetacao` | `iap_filtro_classes_veg` | `String` (`VARCHAR2(500)`) | Sim | Filtro de classes de vegetação nativa aplicado (ex.: `'*'` ou `'FLORESTA,CERRADO'`). |
+| `appVegetadaGeoJson` | `iap_app_vegetada_geom` | `Object` (`@JsonRawValue`) | Sim | Geometria GeoJSON (SRID `4674`) da porção de APP coberta por vegetação nativa no imóvel (retornado na consulta detalhada por imóvel). |
+| `passivoGeoJson` | `iap_passivo_geom` | `Object` (`@JsonRawValue`) | Sim | Geometria GeoJSON (SRID `4674`) da porção de APP sem vegetação nativa (`APP_imovel \ VEGETACAO_NATIVA`) para destaque de passivo no mapa. |
+
+---
+
+### 2.3. Critério de Conformidade no Consolidado Municipal (`ConsolidadoMunicipioService`)
+* **Métrica de agregação municipal (`RESULTADO_MUNICIPIO`):**
+  * `rmu_valor_agregado`: média aritmética de `iap_iapp_pct` entre os imóveis do município com `iap_status = 'CALCULADO'`.
+  * `soma_hectares` (em `rmu_detalhes`): soma de `iap_passivo_ha` (passivo total de APP a recuperar no município) e `soma_app_vegetada_ha`.
+  * `conformes` (em `rmu_detalhes`): quantidade de imóveis com `iap_status = 'CALCULADO'` cuja condição de conformidade seja atendida (`iap_iapp_pct >= minimo_iapp_conforme_pct`, sendo o padrão `100%`, ou seja, `iap_passivo_ha = 0`).
+  * Imóveis com `SEM_APP` ou `CAMADA_INDISPONIVEL` não entram como "não conformes" nem distorcem a média percentual do município.
+
+---
+
+### 2.4. Exemplos de Payload JSON (`GET /api/v1/iapp/imoveis/{imovelId}`)
+
+#### Cenário A — `CALCULADO` (Passivo Parcial com GeoJSON para o Mapa)
+```json
+{
+  "imovelId": 201,
+  "codigoCar": "PR-4106902-9F8E7D6C5B4A3210FEDC",
+  "nomeImovel": "Fazenda Ribeirão Claro",
+  "municipio": "Curitiba",
+  "areaImovelHa": 120.0000,
+  "versaoId": 12,
+  "versaoNumero": 3,
+  "regraVersao": "v1",
+  "dataCalculo": "2026-11-22T16:20:00",
+  "appTotalHa": 20.0000,
+  "appVegetadaHa": 15.0000,
+  "passivoHa": 5.0000,
+  "iappPct": 75.0000,
+  "conforme": false,
+  "status": "CALCULADO",
+  "mensagem": "Cálculo concluído com sucesso. Passivo ambiental de 5,0000 ha identificado em APP.",
+  "filtroTiposApp": "*",
+  "filtroClassesVegetacao": "*",
+  "rastreabilidade": {
+    "versaoAppId": 18,
+    "competenciaApp": "2026-10",
+    "versaoVegetacaoId": 19,
+    "competenciaVegetacao": "2026-10",
+    "execucaoId": 94,
+    "regraId": 4,
+    "regraVersao": "v1"
+  },
+  "appVegetadaGeoJson": {
+    "type": "Polygon",
+    "coordinates": [[[-51.02, -25.10], [-51.01, -25.10], [-51.01, -25.095], [-51.02, -25.095], [-51.02, -25.10]]]
+  },
+  "passivoGeoJson": {
+    "type": "Polygon",
+    "coordinates": [[[-51.02, -25.095], [-51.01, -25.095], [-51.01, -25.09], [-51.02, -25.09], [-51.02, -25.095]]]
+  }
+}
+```
+#### Cenário B — SEM_APP
+```json
+{
+  "imovelId": 202,
+  "codigoCar": "PR-4106902-00000000000000000001",
+  "nomeImovel": "Sítio Espigão Alto",
+  "municipio": "Curitiba",
+  "areaImovelHa": 45.5000,
+  "versaoId": 12,
+  "versaoNumero": 3,
+  "regraVersao": "v1",
+  "dataCalculo": "2026-11-22T16:20:01",
+  "appTotalHa": null,
+  "appVegetadaHa": null,
+  "passivoHa": null,
+  "iappPct": null,
+  "conforme": null,
+  "status": "SEM_APP",
+  "mensagem": "O imóvel não possui Área de Preservação Permanente (APP) incidente na versão avaliada.",
+  "filtroTiposApp": "*",
+  "filtroClassesVegetacao": "*",
+  "rastreabilidade": {
+    "versaoAppId": 18,
+    "competenciaApp": "2026-10",
+    "versaoVegetacaoId": 19,
+    "competenciaVegetacao": "2026-10",
+    "execucaoId": 94,
+    "regraId": 4,
+    "regraVersao": "v1"
+  },
+  "appVegetadaGeoJson": null,
+  "passivoGeoJson": null
+}
+```
+
+#### Cenário C — CAMADA_INDISPONIVEL
+```json
+{
+  "imovelId": 203,
+  "codigoCar": "PR-4106902-00000000000000000002",
+  "nomeImovel": "Chácara Vale Verde",
+  "municipio": "Curitiba",
+  "areaImovelHa": 30.0000,
+  "versaoId": 12,
+  "versaoNumero": 3,
+  "regraVersao": "v1",
+  "dataCalculo": "2026-11-22T16:20:02",
+  "appTotalHa": null,
+  "appVegetadaHa": null,
+  "passivoHa": null,
+  "iappPct": null,
+  "conforme": null,
+  "status": "CAMADA_INDISPONIVEL",
+  "mensagem": "Camada de APP ou Vegetação Nativa indisponível/não publicada para o cálculo.",
+  "filtroTiposApp": "*",
+  "filtroClassesVegetacao": "*",
+  "rastreabilidade": {
+    "versaoAppId": 18,
+    "competenciaApp": "2026-10",
+    "versaoVegetacaoId": null,
+    "competenciaVegetacao": null,
+    "execucaoId": 94,
+    "regraId": 4,
+    "regraVersao": "v1"
+  },
+  "appVegetadaGeoJson": null,
+  "passivoGeoJson": null
+}
+```
