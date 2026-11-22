@@ -2,6 +2,7 @@ package br.com.fatec.georural.config;
 
 import com.oracle.bmc.objectstorage.ObjectStorage;
 import com.oracle.bmc.objectstorage.requests.HeadBucketRequest;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.health.contributor.Health;
 import org.springframework.boot.health.contributor.HealthIndicator;
@@ -16,7 +17,7 @@ import java.util.Map;
 public class StorageHealthIndicator implements HealthIndicator {
 
     private final DataLakeProperties lakeProps;
-    private final ObjectStorage objectStorage;
+    private final ObjectProvider<ObjectStorage> objectStorageProvider;
 
     @Value("${georural.zona-tratada.storage:oci}")
     private String zonaTratadaStorage;
@@ -24,9 +25,12 @@ public class StorageHealthIndicator implements HealthIndicator {
     @Value("${georural.zona-tratada.base-dir:./zona-tratada}")
     private String zonaTratadaBaseDir;
 
-    public StorageHealthIndicator(DataLakeProperties lakeProps, ObjectStorage objectStorage) {
+    public StorageHealthIndicator(
+            DataLakeProperties lakeProps,
+            ObjectProvider<ObjectStorage> objectStorageProvider
+    ) {
         this.lakeProps = lakeProps;
-        this.objectStorage = objectStorage;
+        this.objectStorageProvider = objectStorageProvider;
     }
 
     @Override
@@ -48,10 +52,18 @@ public class StorageHealthIndicator implements HealthIndicator {
                     .build();
         }
 
-        String bucketBruta = lakeProps.bucket().bruta();
+        String bucketBruta = lakeProps.bucket() != null ? lakeProps.bucket().bruta() : null;
         detalhes.put("bucketBruta", bucketBruta);
 
         try {
+            ObjectStorage objectStorage = objectStorageProvider.getIfAvailable();
+            if (objectStorage == null) {
+                return Health.down()
+                        .withDetails(detalhes)
+                        .withDetail("erro", "Bean ObjectStorage indisponivel")
+                        .build();
+            }
+
             HeadBucketRequest request = HeadBucketRequest.builder()
                     .namespaceName(lakeProps.namespace())
                     .bucketName(bucketBruta)
