@@ -23,7 +23,8 @@ import org.springframework.web.bind.annotation.*;
 @Tag(
         name = "IAPP - APP Vegetada e Passivo Ambiental",
         description = "Consulta do Indicador de Área de Preservação Permanente Preservada (IAPP), "
-                + "passivo ambiental em hectares e rastreabilidade por imóvel ou listagem paginada."
+                + "passivo ambiental em hectares e rastreabilidade por imóvel ou listagem paginada. "
+                + "Documentação técnica em docs/features/indicador-iapp.md."
 )
 public class IappController {
 
