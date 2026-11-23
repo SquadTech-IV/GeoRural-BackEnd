@@ -31,6 +31,15 @@ public class CalculoOracle {
                 versaoId, execucaoId, regraId, minimoPct, escopo);
     }
 
+    // periodo e fator vem da regra e da competencia, resolvidos pela etapa
+    public long calcularIfc(Long versaoId, Long execucaoId, Long regraId,
+                            java.time.LocalDate inicio, java.time.LocalDate fim,
+                            double fator, String escopo) {
+        return comUmaSaida("PKG_CALCULO.calcular_ifc(?, ?, ?, ?, ?, ?, ?, ?)",
+                versaoId, execucaoId, regraId,
+                java.sql.Date.valueOf(inicio), java.sql.Date.valueOf(fim), fator, escopo);
+    }
+
     public long agregarMunicipio(Long versaoId, String sigla) {
         return comUmaSaida("PKG_CALCULO.agregar_municipio(?, ?, ?)", versaoId, sigla);
     }

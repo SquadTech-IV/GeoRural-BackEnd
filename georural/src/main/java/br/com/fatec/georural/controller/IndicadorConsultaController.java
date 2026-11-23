@@ -97,7 +97,8 @@ public class IndicadorConsultaController {
             @Parameter(description = "Itens por pagina, de 1 a 500. Padrao 50")
             @RequestParam(required = false) Integer tamanho,
 
-            @Parameter(description = "Ordenacao: imovel, valor, valorDesc, calculo ou municipio")
+            @Parameter(description = "Ordenacao: imovel, valor, valorDesc, calculo, municipio ou "
+                    + "ocorrencia (maior valor primeiro, e no empate mais focos; para o IFC)")
             @RequestParam(required = false) String ordenar
     ) {
         return servico.resultados(FiltroIndicador.montar(
@@ -151,7 +152,7 @@ public class IndicadorConsultaController {
             @Parameter(description = "Itens por pagina, de 1 a 500. Padrao 50")
             @RequestParam(required = false) Integer tamanho,
 
-            @Parameter(description = "Ordenacao: municipio, valor, valorDesc ou calculo")
+            @Parameter(description = "Ordenacao: municipio, valor, valorDesc, calculo ou ocorrencia")
             @RequestParam(required = false) String ordenar
     ) {
         return servico.resultadosPorMunicipio(FiltroIndicador.montar(

@@ -59,14 +59,19 @@ public class ConsultaIndicadorService {
             "valor", "r.rin_valor_percentual NULLS LAST, r.rin_id",
             "valorDesc", "r.rin_valor_percentual DESC NULLS LAST, r.rin_id",
             "calculo", "r.rin_data_calculo DESC, r.rin_id",
-            "municipio", "m.mun_nome NULLS LAST, im.imo_codigo_car, r.rin_id"
+            "municipio", "m.mun_nome NULLS LAST, im.imo_codigo_car, r.rin_id",
+            // maior ocorrencia primeiro: valor principal (no IFC, focos/1000 ha) e, no empate,
+            // mais focos em termos absolutos
+            "ocorrencia", "r.rin_valor_percentual DESC NULLS LAST, "
+                    + "r.rin_valor_absoluto DESC NULLS LAST, im.imo_codigo_car, r.rin_id"
     );
 
     private static final Map<String, String> ORDENS_MUNICIPIO = Map.of(
             "municipio", "m.mun_nome, i.ind_sigla, rm.rmu_id",
             "valor", "rm.rmu_valor_agregado NULLS LAST, rm.rmu_id",
             "valorDesc", "rm.rmu_valor_agregado DESC NULLS LAST, rm.rmu_id",
-            "calculo", "rm.rmu_data_calculo DESC, rm.rmu_id"
+            "calculo", "rm.rmu_data_calculo DESC, rm.rmu_id",
+            "ocorrencia", "rm.rmu_valor_agregado DESC NULLS LAST, m.mun_nome, rm.rmu_id"
     );
 
     private final JdbcTemplate jdbc;
