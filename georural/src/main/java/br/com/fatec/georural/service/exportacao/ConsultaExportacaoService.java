@@ -5,7 +5,6 @@ import br.com.fatec.georural.exception.RequisicaoInvalidaException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.stereotype.Service;
 
 import java.sql.PreparedStatement;
@@ -18,11 +17,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowCallbackHandler;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class ConsultaExportacaoService {
+
 
     private static final int TAMANHO_DO_LOTE = 500;
 
@@ -57,33 +59,19 @@ public class ConsultaExportacaoService {
     }
 
     public long[] contar(Long versaoId, String indicador) {
-        String filtro = (indicador != null && !indicador.isBlank())
-                ? " AND UPPER(sigla) = ?"
-                : "";
-
-        String sql = """
-                SELECT COUNT(*) AS linhas, COUNT(DISTINCT imo_id) AS imoveis
-                  FROM (
-                        SELECT r.imo_id, ind.ind_sigla AS sigla
-                          FROM RESULTADO_INDICADOR r
-                          JOIN INDICADOR ind ON ind.ind_id = r.ind_id
-                         WHERE r.ver_id = ?
-                        UNION ALL
-                        SELECT r.imo_id, 'IAPP' AS sigla
-                          FROM RESULTADO_IAPP r
-                         WHERE r.ver_id = ?
-                  ) base
-                 WHERE 1 = 1
-                """ + filtro;
-
+        StringBuilder sql = new StringBuilder("""
+                SELECT COUNT(*) AS linhas, COUNT(DISTINCT r.imo_id) AS imoveis
+                  FROM RESULTADO_INDICADOR r
+                  JOIN INDICADOR ind ON ind.ind_id = r.ind_id
+                 WHERE r.ver_id = ?
+                """);
         List<Object> params = new ArrayList<>();
         params.add(versaoId);
-        params.add(versaoId);
-        if (!filtro.isEmpty()) {
+        if (indicador != null && !indicador.isBlank()) {
+            sql.append(" AND UPPER(ind.ind_sigla) = ?");
             params.add(indicador.trim().toUpperCase());
         }
-
-        Map<String, Object> r = jdbc.queryForMap(sql, params.toArray());
+        Map<String, Object> r = jdbc.queryForMap(sql.toString(), params.toArray());
         return new long[]{ ((Number) r.get("LINHAS")).longValue(),
                            ((Number) r.get("IMOVEIS")).longValue() };
     }
@@ -91,66 +79,33 @@ public class ConsultaExportacaoService {
     public void paraCadaLinha(Long versaoId, String indicador, boolean comGeometria,
                               Consumer<LinhaResultado> consumidor) {
 
+
         String colunaGeometria = comGeometria
                 ? ", SDO_UTIL.TO_GEOJSON(SDO_CS.TRANSFORM(i.imo_geometria, 4326)) AS geometria"
                 : ", CAST(NULL AS CLOB) AS geometria";
 
-        String filtro = (indicador != null && !indicador.isBlank())
-                ? " AND UPPER(base.ind_sigla) = ?"
-                : "";
 
         StringBuilder sql = new StringBuilder("""
                 SELECT i.imo_codigo_car, m.mun_nome, m.mun_codigo_origem, i.imo_area_total,
-                       base.ind_sigla, base.ind_unidade,
-                       base.rin_valor_percentual, base.rin_valor_hectares, base.rin_valor_absoluto,
-                       base.rin_situacao, base.rin_data_calculo, base.rin_detalhes
+                       ind.ind_sigla, ind.ind_unidade,
+                       r.rin_valor_percentual, r.rin_valor_hectares, r.rin_valor_absoluto,
+                       r.rin_situacao, r.rin_data_calculo, r.rin_detalhes
                 """);
         sql.append(colunaGeometria).append("""
-                  FROM (
-                        SELECT r.imo_id, ind.ind_sigla, ind.ind_unidade,
-                               r.rin_valor_percentual, r.rin_valor_hectares, r.rin_valor_absoluto,
-                               r.rin_situacao, r.rin_data_calculo, r.rin_detalhes
-                          FROM RESULTADO_INDICADOR r
-                          JOIN INDICADOR ind ON ind.ind_id = r.ind_id
-                         WHERE r.ver_id = ?
-                        UNION ALL
-                        SELECT r.imo_id,
-                               'IAPP' AS ind_sigla,
-                               NVL(ind.ind_unidade, '%') AS ind_unidade,
-                               r.iap_iapp_pct AS rin_valor_percentual,
-                               r.iap_app_vegetada_ha AS rin_valor_hectares,
-                               r.iap_passivo_ha AS rin_valor_absoluto,
-                               r.iap_status AS rin_situacao,
-                               r.iap_data_calculo AS rin_data_calculo,
-                               JSON_OBJECT(
-                                   'app_total_ha' VALUE r.iap_app_total_ha,
-                                   'app_vegetada_ha' VALUE r.iap_app_vegetada_ha,
-                                   'passivo_ha' VALUE r.iap_passivo_ha,
-                                   'iapp_pct' VALUE r.iap_iapp_pct,
-                                   'area_imovel_ha' VALUE r.iap_area_imovel_ha,
-                                   'status' VALUE r.iap_status,
-                                   'mensagem' VALUE r.iap_mensagem,
-                                   'app_ver_id' VALUE r.iap_app_ver_id,
-                                   'veg_ver_id' VALUE r.iap_veg_ver_id,
-                                   'rca_id' VALUE r.rca_id
-                                   RETURNING VARCHAR2(4000)
-                               ) AS rin_detalhes
-                          FROM RESULTADO_IAPP r
-                          LEFT JOIN INDICADOR ind ON ind.ind_sigla = 'IAPP'
-                         WHERE r.ver_id = ?
-                  ) base
-                  JOIN IMOVEL_RURAL i ON i.imo_id = base.imo_id
+                  FROM RESULTADO_INDICADOR r
+                  JOIN IMOVEL_RURAL i ON i.imo_id = r.imo_id
+                  JOIN INDICADOR   ind ON ind.ind_id = r.ind_id
                   LEFT JOIN MUNICIPIO m ON m.mun_id = i.mun_id
-                 WHERE 1 = 1
-                """).append(filtro)
-                .append(" ORDER BY i.imo_codigo_car, base.ind_sigla");
-
+                 WHERE r.ver_id = ?
+                """);
         List<Object> params = new ArrayList<>();
         params.add(versaoId);
-        params.add(versaoId);
-        if (!filtro.isEmpty()) {
+        if (indicador != null && !indicador.isBlank()) {
+            sql.append(" AND UPPER(ind.ind_sigla) = ?");
             params.add(indicador.trim().toUpperCase());
         }
+
+        sql.append(" ORDER BY i.imo_codigo_car, ind.ind_sigla");
 
         jdbc.query(con -> {
             PreparedStatement ps = con.prepareStatement(sql.toString(),

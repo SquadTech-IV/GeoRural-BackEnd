@@ -22,7 +22,7 @@ public class CorsConfig implements WebMvcConfigurer {
     private final List<String> origens;
 
     public CorsConfig(
-            @Value("${georural.cors.origens:http://localhost:5173}")
+            @Value("${georural.cors.origens:http://localhost:5173,https://georural-frontend.onrender.com}")
             List<String> origens) {
         this.origens = origens;
     }
@@ -49,6 +49,7 @@ public class CorsConfig implements WebMvcConfigurer {
         config.setAllowedOrigins(origens);
         config.setAllowedMethods(METODOS);
         config.setAllowedHeaders(List.of("*"));
+        config.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource fonte =
                 new UrlBasedCorsConfigurationSource();
