@@ -51,6 +51,9 @@ public class ExecucaoPipeline {
     @Column(name = "exe_registros_rejeitados")
     private Long registrosRejeitados;
 
+    @Column(name = "exe_mensagem", length = 400)
+    private String mensagem;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "exe_ver_gerada_id")
     private Versao versaoGerada;

@@ -9,9 +9,11 @@ import br.com.fatec.georural.service.ImovelListaService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/imoveis")
@@ -30,8 +32,19 @@ public class ImovelIaeController {
     }
 
     @GetMapping
-    public List<ImovelListaResponse> listar() {
-        return listaService.listar();
+    public List<ImovelListaResponse> listar(
+            @RequestParam(required = false) String municipio,
+            @RequestParam(required = false) String busca,
+            @RequestParam(defaultValue = "0") int pagina,
+            @RequestParam(defaultValue = "200") int tamanho) {
+        return listaService.listar(municipio, busca, pagina, tamanho);
+    }
+
+    // quantos imoveis existem com esse filtro, para a tela montar a paginacao
+    @GetMapping("/total")
+    public Map<String, Object> total(@RequestParam(required = false) String municipio,
+                                     @RequestParam(required = false) String busca) {
+        return Map.of("total", listaService.contar(municipio, busca));
     }
 
     @GetMapping("/{car}")

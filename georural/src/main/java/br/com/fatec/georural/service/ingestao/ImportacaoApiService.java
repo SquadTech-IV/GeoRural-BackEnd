@@ -13,12 +13,16 @@ import br.com.fatec.georural.entity.ConjuntoDados;
 import br.com.fatec.georural.exception.FalhaComunicacaoApiException;
 import br.com.fatec.georural.exception.RecursoNaoEncontradoException;
 import br.com.fatec.georural.exception.RequisicaoInvalidaException;
+import br.com.fatec.georural.entity.ColetaApi;
+import br.com.fatec.georural.repository.ColetaApiRepository;
 import br.com.fatec.georural.repository.ConjuntoDadosRepository;
+import br.com.fatec.georural.service.pipeline.ResolvedorCompetencia;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -37,6 +41,8 @@ public class ImportacaoApiService {
     private final ValidadorRecebimentoApi validador;
     private final DuplicidadeService duplicidade;
     private final IngestaoZonaBrutaService ingestao;
+    private final ResolvedorCompetencia resolvedorCompetencia;
+    private final ColetaApiRepository coletaApiRepository;
 
     private static final DateTimeFormatter DATA = DateTimeFormatter.ISO_LOCAL_DATE; // yyyy-MM-dd
     private static final DateTimeFormatter MES = DateTimeFormatter.ofPattern("yyyy-MM");
@@ -93,13 +99,56 @@ public class ImportacaoApiService {
         }
 
         String hash = IngestaoZonaBrutaService.sha256(conteudo.conteudo());
-        if (duplicidade.jaExistePorHash(hash) || !hashesNestaImportacao.add(hash)) {
+
+        String competencia = resolvedorCompetencia.resolver(null, params.filtros(), nome);
+
+        // DUPLICIDADE PELA IDENTIDADE CERTA.
+        String chaveNestaImportacao = competencia + "|" + hash;
+        if (duplicidade.jaExiste(c.getId(), competencia, hash)
+                || !hashesNestaImportacao.add(chaveNestaImportacao)) {
             return ResultadoImportacaoItem.jaRecebido(identificador, nome);
         }
 
         // grava na zona bruta
-        ArquivoBruto arquivo = ingestao.registrar(c, null, nome, params.formato(), conteudo, "API");
+        ArquivoBruto arquivo = ingestao.registrar(c, null, nome, params.formato(), conteudo, "API", competencia);
+
+        // COMO o dado foi obtido.
+        registrarColeta(arquivo, params, competencia, conteudo.quantidadeRegistros());
+
         return ResultadoImportacaoItem.sucesso(identificador, nome, conteudo.quantidadeRegistros(), arquivo.getId());
+    }
+
+    /** Guarda endpoint, filtros e competencia da chamada que originou o arquivo. */
+    private void registrarColeta(ArquivoBruto arquivo, ParametrosConsultaApi params,
+                                 String competencia, long registros) {
+        ColetaApi coleta = new ColetaApi();
+        coleta.setArquivoBruto(arquivo);
+        coleta.setEndpoint(params.endpoint());
+        coleta.setMetodo("GET");
+        coleta.setParametros(filtrosComoJson(params.filtros()));
+        coleta.setCompetencia(competencia);
+        coleta.setRegistros(registros);
+        coleta.setDataColeta(LocalDateTime.now());
+        coletaApiRepository.save(coleta);
+    }
+
+    private String filtrosComoJson(Map<String, String> filtros) {
+        if (filtros == null || filtros.isEmpty()) {
+            return "{}";
+        }
+        StringBuilder sb = new StringBuilder("{");
+        boolean primeiro = true;
+        for (Map.Entry<String, String> e : filtros.entrySet()) {
+            if (!primeiro) sb.append(',');
+            sb.append('"').append(escapar(e.getKey())).append("\":\"")
+              .append(escapar(e.getValue())).append('"');
+            primeiro = false;
+        }
+        return sb.append('}').toString();
+    }
+
+    private String escapar(String v) {
+        return v == null ? "" : v.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
     // ---------------- helpers ----------------

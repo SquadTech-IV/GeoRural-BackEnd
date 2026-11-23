@@ -34,7 +34,7 @@ public class CalculoIAEService {
     private final ResultadoIndicadorService resultadoIndicadorService;
     private final IAEMapper mapper;
 
-    public IAEResponse calcularSobreposicaoEmbargo(Long imovelId, Long versaoEmbargoId) {
+    public IAEResponse calcularSobreposicaoEmbargo(Long imovelId) {
         ImovelRural imovel = imovelRuralRepository.findById(imovelId)
                 .orElseThrow(() -> new RecursoNaoEncontradoException(
                         "Imóvel não encontrado: " + imovelId));
@@ -45,7 +45,7 @@ public class CalculoIAEService {
         RegraCalculo regra = regraCalculoRepository.findByIndicadorAndVigente(indicador, "S")
                 .orElseThrow(() -> new EstadoInconsistenteException("Nenhuma regra vigente para IAE"));
 
-        Object[] resultadoAgregado = imovelRuralRepository.calcularAreaEmbargadaAgregada(imovelId, versaoEmbargoId)
+        Object[] resultadoAgregado = imovelRuralRepository.calcularAreaEmbargadaAgregada(imovelId)
                 .stream()
                 .findFirst()
                 .orElseThrow(() -> new EstadoInconsistenteException(

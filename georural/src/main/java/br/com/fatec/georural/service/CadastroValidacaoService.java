@@ -139,14 +139,21 @@ public class CadastroValidacaoService {
         } catch (Exception erro) {
             throw new RequisicaoInvalidaException("Informe um endpoint HTTP ou HTTPS válido, sem usuário e senha na URL.");
         }
-        if (request.formatoApi() == null || !Set.of("GeoJSON", "WFS / GML", "Shapefile (.zip)").contains(request.formatoApi())) {
-            throw new RequisicaoInvalidaException("Selecione um formato válido para a API.");
+        // o formato e detectado na resposta; informado, serve de expectativa
+        if (request.formatoApi() != null && !request.formatoApi().isBlank()
+                && !Set.of("GeoJSON", "WFS / GML", "Shapefile (.zip)").contains(request.formatoApi())) {
+            throw new RequisicaoInvalidaException(
+                "Formato da API não reconhecido. Deixe em branco para detectar pela resposta.");
         }
         CadastroCampos.opcional(request.autenticacao(), "autenticação", 4000);
     }
 
+    // o SRC do cadastro e reserva: o pipeline le o do arquivo primeiro
     private void validarSrs(Integer srs) {
-        if (srs == null || srs <= 0 || srs > 999999) {
+        if (srs == null) {
+            return;
+        }
+        if (srs <= 0 || srs > 999999) {
             throw new RequisicaoInvalidaException(
                 "Informe um código EPSG entre 1 e 999999."
             );

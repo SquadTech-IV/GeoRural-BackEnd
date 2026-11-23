@@ -5,23 +5,34 @@ import br.com.fatec.georural.dto.response.ArquivoDownload;
 import br.com.fatec.georural.dto.response.ArquivoResumoResponse;
 import br.com.fatec.georural.dto.response.EnvioProcessamentoResponse;
 import br.com.fatec.georural.service.ArquivoDatalakeService;
+import br.com.fatec.georural.service.IndicadorAutomaticoService;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
+import br.com.fatec.georural.security.IsolamentoCargaService;
 
 import java.util.List;
 
+/**
+ * Arquivos recebidos no data lake (zona BRUTA). Lista, detalha, baixa e dispara o
+ * processamento, tudo a partir de ARQUIVO_BRUTO + armazenamento de objetos.
+ */
 @RestController
 @RequestMapping("/api/arquivos")
 public class ArquivoDatalakeController {
 
     private final ArquivoDatalakeService service;
+    private final IndicadorAutomaticoService indicadorAutomaticoService;
+    private final IsolamentoCargaService isolamentoCargaService;
 
-    public ArquivoDatalakeController(ArquivoDatalakeService service) {
+    public ArquivoDatalakeController(ArquivoDatalakeService service,
+                                     IndicadorAutomaticoService indicadorAutomaticoService,
+                                     IsolamentoCargaService isolamentoCargaService) {
         this.service = service;
+        this.indicadorAutomaticoService = indicadorAutomaticoService;
+        this.isolamentoCargaService = isolamentoCargaService;
     }
 
     @GetMapping
@@ -46,16 +57,14 @@ public class ArquivoDatalakeController {
                 .body(d.conteudo());
     }
 
-    @PostMapping("/{id}/conteudo")
-    public ResponseEntity<Void> subirConteudo(
-            @PathVariable Long id,
-            @RequestParam("arquivo") MultipartFile arquivo) {
-        service.salvarConteudo(id, arquivo);
-        return ResponseEntity.ok().build();
-    }
-
     @PostMapping("/{id}/processar")
     public EnvioProcessamentoResponse processar(@PathVariable Long id) {
-        return service.enviarParaProcessamento(id);
+        isolamentoCargaService.validarAcessoArquivoBruto(id);
+        // 1) processa (e commita) o arquivo bruto
+        EnvioProcessamentoResponse resposta = service.enviarParaProcessamento(id);
+        // 2) recalcula automaticamente os indicadores dos imóveis afetados (IRL agora; IAE quando o
+        //    fluxo de embargo for validado). Roda após o commit, na mesma requisição.
+        indicadorAutomaticoService.recalcularAposProcessamento(id);
+        return resposta;
     }
 }

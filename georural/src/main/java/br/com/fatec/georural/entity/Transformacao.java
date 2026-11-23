@@ -31,6 +31,12 @@ public class Transformacao {
     @Column(name = "tra_descricao", nullable = false)
     private String descricao;
 
+    @Column(name = "tra_entrada", length = 200)
+    private String entrada;
+
+    @Column(name = "tra_saida", length = 200)
+    private String saida;
+
     @Column(name = "tra_data", nullable = false)
     private LocalDateTime data;
 }

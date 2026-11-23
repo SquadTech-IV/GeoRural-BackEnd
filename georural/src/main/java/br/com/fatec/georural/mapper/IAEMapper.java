@@ -22,7 +22,9 @@ public class IAEMapper {
 
         return new IAEResponse(
                 resultado.getImovel().getId(),
-                resultado.getImovel().getMunicipio().getNome(),
+                resultado.getImovel().getMunicipio() != null
+                        ? resultado.getImovel().getMunicipio().getNome()
+                        : null,
                 resultado.getImovel().getCodigoCar(),
                 resultado.getIndicador().getSigla(),
                 resultado.getValorPercentual(),

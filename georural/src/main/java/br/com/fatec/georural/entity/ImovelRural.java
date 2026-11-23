@@ -4,9 +4,10 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.locationtech.jts.geom.Geometry;
+
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import org.locationtech.jts.geom.Geometry;
 
 @Entity
 @Getter
@@ -35,6 +36,14 @@ public class ImovelRural {
     @Column(name = "imo_codigo_car", nullable = false, unique = true)
     private String codigoCar;
 
+    // nome do imovel, quando existe; o SICAR publico nao traz
+    @Column(name = "imo_nome", length = 200)
+    private String nome;
+
+    // ARQUIVO, MANUAL ou PLANILHA
+    @Column(name = "imo_nome_origem", length = 12)
+    private String nomeOrigem;
+
     @Column(name = "imo_geometria")
     private Geometry geometria;
 
@@ -43,4 +52,5 @@ public class ImovelRural {
 
     @Column(name = "imo_data_informada")
     private LocalDateTime dataInformada;
+
 }

@@ -97,8 +97,10 @@ public class RegraCalculoService {
         }
 
         if (atual != null) {
-            atual.setVigente("N");
-            regraCalculoRepository.saveAndFlush(atual);
+            // UPDATE so em rca_vigente: o save do JPA mandaria todas as colunas e o
+            // trigger trg_regra_calculo_imutavel dispara em UPDATE OF rca_formula/rca_versao,
+            // pela coluna estar no SET e nao pelo valor mudar
+            regraCalculoRepository.marcarVigencia(atual.getId(), "N");
         }
 
         long vigentes = regraCalculoRepository.countByIndicadorAndVigente(indicador, "S");
@@ -122,6 +124,15 @@ public class RegraCalculoService {
         nova.setDataCriacao(LocalDateTime.now());
         RegraCalculo salva = regraCalculoRepository.save(nova);
 
+        // rotulo, editavel, minimo e maximo vem do parametro de mesmo nome da versao
+        // anterior; sem isso a regra nova perderia o que a tela usa para editar
+        Map<String, ParametroRegraCalculo> anteriores = new HashMap<>();
+        if (atual != null) {
+            for (ParametroRegraCalculo anterior : parametrosDe(atual)) {
+                anteriores.put(anterior.getNome(), anterior);
+            }
+        }
+
         List<ParametroRegraCalculo> parametros = new ArrayList<>();
         if (request.parametros() != null) {
             for (ParametroInput entrada : request.parametros()) {
@@ -131,6 +142,14 @@ public class RegraCalculoService {
                 parametro.setTipo(entrada.tipo().trim().toUpperCase());
                 parametro.setUnidade(entrada.unidade());
                 parametro.setValor(entrada.valor().trim());
+
+                ParametroRegraCalculo base = anteriores.get(entrada.nome().trim());
+                if (base != null) {
+                    parametro.setRotulo(base.getRotulo());
+                    parametro.setEditavel(base.getEditavel());
+                    parametro.setMinimo(base.getMinimo());
+                    parametro.setMaximo(base.getMaximo());
+                }
                 parametros.add(parametro);
             }
             parametroRegraCalculoRepository.saveAll(parametros);
