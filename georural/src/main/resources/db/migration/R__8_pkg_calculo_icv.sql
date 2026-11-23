@@ -25,12 +25,12 @@ CREATE OR REPLACE PACKAGE BODY PKG_CALCULO_ICV AS
                       o.area_veg,
                       o.area_veg - o.minimo_ha AS saldo_ha,
                       CASE WHEN o.pct >= p_minimo_pct THEN 'CONFORME' ELSE 'DEFICIT' END AS situacao,
-                      '{"area_imovel_ha":' || TO_CHAR(ROUND(o.area_imovel, 4))
-                        || ',"area_vegetacao_ha":' || TO_CHAR(ROUND(o.area_veg, 4))
-                        || ',"minimo_pct":' || TO_CHAR(p_minimo_pct)
-                        || ',"minimo_ha":' || TO_CHAR(ROUND(o.minimo_ha, 4))
-                        || ',"saldo_ha":' || TO_CHAR(ROUND(o.area_veg - o.minimo_ha, 4))
-                        || ',"vegetacoes_consideradas":' || TO_CHAR(o.vegetacoes) || '}' AS detalhes
+                      '{"area_imovel_ha":' || to_char(ROUND(o.area_imovel, 4), 'FM99999999999999990.0999999', 'NLS_NUMERIC_CHARACTERS = ''.,''')
+                        || ',"area_vegetacao_ha":' || to_char(ROUND(o.area_veg, 4), 'FM99999999999999990.0999999', 'NLS_NUMERIC_CHARACTERS = ''.,''')
+                        || ',"minimo_pct":' || to_char(p_minimo_pct, 'FM99999999999999990.0999999', 'NLS_NUMERIC_CHARACTERS = ''.,''')
+                        || ',"minimo_ha":' || to_char(ROUND(o.minimo_ha, 4), 'FM99999999999999990.0999999', 'NLS_NUMERIC_CHARACTERS = ''.,''')
+                        || ',"saldo_ha":' || to_char(ROUND(o.area_veg - o.minimo_ha, 4), 'FM99999999999999990.0999999', 'NLS_NUMERIC_CHARACTERS = ''.,''')
+                        || ',"vegetacoes_consideradas":' || to_char(o.vegetacoes, 'FM99999999999999990.0999999', 'NLS_NUMERIC_CHARACTERS = ''.,''') || '}' AS detalhes
                  FROM (SELECT i.imo_id,
                               NVL(i.imo_area_total, 0) AS area_imovel,
                               NVL(i.imo_area_total, 0) * p_minimo_pct / 100 AS minimo_ha,

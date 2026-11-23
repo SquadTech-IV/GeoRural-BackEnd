@@ -1,6 +1,5 @@
 package br.com.fatec.georural.controller;
 
-import br.com.fatec.georural.dto.response.ArquivoValidacaoResponse;
 import br.com.fatec.georural.dto.response.ErroResponse;
 import br.com.fatec.georural.dto.response.ingestao.EnvioLoteResponse;
 import br.com.fatec.georural.service.ingestao.ProcessamentoPosEnvioService;
@@ -36,38 +35,6 @@ public class IngestaoController {
         this.service = service;
         this.processamentoPosEnvio = processamentoPosEnvio;
         this.isolamentoCargaService = isolamentoCargaService;
-    }
-
-    // rota antiga, mantida pela tela atual; a nova e a /lote
-    // parametros opcionais no Spring de proposito: a ausencia cai na mensagem do servico
-    @Deprecated
-    @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @Operation(summary = "Envia arquivos e devolve a lista de resultados",
-            deprecated = true,
-            description = "Resposta em lista, um item por arquivo. Mantida para nao quebrar a tela "
-                    + "de upload atual, que valida resposta de um item so. Use POST "
-                    + "/api/ingestao/lote, que devolve os mesmos itens com totais.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Confira o desfecho de cada arquivo"),
-            @ApiResponse(responseCode = "400", description = "Lista vazia",
-                    content = @Content(schema = @Schema(implementation = ErroResponse.class))),
-            @ApiResponse(responseCode = "404", description = "Conjunto nao encontrado",
-                    content = @Content(schema = @Schema(implementation = ErroResponse.class))),
-            @ApiResponse(responseCode = "409", description = "Conjunto arquivado ou que nao aceita upload",
-                    content = @Content(schema = @Schema(implementation = ErroResponse.class)))
-    })
-    public ResponseEntity<List<ArquivoValidacaoResponse>> receberArquivos(
-            @Parameter(description = "Arquivos a enviar; pode ser mais de um")
-            @RequestParam(value = "files", required = false) List<MultipartFile> arquivos,
-            @Parameter(description = "Conjunto de dados de destino")
-            @RequestParam(value = "conjuntoId", required = false) Long conjuntoId,
-            @Parameter(description = "Periodo dos dados: 2026, 2026-11 ou 11/2026")
-            @RequestParam(value = "competencia", required = false) String competencia,
-            @Parameter(description = "Responsavel pelo envio; omitido, usa o do conjunto")
-            @RequestParam(value = "usuId", required = false) Long usuId
-    ) {
-        Long usuarioEfetivoId = isolamentoCargaService.resolverUsuarioIdAutenticado(usuId);
-        return ResponseEntity.ok(service.ingerir(arquivos, conjuntoId, competencia, usuarioEfetivoId));
     }
 
     // mesmo envio, com totais e id de correlacao

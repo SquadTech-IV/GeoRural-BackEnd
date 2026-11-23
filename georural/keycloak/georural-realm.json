@@ -1,0 +1,193 @@
+{
+  "realm": "georural",
+  "enabled": true,
+  "displayName": "GeoRural DataHub",
+  "sslRequired": "none",
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "registrationAllowed": false,
+  "resetPasswordAllowed": false,
+  "editUsernameAllowed": false,
+  "accessTokenLifespan": 1800,
+  "ssoSessionIdleTimeout": 7200,
+  "ssoSessionMaxLifespan": 36000,
+  "roles": {
+    "realm": [
+      {
+        "name": "ADMIN",
+        "description": "Perfil ADMIN do GeoRural"
+      },
+      {
+        "name": "GESTOR",
+        "description": "Perfil GESTOR do GeoRural"
+      },
+      {
+        "name": "OPERADOR",
+        "description": "Perfil OPERADOR do GeoRural"
+      },
+      {
+        "name": "ANALISTA",
+        "description": "Perfil ANALISTA do GeoRural"
+      },
+      {
+        "name": "AUDITOR",
+        "description": "Perfil AUDITOR do GeoRural"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "georural-cli",
+      "name": "GeoRural - tela de login",
+      "enabled": true,
+      "publicClient": true,
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": true,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:5173/*",
+        "http://localhost:4173/*"
+      ],
+      "webOrigins": [
+        "http://localhost:5173",
+        "http://localhost:4173",
+        "+"
+      ],
+      "protocolMappers": [
+        {
+          "name": "audiencia-georural-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "georural-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "id": "11111111-1111-1111-1111-111111111111",
+      "username": "admin@georural.invalid",
+      "email": "admin@georural.invalid",
+      "firstName": "Administrador",
+      "lastName": "GeoRural",
+      "enabled": true,
+      "emailVerified": true,
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "GeoRural@2026",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "ADMIN"
+      ]
+    },
+    {
+      "id": "22222222-2222-2222-2222-222222222222",
+      "username": "gestor@georural.invalid",
+      "email": "gestor@georural.invalid",
+      "firstName": "Gestor",
+      "lastName": "GeoRural",
+      "enabled": true,
+      "emailVerified": true,
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "GeoRural@2026",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "GESTOR"
+      ]
+    },
+    {
+      "id": "33333333-3333-3333-3333-333333333333",
+      "username": "operador@georural.invalid",
+      "email": "operador@georural.invalid",
+      "firstName": "Operador Um",
+      "lastName": "GeoRural",
+      "enabled": true,
+      "emailVerified": true,
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "GeoRural@2026",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "OPERADOR"
+      ]
+    },
+    {
+      "id": "44444444-4444-4444-4444-444444444444",
+      "username": "analista@georural.invalid",
+      "email": "analista@georural.invalid",
+      "firstName": "Analista",
+      "lastName": "GeoRural",
+      "enabled": true,
+      "emailVerified": true,
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "GeoRural@2026",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "ANALISTA"
+      ]
+    },
+    {
+      "id": "55555555-5555-5555-5555-555555555555",
+      "username": "auditor@georural.invalid",
+      "email": "auditor@georural.invalid",
+      "firstName": "Auditor",
+      "lastName": "GeoRural",
+      "enabled": true,
+      "emailVerified": true,
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "GeoRural@2026",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "AUDITOR"
+      ]
+    },
+    {
+      "id": "66666666-6666-6666-6666-666666666666",
+      "username": "operador2@georural.invalid",
+      "email": "operador2@georural.invalid",
+      "firstName": "Operador Dois",
+      "lastName": "GeoRural",
+      "enabled": true,
+      "emailVerified": true,
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "GeoRural@2026",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "OPERADOR"
+      ]
+    }
+  ]
+}

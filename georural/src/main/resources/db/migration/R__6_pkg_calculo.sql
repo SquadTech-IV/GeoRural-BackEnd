@@ -221,26 +221,26 @@ create or replace package body pkg_calculo as
                 || to_char(round(
                    o.area_imovel,
                    4
-                ))
+                ), 'FM99999999999999990.0999999', 'NLS_NUMERIC_CHARACTERS = ''.,''')
                 || ',"area_rl_ha":'
                 || to_char(round(
                    o.area_rl,
                    4
-                ))
+                ), 'FM99999999999999990.0999999', 'NLS_NUMERIC_CHARACTERS = ''.,''')
                 || ',"minimo_pct":'
-                || to_char(p_minimo_pct)
+                || to_char(p_minimo_pct, 'FM99999999999999990.0999999', 'NLS_NUMERIC_CHARACTERS = ''.,''')
                 || ',"minimo_ha":'
                 || to_char(round(
                    o.minimo_ha,
                    4
-                ))
+                ), 'FM99999999999999990.0999999', 'NLS_NUMERIC_CHARACTERS = ''.,''')
                 || ',"saldo_ha":'
                 || to_char(round(
                    o.area_rl - o.minimo_ha,
                    4
-                ))
+                ), 'FM99999999999999990.0999999', 'NLS_NUMERIC_CHARACTERS = ''.,''')
                 || ',"reservas_consideradas":'
-                || to_char(o.reservas)
+                || to_char(o.reservas, 'FM99999999999999990.0999999', 'NLS_NUMERIC_CHARACTERS = ''.,''')
                 || '}' as detalhes
            from (
             select i.imo_id,
@@ -363,14 +363,14 @@ create or replace package body pkg_calculo as
                 || to_char(round(
                    o.area_imovel,
                    4
-                ))
+                ), 'FM99999999999999990.0999999', 'NLS_NUMERIC_CHARACTERS = ''.,''')
                 || ',"area_embargada_ha":'
                 || to_char(round(
                    o.area_embargada,
                    4
-                ))
+                ), 'FM99999999999999990.0999999', 'NLS_NUMERIC_CHARACTERS = ''.,''')
                 || ',"embargos_sobrepostos":'
-                || to_char(o.embargos)
+                || to_char(o.embargos, 'FM99999999999999990.0999999', 'NLS_NUMERIC_CHARACTERS = ''.,''')
                 || '}' as detalhes
            from (
             select i.imo_id,
@@ -498,16 +498,16 @@ create or replace package body pkg_calculo as
                 || to_char(round(
                    o.area_imovel,
                    4
-                ))
+                ), 'FM99999999999999990.0999999', 'NLS_NUMERIC_CHARACTERS = ''.,''')
                 || ',"area_vegetacao_ha":'
                 || to_char(round(
                    o.area_vegetacao,
                    4
-                ))
+                ), 'FM99999999999999990.0999999', 'NLS_NUMERIC_CHARACTERS = ''.,''')
                 || ',"minimo_pct":'
-                || to_char(p_minimo_pct)
+                || to_char(p_minimo_pct, 'FM99999999999999990.0999999', 'NLS_NUMERIC_CHARACTERS = ''.,''')
                 || ',"poligonos_considerados":'
-                || to_char(o.poligonos)
+                || to_char(o.poligonos, 'FM99999999999999990.0999999', 'NLS_NUMERIC_CHARACTERS = ''.,''')
                 || ',"dissolvido":true}' as detalhes
            from (
             select i.imo_id,
@@ -691,12 +691,12 @@ create or replace package body pkg_calculo as
                 v_ind as ind_id,
                 avg(r.rin_valor_percentual) as media_pct,
                 '{"imoveis":'
-                || to_char(count(*))
+                || to_char(count(*), 'FM99999999999999990.0999999', 'NLS_NUMERIC_CHARACTERS = ''.,''')
                 || ',"media_percentual":'
                 || to_char(round(
                    avg(r.rin_valor_percentual),
                    4
-                ))
+                ), 'FM99999999999999990.0999999', 'NLS_NUMERIC_CHARACTERS = ''.,''')
                 || ',"soma_hectares":'
                 || to_char(round(
                    nvl(
@@ -704,7 +704,7 @@ create or replace package body pkg_calculo as
                       0
                    ),
                    4
-                ))
+                ), 'FM99999999999999990.0999999', 'NLS_NUMERIC_CHARACTERS = ''.,''')
                 || ',"conformes":'
                 || to_char(sum(
                    case
@@ -713,7 +713,7 @@ create or replace package body pkg_calculo as
                       else
                          0
                    end
-                ))
+                ), 'FM99999999999999990.0999999', 'NLS_NUMERIC_CHARACTERS = ''.,''')
                 || ',"situacao_boa":"'
                 || v_boa
                 || '"'
@@ -825,6 +825,7 @@ create or replace package body pkg_calculo as
        v_m2008    DATE := DATE '2008-07-22';
        v_m2019    DATE := DATE '2019-07-31';
        v_m2020    DATE := DATE '2020-12-31';
+       v_srid_eq  NUMBER := 102033;
    BEGIN
        IF v_ids.COUNT = 0 THEN
            p_calculados := 0;
@@ -835,6 +836,7 @@ create or replace package body pkg_calculo as
            IF r.prc_nome = 'marco_2008' THEN v_m2008 := TO_DATE(SUBSTR(r.prc_valor, 1, 10), 'YYYY-MM-DD'); END IF;
            IF r.prc_nome = 'marco_2019' THEN v_m2019 := TO_DATE(SUBSTR(r.prc_valor, 1, 10), 'YYYY-MM-DD'); END IF;
            IF r.prc_nome = 'marco_2020' THEN v_m2020 := TO_DATE(SUBSTR(r.prc_valor, 1, 10), 'YYYY-MM-DD'); END IF;
+           IF r.prc_nome = 'srid_equivalente' THEN v_srid_eq := TO_NUMBER(r.prc_valor); END IF;
        END LOOP;
 
        MERGE INTO RESULTADO_INDICADOR d
@@ -844,23 +846,24 @@ create or replace package body pkg_calculo as
                   LEAST(o.ha_2008 / NULLIF(o.area_imovel, 0) * 100, 100) AS pct_2008,
                   LEAST(o.ha_2008, o.area_imovel) AS ha_2008,
                   CASE WHEN o.ha_2008 > 0 THEN 'COM_DESMATAMENTO' ELSE 'SEM_DESMATAMENTO' END AS situacao,
-                  '{"area_imovel_ha":' || TO_CHAR(ROUND(o.area_imovel, 4))
+                  '{"area_imovel_ha":' || to_char(ROUND(o.area_imovel, 4), 'FM99999999999999990.0999999', 'NLS_NUMERIC_CHARACTERS = ''.,''')
+                  || ',"srid_equivalente":' || to_char(v_srid_eq, 'FM99999999999999990.0999999', 'NLS_NUMERIC_CHARACTERS = ''.,''')
                   || ',"dissolvido":true'
                   || ',"marcos":['
                   || '{"marco":"marco_2008","data":"' || TO_CHAR(v_m2008, 'YYYY-MM-DD')
-                  || '","area_ha":' || TO_CHAR(ROUND(LEAST(o.ha_2008, o.area_imovel), 4))
-                  || ',"percentual":' || TO_CHAR(ROUND(NVL(LEAST(o.ha_2008 / NULLIF(o.area_imovel, 0) * 100, 100), 0), 4)) || '},'
+                  || '","area_ha":' || to_char(ROUND(LEAST(o.ha_2008, o.area_imovel), 4), 'FM99999999999999990.0999999', 'NLS_NUMERIC_CHARACTERS = ''.,''')
+                  || ',"percentual":' || to_char(ROUND(NVL(LEAST(o.ha_2008 / NULLIF(o.area_imovel, 0) * 100, 100), 0), 4), 'FM99999999999999990.0999999', 'NLS_NUMERIC_CHARACTERS = ''.,''') || '},'
                   || '{"marco":"marco_2019","data":"' || TO_CHAR(v_m2019, 'YYYY-MM-DD')
-                  || '","area_ha":' || TO_CHAR(ROUND(LEAST(o.ha_2019, o.area_imovel), 4))
-                  || ',"percentual":' || TO_CHAR(ROUND(NVL(LEAST(o.ha_2019 / NULLIF(o.area_imovel, 0) * 100, 100), 0), 4)) || '},'
+                  || '","area_ha":' || to_char(ROUND(LEAST(o.ha_2019, o.area_imovel), 4), 'FM99999999999999990.0999999', 'NLS_NUMERIC_CHARACTERS = ''.,''')
+                  || ',"percentual":' || to_char(ROUND(NVL(LEAST(o.ha_2019 / NULLIF(o.area_imovel, 0) * 100, 100), 0), 4), 'FM99999999999999990.0999999', 'NLS_NUMERIC_CHARACTERS = ''.,''') || '},'
                   || '{"marco":"marco_2020","data":"' || TO_CHAR(v_m2020, 'YYYY-MM-DD')
-                  || '","area_ha":' || TO_CHAR(ROUND(LEAST(o.ha_2020, o.area_imovel), 4))
-                  || ',"percentual":' || TO_CHAR(ROUND(NVL(LEAST(o.ha_2020 / NULLIF(o.area_imovel, 0) * 100, 100), 0), 4)) || '}'
+                  || '","area_ha":' || to_char(ROUND(LEAST(o.ha_2020, o.area_imovel), 4), 'FM99999999999999990.0999999', 'NLS_NUMERIC_CHARACTERS = ''.,''')
+                  || ',"percentual":' || to_char(ROUND(NVL(LEAST(o.ha_2020 / NULLIF(o.area_imovel, 0) * 100, 100), 0), 4), 'FM99999999999999990.0999999', 'NLS_NUMERIC_CHARACTERS = ''.,''') || '}'
                   || ']}' AS detalhes
              FROM (
                  SELECT i.imo_id,
-                        NVL(PKG_GEO.area_ha(i.imo_geometria), NVL(i.imo_area_total, 0)) AS area_imovel,
-                        NVL(PKG_GEO.area_ha(
+                        NVL(PKG_GEO.area_equivalente_ha(i.imo_geometria, v_srid_eq), NVL(i.imo_area_total, 0)) AS area_imovel,
+                        NVL(PKG_GEO.area_equivalente_ha(
                             PKG_GEO.intersecao(
                                 i.imo_geometria,
                                 (SELECT SDO_AGGR_UNION(SDOAGGRTYPE(ds.des_geometria, 0.05))
@@ -868,8 +871,8 @@ create or replace package body pkg_calculo as
                                   WHERE ds.des_geometria IS NOT NULL
                                     AND NVL(ds.des_data_corte, TO_DATE(ds.des_ano_ref || '-12-31', 'YYYY-MM-DD')) > v_m2008
                                     AND SDO_RELATE(ds.des_geometria, i.imo_geometria, 'mask=ANYINTERACT') = 'TRUE')
-                            )), 0) AS ha_2008,
-                        NVL(PKG_GEO.area_ha(
+                            ), v_srid_eq), 0) AS ha_2008,
+                        NVL(PKG_GEO.area_equivalente_ha(
                             PKG_GEO.intersecao(
                                 i.imo_geometria,
                                 (SELECT SDO_AGGR_UNION(SDOAGGRTYPE(ds.des_geometria, 0.05))
@@ -877,8 +880,8 @@ create or replace package body pkg_calculo as
                                   WHERE ds.des_geometria IS NOT NULL
                                     AND NVL(ds.des_data_corte, TO_DATE(ds.des_ano_ref || '-12-31', 'YYYY-MM-DD')) > v_m2019
                                     AND SDO_RELATE(ds.des_geometria, i.imo_geometria, 'mask=ANYINTERACT') = 'TRUE')
-                            )), 0) AS ha_2019,
-                        NVL(PKG_GEO.area_ha(
+                            ), v_srid_eq), 0) AS ha_2019,
+                        NVL(PKG_GEO.area_equivalente_ha(
                             PKG_GEO.intersecao(
                                 i.imo_geometria,
                                 (SELECT SDO_AGGR_UNION(SDOAGGRTYPE(ds.des_geometria, 0.05))
@@ -886,7 +889,7 @@ create or replace package body pkg_calculo as
                                   WHERE ds.des_geometria IS NOT NULL
                                     AND NVL(ds.des_data_corte, TO_DATE(ds.des_ano_ref || '-12-31', 'YYYY-MM-DD')) > v_m2020
                                     AND SDO_RELATE(ds.des_geometria, i.imo_geometria, 'mask=ANYINTERACT') = 'TRUE')
-                            )), 0) AS ha_2020
+                            ), v_srid_eq), 0) AS ha_2020
                    FROM IMOVEL_RURAL i
                   WHERE i.imo_id IN (SELECT column_value FROM TABLE(v_ids))
              ) o

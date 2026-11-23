@@ -334,9 +334,11 @@ CREATE OR REPLACE PACKAGE BODY PKG_TRATAMENTO AS
                                       DEFAULT NULL ON CONVERSION ERROR,
                                       'YYYY-MM-DD') AS data_informada,
                               NVL(s.stg_arq_bruto_id, e.arq_bruto_id) AS arq_bruto_id,
+                              -- o CAR traz Area do Imovel e Area Liquida com o mesmo recibo;
+                              -- a maior e a bruta, denominador dos indicadores
                               ROW_NUMBER() OVER (
                                   PARTITION BY JSON_VALUE(s.stg_atributos, '$.codigo_car')
-                                  ORDER BY s.stg_id DESC) AS ordem
+                                  ORDER BY s.stg_area_ha DESC NULLS LAST, s.stg_id DESC) AS ordem
                          FROM FEICAO_STAGING s
                          JOIN EXECUCAO_PIPELINE e ON e.exe_id = s.exe_id
                         WHERE s.exe_id = p_exe_id AND (p_arq_id IS NULL OR s.stg_arq_bruto_id = p_arq_id)

@@ -16,11 +16,6 @@ public class TratamentoOracle {
 
     private final JdbcTemplate jdbc;
 
-    // precisa ser a primeira chamada da transacao (ORA-12841)
-    public void prepararSessao() {
-        jdbc.update("BEGIN PKG_TRATAMENTO.preparar_sessao(); END;");
-    }
-
     public long sanear(Long execucaoId) {
         return comUmaSaida("PKG_TRATAMENTO.sanear(?, ?)", execucaoId);
     }

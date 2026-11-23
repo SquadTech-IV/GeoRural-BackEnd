@@ -21,8 +21,9 @@ public class PerfilImovel implements PerfilCamada {
     @Override
     public List<CampoCamada> campos() {
         return List.of(
+                // 'recibo' e o nome do campo no pacote por imovel do SICAR
                 CampoCamada.obrigatorio("codigo_car", TipoCampo.TEXTO,
-                        "cod_imovel", "codigo", "cod_car", "car", "codigoimovel"),
+                        "recibo", "cod_imovel", "codigo", "cod_car", "car", "codigoimovel"),
                 CampoCamada.opcional("nome", TipoCampo.TEXTO,
                         "nome_imovel", "nom_imovel", "denominacao", "nome_area", "nom_area",
                         "des_imovel", "nome_propriedade"),
@@ -37,7 +38,7 @@ public class PerfilImovel implements PerfilCamada {
                 CampoCamada.opcional("situacao", TipoCampo.TEXTO,
                         "ind_status", "status", "des_condic"),
                 CampoCamada.opcional("tipo", TipoCampo.TEXTO,
-                        "ind_tipo", "tipo_imovel"),
+                        "ind_tipo", "tipo_imovel", "tema"),
                 CampoCamada.opcional("data_informada", TipoCampo.DATA,
                         "dat_criaca", "data_criacao", "dat_cadastr"));
     }

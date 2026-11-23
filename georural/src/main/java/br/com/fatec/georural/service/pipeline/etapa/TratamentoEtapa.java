@@ -63,9 +63,6 @@ public class TratamentoEtapa implements EtapaPipeline {
         Long conjuntoId = ctx.getConjuntoId() != null
                 ? ctx.getConjuntoId() : alvosService.conjuntoId(arquivoId);
 
-        // tem que ser a primeira instrucao da transacao
-        oracle.prepararSessao();
-
         Long stagingId = execucaoDaStaging(ctx);
         long recebidas = oracle.restantes(stagingId);
         if (recebidas == 0) {
@@ -323,13 +320,35 @@ public class TratamentoEtapa implements EtapaPipeline {
                 registroPerfis.buscar(alvosService.tipoConjunto(arquivoId));
 
         List<Camada> camadas = new ArrayList<>();
+        List<String> semPerfil = new ArrayList<>();
+
         for (Object[] linha : linhas) {
             String nome = (String) linha[1];
-            PerfilCamada perfil = registroPerfis.porNomeDeCamada(nome)
-                    .or(() -> doConjunto)
-                    .orElseThrow(() -> new RegistroPerfis.PerfilNaoDefinidoException(
-                            alvosService.tipoConjunto(arquivoId)));
-            camadas.add(new Camada((Long) linha[0], nome, perfil));
+            Optional<PerfilCamada> peloNome = registroPerfis.porNomeDeCamada(nome);
+
+            // o perfil do conjunto so serve quando ha uma camada so. Com varias, herdar
+            // o tipo do conjunto joga uma camada na tabela de outra: no pacote do CAR,
+            // Area_de_Preservacao_Permanente e Servidao_Administrativa viravam IMOVEL e
+            // sobrescreviam o perimetro do imovel no MERGE por codigo do CAR.
+            Optional<PerfilCamada> perfil = peloNome.isPresent() || linhas.size() == 1
+                    ? peloNome.or(() -> doConjunto)
+                    : Optional.empty();
+
+            if (perfil.isEmpty()) {
+                semPerfil.add(nome);
+                continue;
+            }
+            camadas.add(new Camada((Long) linha[0], nome, perfil.get()));
+        }
+
+        if (camadas.isEmpty()) {
+            throw new RegistroPerfis.PerfilNaoDefinidoException(
+                    alvosService.tipoConjunto(arquivoId));
+        }
+
+        if (!semPerfil.isEmpty()) {
+            log.warn("Camada(s) sem perfil proprio, deixada(s) fora do tratamento: {}."
+                    + " Os dados delas nao foram carregados em nenhuma tabela.", semPerfil);
         }
 
         camadas.sort(Comparator.comparingInt(c -> c.perfil().ordemNoTratamento()));
