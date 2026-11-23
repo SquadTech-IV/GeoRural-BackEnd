@@ -258,6 +258,22 @@ public class TratamentoEtapa implements EtapaPipeline {
                     trilha.passo("PADRONIZACAO", camada.nome() + ": carga em EMBARGO, "
                             + gravadas + " registro(s).", "FEICAO_STAGING", "EMBARGO");
                 }
+                case "FOCO_CALOR" -> {
+                    TratamentoOracle.Carga carga =
+                            oracle.carregarFocoCalor(stagingId, versaoId, arq);
+                    resumo.add(carga.gravadas() + " foco(s) de calor");
+                    trilha.passo("PADRONIZACAO", camada.nome()
+                            + ": carga em FOCO_CALOR, " + carga.gravadas()
+                            + " foco(s) novo(s).", "FEICAO_STAGING", "FOCO_CALOR");
+
+                    if (carga.ignoradas() > 0) {
+                        resumo.add(carga.ignoradas() + " ja existente(s)");
+                        trilha.passo("VALIDACAO", camada.nome() + ": " + carga.ignoradas()
+                                        + " foco(s) ja estavam na base, com a mesma data e a mesma"
+                                        + " posicao, e nao foram repetidos para nao contar duas vezes.",
+                                "FEICAO_STAGING", "-");
+                    }
+                }
                 case "MALHA_MUNICIPAL" -> {
                     long gravadas = oracle.carregarMunicipio(stagingId, arq);
                     resumo.add(gravadas + " municipio(s)");

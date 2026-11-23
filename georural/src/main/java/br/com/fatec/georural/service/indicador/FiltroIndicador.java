@@ -34,14 +34,16 @@ public record FiltroIndicador(
             "valor",
             "valorDesc",
             "calculo",
-            "municipio"
+            "municipio",
+            "ocorrencia"
     );
 
     public static final List<String> ORDENACOES_MUNICIPIO = List.of(
             "municipio",
             "valor",
             "valorDesc",
-            "calculo"
+            "calculo",
+            "ocorrencia"
     );
 
     public static FiltroIndicador montar(
