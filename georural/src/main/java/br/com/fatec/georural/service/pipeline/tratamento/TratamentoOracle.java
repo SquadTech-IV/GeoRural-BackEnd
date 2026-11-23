@@ -143,6 +143,11 @@ public class TratamentoOracle {
     public long restantes(Long execucaoId) {
         return restantes(execucaoId, null);
     }
+    
+    public long carregarDesmatamento(Long execucaoId, Long versaoId, Long arquivoId) {
+        return comSaidaNoMeio("PKG_TRATAMENTO.carregar_desmatamento(?, ?, ?, ?)", 3,
+                execucaoId, versaoId, arquivoId);
+    }
 
     public long restantes(Long execucaoId, Long arquivoId) {
         Long total = jdbc.queryForObject("SELECT PKG_TRATAMENTO.restantes(?, ?) FROM DUAL",

@@ -18,7 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.ArrayList;
 import java.util.List;
 
-// etapa 4 - CALCULO: IRL, IAE, ICV e ISAP sobre os imoveis alcancados pela rodada
+// etapa 4 - CALCULO: IRL, IAE, ICV, ISAP e IDESMAT sobre os imoveis alcancados pela rodada
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -121,20 +121,28 @@ public class CalculoEtapa implements EtapaPipeline {
                     "AREA_PROTEGIDA + IMOVEL_RURAL", "RESULTADO_ISAP_RESUMO");
         }
 
-        if (indicadores.contains("IAPP")) {
+        if (indicadores.contains("IDESMAT")) {
             RegraVigenteService.RegraEmUso regra =
-                    regras.emUso("IAPP", regraForcada(ctx, "rcaIdIapp"));
-            Long appVersaoId = "APP".equals(escopo) ? versaoId : null;
-            Long vegVersaoId = "VEGETACAO".equals(escopo) ? versaoId : null;
+                    regras.emUso("IDESMAT", regraForcada(ctx, "rcaIdIdesmat"));
 
-            long feitos = oracle.calcularIapp(
-                    versaoId, execucaoId, regra.id(), escopo, appVersaoId, vegVersaoId);
-            resumos.add("IAPP " + regra.versao() + " em " + feitos + " imovel(eis)");
-            ctx.comParametro("regraIapp", regra.versao());
-            trilha.passo("CRUZAMENTO", "IAPP pela regra " + regra.versao()
-                            + " (dissolucao de APP e VEGETACAO_NATIVA, recorte da APP no imovel"
-                            + " e calculo de passivo ambiental em ha): " + feitos + " resultado(s).",
-                    "APP + VEGETACAO_NATIVA + IMOVEL_RURAL", "RESULTADO_IAPP");
+            String m2008 = regra.parametros().getOrDefault("marco_2008", "2008-07-22");
+            String m2019 = regra.parametros().getOrDefault("marco_2019", "2019-07-31");
+            String m2020 = regra.parametros().getOrDefault("marco_2020", "2020-12-31");
+            String sridEq = regra.parametros().getOrDefault("srid_equivalente", "102033");
+
+            long feitos = oracle.calcularIdesmat(versaoId, execucaoId, regra.id(), escopo);
+            resumos.add("IDESMAT " + regra.versao() + " em " + feitos + " imovel(eis)");
+            ctx.comParametro("regraIdesmat", regra.versao());
+            ctx.comParametro("marco_2008", m2008);
+            ctx.comParametro("marco_2019", m2019);
+            ctx.comParametro("marco_2020", m2020);
+            ctx.comParametro("srid_equivalente", sridEq);
+            trilha.passo("DISSOLVER", "IDESMAT pela regra " + regra.versao()
+                            + " (cruzamento EPSG:4674, dissolucao SDO_AGGR_UNION e medicao em"
+                            + " projecao equivalente SRID " + sridEq + " apos "
+                            + m2008 + ", " + m2019 + " e " + m2020 + "): "
+                            + feitos + " resultado(s).",
+                    "DESMATAMENTO + IMOVEL_RURAL", "RESULTADO_INDICADOR");
         }
 
         transformacoes.gravar(execucaoId, trilha.passos());
@@ -148,12 +156,12 @@ public class CalculoEtapa implements EtapaPipeline {
 
     private List<String> indicadoresDoEscopo(String tipoConjunto) {
         return switch (tipoConjunto == null ? "" : tipoConjunto) {
-            case "IMOVEL" -> List.of("IRL", "IAE", "ICV", "ISAP", "IAPP");
+            case "IMOVEL" -> List.of("IRL", "IAE", "ICV", "ISAP", "IDESMAT");
             case "RESERVA_LEGAL" -> List.of("IRL");
             case "EMBARGO" -> List.of("IAE");
-            case "VEGETACAO" -> List.of("ICV", "IAPP");
+            case "VEGETACAO" -> List.of("ICV");
             case "AREA_PROTEGIDA" -> List.of("ISAP");
-            case "APP" -> List.of("IAPP");
+            case "DESMATAMENTO" -> List.of("IDESMAT");
             default -> List.of();
         };
     }

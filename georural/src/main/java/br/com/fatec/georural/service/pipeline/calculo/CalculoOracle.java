@@ -25,6 +25,8 @@ public class CalculoOracle {
                 versaoId, execucaoId, regraId, escopo);
     }
 
+    
+
     public long calcularIcv(Long versaoId, Long execucaoId, Long regraId,
                             double minimoPct, String escopo) {
         return comUmaSaida("PKG_CALCULO.calcular_icv(?, ?, ?, ?, ?, ?)",
@@ -38,6 +40,17 @@ public class CalculoOracle {
         return comUmaSaida("PKG_CALCULO.calcular_ifc(?, ?, ?, ?, ?, ?, ?, ?)",
                 versaoId, execucaoId, regraId,
                 java.sql.Date.valueOf(inicio), java.sql.Date.valueOf(fim), fator, escopo);
+    }
+
+    public long calcularIapp(Long versaoId, Long execucaoId, Long regraId,
+                             String escopo, Long appVersaoId, Long vegVersaoId) {
+        return comUmaSaida("PKG_CALCULO.calcular_iapp(?, ?, ?, ?, ?, ?, ?)",
+                versaoId, execucaoId, regraId, escopo, appVersaoId, vegVersaoId);
+    }
+
+    public long calcularIdesmat(Long versaoId, Long execucaoId, Long regraId, String escopo) {
+        return comUmaSaida("PKG_CALCULO.calcular_idesmat(?, ?, ?, ?, ?)",
+                versaoId, execucaoId, regraId, escopo);
     }
 
     public long agregarMunicipio(Long versaoId, String sigla) {
@@ -58,29 +71,6 @@ public class CalculoOracle {
                                    Long execucaoId, Long regraId) {
         return comUmaSaida("PKG_ISAP.calcular_imovel(?, ?, ?, ?, ?, ?)",
                 imovelId, versaoId, camadaVersaoId, execucaoId, regraId);
-    }
-
-    public long calcularIapp(Long versaoId, Long execucaoId, Long regraId,
-                             String escopo, Long appVersaoId, Long vegVersaoId) {
-        return comUmaSaida("PKG_CALCULO.calcular_iapp(?, ?, ?, ?, ?, ?, ?)",
-                versaoId, execucaoId, regraId, escopo, appVersaoId, vegVersaoId);
-    }
-
-    public void calcularIappImovel(Long imovelId, Long versaoId, Long appVersaoId,
-                                   Long vegVersaoId, Long execucaoId, Long regraId) {
-        jdbc.execute((java.sql.Connection conexao) -> {
-            try (CallableStatement cs = conexao.prepareCall(
-                    "BEGIN PKG_IAPP.calcular_imovel(?, ?, ?, ?, ?, ?); END;")) {
-                cs.setObject(1, imovelId);
-                cs.setObject(2, versaoId);
-                cs.setObject(3, appVersaoId);
-                cs.setObject(4, vegVersaoId);
-                cs.setObject(5, execucaoId);
-                cs.setObject(6, regraId);
-                cs.execute();
-            }
-            return null;
-        });
     }
 
     // quantos imoveis o escopo alcanca nesta versao

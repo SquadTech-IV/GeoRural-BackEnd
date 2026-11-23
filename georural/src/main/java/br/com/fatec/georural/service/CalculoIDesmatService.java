@@ -22,7 +22,6 @@ public class CalculoIDesmatService {
     public ResultadoIDesmat calcular(List<EventoDesmatamento> eventos, BigDecimal areaImovelHa) {
         ParametrosVigentes p = parametrosRegraService.daRegraVigente("IDESMAT");
 
-
         List<String> marcos = p.nomes().stream()
                 .filter(nome -> nome.startsWith("marco"))
                 .sorted(Comparator.comparing(p::data))
@@ -32,16 +31,23 @@ public class CalculoIDesmatService {
         for (String nome : marcos) {
             LocalDate marco = p.data(nome);
 
-            BigDecimal areaHa = eventos.stream()
-                    .filter(evento -> !evento.data().isBefore(marco))
+            BigDecimal areaBrutaHa = eventos == null ? BigDecimal.ZERO : eventos.stream()
+                    .filter(evento -> evento != null && evento.data() != null && evento.areaHa() != null)
+                    .filter(evento -> evento.data().isAfter(marco))
                     .map(EventoDesmatamento::areaHa)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add)
-                    .setScale(4, RoundingMode.HALF_UP);
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-            BigDecimal percentual = areaImovelHa.compareTo(BigDecimal.ZERO) > 0
+            BigDecimal areaHa = areaImovelHa != null && areaImovelHa.compareTo(BigDecimal.ZERO) > 0
+                    && areaBrutaHa.compareTo(areaImovelHa) > 0
+                    ? areaImovelHa.setScale(4, RoundingMode.HALF_UP)
+                    : areaBrutaHa.setScale(4, RoundingMode.HALF_UP);
+
+            BigDecimal percentual = areaImovelHa != null && areaImovelHa.compareTo(BigDecimal.ZERO) > 0
                     ? areaHa.divide(areaImovelHa, 10, RoundingMode.HALF_UP)
-                    .multiply(CEM).setScale(4, RoundingMode.HALF_UP)
-                    : BigDecimal.ZERO;
+                    .multiply(CEM)
+                    .min(CEM)
+                    .setScale(4, RoundingMode.HALF_UP)
+                    : BigDecimal.ZERO.setScale(4, RoundingMode.HALF_UP);
 
             porMarco.add(new ResultadoIDesmat.SupressaoPorMarco(nome, marco, areaHa, percentual));
         }
