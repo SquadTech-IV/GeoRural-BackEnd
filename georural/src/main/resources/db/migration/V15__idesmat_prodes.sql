@@ -1,5 +1,5 @@
 -- =====================================================================
--- GeoRural DataHub - V11 - IDesmat (US#25)
+-- GeoRural DataHub - V15 - IDesmat
 -- =====================================================================
 
 -- Garante colunas auxiliares para data de referencia e projeção equivalente

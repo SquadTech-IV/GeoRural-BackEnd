@@ -1,5 +1,5 @@
 -- =====================================================================
--- GeoRural DataHub - V11 - Modelagem do Indicador IAPP (US#23.04)
+-- GeoRural DataHub - V13 - Modelagem do Indicador IAPP
 -- =====================================================================
 
 -- 1. Enriquecimento das tabelas APP e VEGETACAO_NATIVA para filtros parametrizaveis

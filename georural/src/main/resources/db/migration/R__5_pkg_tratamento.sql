@@ -58,51 +58,11 @@ CREATE OR REPLACE PACKAGE PKG_TRATAMENTO AS
                                  p_por_codigo OUT NUMBER, p_por_geometria OUT NUMBER,
                                  p_arq_id NUMBER DEFAULT NULL);
 
+    PROCEDURE carregar_desmatamento(p_exe_id NUMBER, p_ver_id NUMBER, p_gravadas OUT NUMBER,
+                                    p_arq_id NUMBER DEFAULT NULL);
+
 END PKG_TRATAMENTO;
 /
-
--- Na especificacao de PKG_TRATAMENTO:
-PROCEDURE carregar_desmatamento(p_exe_id NUMBER, p_ver_id NUMBER, p_gravadas OUT NUMBER,
-                                  p_arq_id NUMBER DEFAULT NULL);
-
--- No BODY de PKG_TRATAMENTO:
-PROCEDURE carregar_desmatamento(p_exe_id NUMBER, p_ver_id NUMBER, p_gravadas OUT NUMBER,
-                                  p_arq_id NUMBER DEFAULT NULL) IS
-BEGIN
-    DELETE FROM DESMATAMENTO d
-     WHERE (p_arq_id IS NOT NULL AND d.arq_bruto_id = p_arq_id)
-        OR (p_arq_id IS NULL AND d.ver_id = p_ver_id);
-
-    INSERT INTO DESMATAMENTO (
-        arq_bruto_id, ver_id, des_ano_ref, des_data_corte, des_bioma, des_area_ha, des_geometria
-    )
-    SELECT NVL(s.stg_arq_bruto_id, e.arq_bruto_id),
-           p_ver_id,
-           NVL(
-               JSON_VALUE(s.stg_atributos, '$.ano' RETURNING NUMBER NULL ON ERROR),
-               EXTRACT(YEAR FROM TO_DATE(SUBSTR(JSON_VALUE(s.stg_atributos, '$.data_corte'), 1, 10)
-                                         DEFAULT NULL ON CONVERSION ERROR, 'YYYY-MM-DD'))
-           ) AS ano_ref,
-           NVL(
-               TO_DATE(SUBSTR(JSON_VALUE(s.stg_atributos, '$.data_corte'), 1, 10)
-                       DEFAULT NULL ON CONVERSION ERROR, 'YYYY-MM-DD'),
-               CASE
-                   WHEN JSON_VALUE(s.stg_atributos, '$.ano' RETURNING NUMBER NULL ON ERROR) IS NOT NULL
-                   THEN TO_DATE(JSON_VALUE(s.stg_atributos, '$.ano') || '-12-31', 'YYYY-MM-DD')
-                   ELSE NULL
-               END
-           ) AS data_corte,
-           SUBSTR(JSON_VALUE(s.stg_atributos, '$.bioma'), 1, 80),
-           s.stg_area_ha,
-           s.stg_geometria
-      FROM FEICAO_STAGING s
-      JOIN EXECUCAO_PIPELINE e ON e.exe_id = s.exe_id
-     WHERE s.exe_id = p_exe_id
-       AND (p_arq_id IS NULL OR s.stg_arq_bruto_id = p_arq_id)
-       AND s.stg_geometria IS NOT NULL;
-
-    p_gravadas := SQL%ROWCOUNT;
-END carregar_desmatamento;
 
 CREATE OR REPLACE PACKAGE BODY PKG_TRATAMENTO AS
 
@@ -607,6 +567,44 @@ CREATE OR REPLACE PACKAGE BODY PKG_TRATAMENTO AS
            AND i.imo_geometria IS NOT NULL;
         p_por_geometria := SQL%ROWCOUNT;
     END vincular_municipio;
+
+    PROCEDURE carregar_desmatamento(p_exe_id NUMBER, p_ver_id NUMBER, p_gravadas OUT NUMBER,
+                                    p_arq_id NUMBER DEFAULT NULL) IS
+    BEGIN
+        DELETE FROM DESMATAMENTO d
+         WHERE (p_arq_id IS NOT NULL AND d.arq_bruto_id = p_arq_id)
+            OR (p_arq_id IS NULL AND d.ver_id = p_ver_id);
+
+        INSERT INTO DESMATAMENTO (
+            arq_bruto_id, ver_id, des_ano_ref, des_data_corte, des_bioma, des_area_ha, des_geometria
+        )
+        SELECT NVL(s.stg_arq_bruto_id, e.arq_bruto_id),
+               p_ver_id,
+               NVL(
+                   JSON_VALUE(s.stg_atributos, '$.ano' RETURNING NUMBER NULL ON ERROR),
+                   EXTRACT(YEAR FROM TO_DATE(SUBSTR(JSON_VALUE(s.stg_atributos, '$.data_corte'), 1, 10)
+                                             DEFAULT NULL ON CONVERSION ERROR, 'YYYY-MM-DD'))
+               ) AS ano_ref,
+               NVL(
+                   TO_DATE(SUBSTR(JSON_VALUE(s.stg_atributos, '$.data_corte'), 1, 10)
+                           DEFAULT NULL ON CONVERSION ERROR, 'YYYY-MM-DD'),
+                   CASE
+                       WHEN JSON_VALUE(s.stg_atributos, '$.ano' RETURNING NUMBER NULL ON ERROR) IS NOT NULL
+                       THEN TO_DATE(JSON_VALUE(s.stg_atributos, '$.ano') || '-12-31', 'YYYY-MM-DD')
+                       ELSE NULL
+                   END
+               ) AS data_corte,
+               SUBSTR(JSON_VALUE(s.stg_atributos, '$.bioma'), 1, 80),
+               s.stg_area_ha,
+               s.stg_geometria
+          FROM FEICAO_STAGING s
+          JOIN EXECUCAO_PIPELINE e ON e.exe_id = s.exe_id
+         WHERE s.exe_id = p_exe_id
+           AND (p_arq_id IS NULL OR s.stg_arq_bruto_id = p_arq_id)
+           AND s.stg_geometria IS NOT NULL;
+
+        p_gravadas := SQL%ROWCOUNT;
+    END carregar_desmatamento;
 
 END PKG_TRATAMENTO;
 /

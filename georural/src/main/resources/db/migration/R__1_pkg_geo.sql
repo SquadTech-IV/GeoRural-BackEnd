@@ -49,6 +49,10 @@ create or replace package pkg_geo as
    function ponto_y (
       p_geom sdo_geometry
    ) return number;
+   function area_equivalente_ha (
+      p_geom    sdo_geometry,
+      p_srid_eq number default 102033
+   ) return number;
 end pkg_geo;
 /
 
@@ -308,13 +312,6 @@ create or replace package body pkg_geo as
       return null;
    end ponto_y;
 
-    -- Na especificacao de PKG_GEO:
-function area_equivalente_ha (
-   p_geom    sdo_geometry,
-   p_srid_eq number default 102033
-) return number;
-
--- No BODY de PKG_GEO:
    function area_equivalente_ha (
       p_geom    sdo_geometry,
       p_srid_eq number default 102033

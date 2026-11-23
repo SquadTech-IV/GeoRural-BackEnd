@@ -1,5 +1,5 @@
 -- =====================================================================
--- GeoRural DataHub - V10 - Modelagem do Indicador ISAP (US#24.04)
+-- GeoRural DataHub - V14 - Modelagem do Indicador ISAP
 -- =====================================================================
 
 -- 1. Enriquecimento da tabela AREA_PROTEGIDA

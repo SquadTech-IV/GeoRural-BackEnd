@@ -10,6 +10,11 @@ create or replace package pkg_calculo as
       p_escopo varchar2
    ) return sys.odcinumberlist;
 
+   -- id do indicador pela sigla; usado tambem pelo PKG_CALCULO_ICV
+   function id_indicador (
+      p_sigla varchar2
+   ) return number;
+
    procedure calcular_irl (
       p_ver_id     number,
       p_exe_id     number,
@@ -19,107 +24,8 @@ create or replace package pkg_calculo as
       p_calculados out number
    );
 
--- Na especificacao de PKG_CALCULO:
-PROCEDURE calcular_idesmat(p_ver_id NUMBER, p_exe_id NUMBER, p_rca_id NUMBER,
-                           p_escopo VARCHAR2, p_calculados OUT NUMBER);
-
--- No BODY de PKG_CALCULO:
-PROCEDURE calcular_idesmat(p_ver_id NUMBER, p_exe_id NUMBER, p_rca_id NUMBER,
-                           p_escopo VARCHAR2, p_calculados OUT NUMBER) IS
-    v_ids      SYS.ODCINUMBERLIST := imoveis_no_escopo(p_ver_id, p_escopo);
-    v_ind      NUMBER := id_indicador('IDESMAT');
-    v_m2008    DATE := DATE '2008-07-22';
-    v_m2019    DATE := DATE '2019-07-31';
-    v_m2020    DATE := DATE '2020-12-31';
-    v_srid_eq  NUMBER := 102033;
-BEGIN
-    IF v_ids.COUNT = 0 THEN
-        p_calculados := 0;
-        RETURN;
-    END IF;
-
-    FOR r IN (SELECT prc_nome, prc_valor FROM PARAMETRO_REGRA_CALCULO WHERE rca_id = p_rca_id) LOOP
-        IF r.prc_nome = 'marco_2008' THEN v_m2008 := TO_DATE(SUBSTR(r.prc_valor, 1, 10), 'YYYY-MM-DD'); END IF;
-        IF r.prc_nome = 'marco_2019' THEN v_m2019 := TO_DATE(SUBSTR(r.prc_valor, 1, 10), 'YYYY-MM-DD'); END IF;
-        IF r.prc_nome = 'marco_2020' THEN v_m2020 := TO_DATE(SUBSTR(r.prc_valor, 1, 10), 'YYYY-MM-DD'); END IF;
-        IF r.prc_nome = 'srid_equivalente' THEN v_srid_eq := TO_NUMBER(r.prc_valor); END IF;
-    END LOOP;
-
-    MERGE INTO RESULTADO_INDICADOR d
-    USING (
-        SELECT o.imo_id,
-               v_ind AS ind_id,
-               LEAST(o.ha_2008 / NULLIF(o.area_imovel, 0) * 100, 100) AS pct_2008,
-               LEAST(o.ha_2008, o.area_imovel) AS ha_2008,
-               CASE WHEN o.ha_2008 > 0 THEN 'COM_DESMATAMENTO' ELSE 'SEM_DESMATAMENTO' END AS situacao,
-               '{"area_imovel_ha":' || TO_CHAR(ROUND(o.area_imovel, 4))
-               || ',"srid_equivalente":' || TO_CHAR(v_srid_eq)
-               || ',"dissolvido":true'
-               || ',"marcos":['
-               || '{"marco":"marco_2008","data":"' || TO_CHAR(v_m2008, 'YYYY-MM-DD')
-               || '","area_ha":' || TO_CHAR(ROUND(LEAST(o.ha_2008, o.area_imovel), 4))
-               || ',"percentual":' || TO_CHAR(ROUND(NVL(LEAST(o.ha_2008 / NULLIF(o.area_imovel, 0) * 100, 100), 0), 4)) || '},'
-               || '{"marco":"marco_2019","data":"' || TO_CHAR(v_m2019, 'YYYY-MM-DD')
-               || '","area_ha":' || TO_CHAR(ROUND(LEAST(o.ha_2019, o.area_imovel), 4))
-               || ',"percentual":' || TO_CHAR(ROUND(NVL(LEAST(o.ha_2019 / NULLIF(o.area_imovel, 0) * 100, 100), 0), 4)) || '},'
-               || '{"marco":"marco_2020","data":"' || TO_CHAR(v_m2020, 'YYYY-MM-DD')
-               || '","area_ha":' || TO_CHAR(ROUND(LEAST(o.ha_2020, o.area_imovel), 4))
-               || ',"percentual":' || TO_CHAR(ROUND(NVL(LEAST(o.ha_2020 / NULLIF(o.area_imovel, 0) * 100, 100), 0), 4)) || '}'
-               || ']}' AS detalhes
-          FROM (
-              SELECT i.imo_id,
-                     NVL(PKG_GEO.area_equivalente_ha(i.imo_geometria, v_srid_eq), NVL(i.imo_area_total, 0)) AS area_imovel,
-                     NVL(PKG_GEO.area_equivalente_ha(
-                         PKG_GEO.intersecao(
-                             i.imo_geometria,
-                             (SELECT SDO_AGGR_UNION(SDOAGGRTYPE(ds.des_geometria, 0.05))
-                                FROM DESMATAMENTO ds
-                               WHERE ds.des_geometria IS NOT NULL
-                                 AND NVL(ds.des_data_corte, TO_DATE(ds.des_ano_ref || '-12-31', 'YYYY-MM-DD')) > v_m2008
-                                 AND SDO_RELATE(ds.des_geometria, i.imo_geometria, 'mask=ANYINTERACT') = 'TRUE')
-                         ), v_srid_eq), 0) AS ha_2008,
-                     NVL(PKG_GEO.area_equivalente_ha(
-                         PKG_GEO.intersecao(
-                             i.imo_geometria,
-                             (SELECT SDO_AGGR_UNION(SDOAGGRTYPE(ds.des_geometria, 0.05))
-                                FROM DESMATAMENTO ds
-                               WHERE ds.des_geometria IS NOT NULL
-                                 AND NVL(ds.des_data_corte, TO_DATE(ds.des_ano_ref || '-12-31', 'YYYY-MM-DD')) > v_m2019
-                                 AND SDO_RELATE(ds.des_geometria, i.imo_geometria, 'mask=ANYINTERACT') = 'TRUE')
-                         ), v_srid_eq), 0) AS ha_2019,
-                     NVL(PKG_GEO.area_equivalente_ha(
-                         PKG_GEO.intersecao(
-                             i.imo_geometria,
-                             (SELECT SDO_AGGR_UNION(SDOAGGRTYPE(ds.des_geometria, 0.05))
-                                FROM DESMATAMENTO ds
-                               WHERE ds.des_geometria IS NOT NULL
-                                 AND NVL(ds.des_data_corte, TO_DATE(ds.des_ano_ref || '-12-31', 'YYYY-MM-DD')) > v_m2020
-                                 AND SDO_RELATE(ds.des_geometria, i.imo_geometria, 'mask=ANYINTERACT') = 'TRUE')
-                         ), v_srid_eq), 0) AS ha_2020
-                FROM IMOVEL_RURAL i
-               WHERE i.imo_id IN (SELECT column_value FROM TABLE(v_ids))
-          ) o
-    ) f
-    ON (d.imo_id = f.imo_id AND d.ind_id = f.ind_id AND d.ver_id = p_ver_id)
-    WHEN MATCHED THEN
-        UPDATE SET d.rin_valor_percentual = f.pct_2008,
-                   d.rin_valor_hectares   = f.ha_2008,
-                   d.rin_valor_absoluto   = f.ha_2008,
-                   d.rin_situacao         = f.situacao,
-                   d.rin_detalhes         = f.detalhes,
-                   d.rin_data_calculo     = SYSTIMESTAMP,
-                   d.exe_id               = p_exe_id,
-                   d.rca_id               = p_rca_id
-    WHEN NOT MATCHED THEN
-        INSERT (imo_id, ind_id, ver_id, exe_id, rca_id, rin_valor_percentual,
-                rin_valor_hectares, rin_valor_absoluto, rin_situacao, rin_detalhes,
-                rin_data_calculo, rin_vigente)
-        VALUES (f.imo_id, f.ind_id, p_ver_id, p_exe_id, p_rca_id, f.pct_2008,
-                f.ha_2008, f.ha_2008, f.situacao, f.detalhes,
-                SYSTIMESTAMP, 'N');
-
-    p_calculados := SQL%ROWCOUNT;
-END calcular_idesmat;
+   PROCEDURE calcular_idesmat(p_ver_id NUMBER, p_exe_id NUMBER, p_rca_id NUMBER,
+                              p_escopo VARCHAR2, p_calculados OUT NUMBER);
 
    procedure calcular_iae (
       p_ver_id     number,
@@ -912,5 +818,103 @@ create or replace package body pkg_calculo as
       );
    end publicar;
 
+   PROCEDURE calcular_idesmat(p_ver_id NUMBER, p_exe_id NUMBER, p_rca_id NUMBER,
+                              p_escopo VARCHAR2, p_calculados OUT NUMBER) IS
+       v_ids      SYS.ODCINUMBERLIST := imoveis_no_escopo(p_ver_id, p_escopo);
+       v_ind      NUMBER := id_indicador('IDESMAT');
+       v_m2008    DATE := DATE '2008-07-22';
+       v_m2019    DATE := DATE '2019-07-31';
+       v_m2020    DATE := DATE '2020-12-31';
+       v_srid_eq  NUMBER := 102033;
+   BEGIN
+       IF v_ids.COUNT = 0 THEN
+           p_calculados := 0;
+           RETURN;
+       END IF;
+
+       FOR r IN (SELECT prc_nome, prc_valor FROM PARAMETRO_REGRA_CALCULO WHERE rca_id = p_rca_id) LOOP
+           IF r.prc_nome = 'marco_2008' THEN v_m2008 := TO_DATE(SUBSTR(r.prc_valor, 1, 10), 'YYYY-MM-DD'); END IF;
+           IF r.prc_nome = 'marco_2019' THEN v_m2019 := TO_DATE(SUBSTR(r.prc_valor, 1, 10), 'YYYY-MM-DD'); END IF;
+           IF r.prc_nome = 'marco_2020' THEN v_m2020 := TO_DATE(SUBSTR(r.prc_valor, 1, 10), 'YYYY-MM-DD'); END IF;
+           IF r.prc_nome = 'srid_equivalente' THEN v_srid_eq := TO_NUMBER(r.prc_valor); END IF;
+       END LOOP;
+
+       MERGE INTO RESULTADO_INDICADOR d
+       USING (
+           SELECT o.imo_id,
+                  v_ind AS ind_id,
+                  LEAST(o.ha_2008 / NULLIF(o.area_imovel, 0) * 100, 100) AS pct_2008,
+                  LEAST(o.ha_2008, o.area_imovel) AS ha_2008,
+                  CASE WHEN o.ha_2008 > 0 THEN 'COM_DESMATAMENTO' ELSE 'SEM_DESMATAMENTO' END AS situacao,
+                  '{"area_imovel_ha":' || TO_CHAR(ROUND(o.area_imovel, 4))
+                  || ',"srid_equivalente":' || TO_CHAR(v_srid_eq)
+                  || ',"dissolvido":true'
+                  || ',"marcos":['
+                  || '{"marco":"marco_2008","data":"' || TO_CHAR(v_m2008, 'YYYY-MM-DD')
+                  || '","area_ha":' || TO_CHAR(ROUND(LEAST(o.ha_2008, o.area_imovel), 4))
+                  || ',"percentual":' || TO_CHAR(ROUND(NVL(LEAST(o.ha_2008 / NULLIF(o.area_imovel, 0) * 100, 100), 0), 4)) || '},'
+                  || '{"marco":"marco_2019","data":"' || TO_CHAR(v_m2019, 'YYYY-MM-DD')
+                  || '","area_ha":' || TO_CHAR(ROUND(LEAST(o.ha_2019, o.area_imovel), 4))
+                  || ',"percentual":' || TO_CHAR(ROUND(NVL(LEAST(o.ha_2019 / NULLIF(o.area_imovel, 0) * 100, 100), 0), 4)) || '},'
+                  || '{"marco":"marco_2020","data":"' || TO_CHAR(v_m2020, 'YYYY-MM-DD')
+                  || '","area_ha":' || TO_CHAR(ROUND(LEAST(o.ha_2020, o.area_imovel), 4))
+                  || ',"percentual":' || TO_CHAR(ROUND(NVL(LEAST(o.ha_2020 / NULLIF(o.area_imovel, 0) * 100, 100), 0), 4)) || '}'
+                  || ']}' AS detalhes
+             FROM (
+                 SELECT i.imo_id,
+                        NVL(PKG_GEO.area_equivalente_ha(i.imo_geometria, v_srid_eq), NVL(i.imo_area_total, 0)) AS area_imovel,
+                        NVL(PKG_GEO.area_equivalente_ha(
+                            PKG_GEO.intersecao(
+                                i.imo_geometria,
+                                (SELECT SDO_AGGR_UNION(SDOAGGRTYPE(ds.des_geometria, 0.05))
+                                   FROM DESMATAMENTO ds
+                                  WHERE ds.des_geometria IS NOT NULL
+                                    AND NVL(ds.des_data_corte, TO_DATE(ds.des_ano_ref || '-12-31', 'YYYY-MM-DD')) > v_m2008
+                                    AND SDO_RELATE(ds.des_geometria, i.imo_geometria, 'mask=ANYINTERACT') = 'TRUE')
+                            ), v_srid_eq), 0) AS ha_2008,
+                        NVL(PKG_GEO.area_equivalente_ha(
+                            PKG_GEO.intersecao(
+                                i.imo_geometria,
+                                (SELECT SDO_AGGR_UNION(SDOAGGRTYPE(ds.des_geometria, 0.05))
+                                   FROM DESMATAMENTO ds
+                                  WHERE ds.des_geometria IS NOT NULL
+                                    AND NVL(ds.des_data_corte, TO_DATE(ds.des_ano_ref || '-12-31', 'YYYY-MM-DD')) > v_m2019
+                                    AND SDO_RELATE(ds.des_geometria, i.imo_geometria, 'mask=ANYINTERACT') = 'TRUE')
+                            ), v_srid_eq), 0) AS ha_2019,
+                        NVL(PKG_GEO.area_equivalente_ha(
+                            PKG_GEO.intersecao(
+                                i.imo_geometria,
+                                (SELECT SDO_AGGR_UNION(SDOAGGRTYPE(ds.des_geometria, 0.05))
+                                   FROM DESMATAMENTO ds
+                                  WHERE ds.des_geometria IS NOT NULL
+                                    AND NVL(ds.des_data_corte, TO_DATE(ds.des_ano_ref || '-12-31', 'YYYY-MM-DD')) > v_m2020
+                                    AND SDO_RELATE(ds.des_geometria, i.imo_geometria, 'mask=ANYINTERACT') = 'TRUE')
+                            ), v_srid_eq), 0) AS ha_2020
+                   FROM IMOVEL_RURAL i
+                  WHERE i.imo_id IN (SELECT column_value FROM TABLE(v_ids))
+             ) o
+       ) f
+       ON (d.imo_id = f.imo_id AND d.ind_id = f.ind_id AND d.ver_id = p_ver_id)
+       WHEN MATCHED THEN
+           UPDATE SET d.rin_valor_percentual = f.pct_2008,
+                      d.rin_valor_hectares   = f.ha_2008,
+                      d.rin_valor_absoluto   = f.ha_2008,
+                      d.rin_situacao         = f.situacao,
+                      d.rin_detalhes         = f.detalhes,
+                      d.rin_data_calculo     = SYSTIMESTAMP,
+                      d.exe_id               = p_exe_id,
+                      d.rca_id               = p_rca_id
+       WHEN NOT MATCHED THEN
+           INSERT (imo_id, ind_id, ver_id, exe_id, rca_id, rin_valor_percentual,
+                   rin_valor_hectares, rin_valor_absoluto, rin_situacao, rin_detalhes,
+                   rin_data_calculo, rin_vigente)
+           VALUES (f.imo_id, f.ind_id, p_ver_id, p_exe_id, p_rca_id, f.pct_2008,
+                   f.ha_2008, f.ha_2008, f.situacao, f.detalhes,
+                   SYSTIMESTAMP, 'N');
+
+       p_calculados := SQL%ROWCOUNT;
+   END calcular_idesmat;
+
 end pkg_calculo;
 /
+

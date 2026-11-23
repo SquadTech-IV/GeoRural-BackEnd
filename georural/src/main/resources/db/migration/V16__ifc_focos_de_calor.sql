@@ -1,5 +1,5 @@
 -- =====================================================================
--- GeoRural DataHub - V9 - IFC, indice de focos de calor (US#26)
+-- GeoRural DataHub - V16 - IFC, indice de focos de calor
 -- =====================================================================
 -- O IFC (focos por 1.000 ha) ja tem indicador, regra v1 e os parametros
 -- fator_area e periodo_meses desde o V2. Falta o que o calculo precisa para
