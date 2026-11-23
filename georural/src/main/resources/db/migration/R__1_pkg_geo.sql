@@ -1,166 +1,343 @@
 -- PKG_GEO (repetivel): operacoes geoespaciais no banco
-CREATE OR REPLACE PACKAGE PKG_GEO AS
-    c_tol CONSTANT NUMBER := 0.05;
-
-    FUNCTION area_ha(p_geom SDO_GEOMETRY) RETURN NUMBER;
-    FUNCTION area_intersecao_ha(p_a SDO_GEOMETRY, p_b SDO_GEOMETRY) RETURN NUMBER;
-    FUNCTION intersecao(p_a SDO_GEOMETRY, p_b SDO_GEOMETRY) RETURN SDO_GEOMETRY;
+create or replace package pkg_geo as
+   c_tol constant number := 0.05;
+   function area_ha (
+      p_geom sdo_geometry
+   ) return number;
+   function area_intersecao_ha (
+      p_a sdo_geometry,
+      p_b sdo_geometry
+   ) return number;
+   function intersecao (
+      p_a sdo_geometry,
+      p_b sdo_geometry
+   ) return sdo_geometry;
 
     -- limite da UF, com cache de sessao
-    FUNCTION limite_uf(p_uf VARCHAR2 DEFAULT 'PR') RETURN SDO_GEOMETRY;
-    PROCEDURE limpar_cache;
+   function limite_uf (
+      p_uf varchar2 default 'PR'
+   ) return sdo_geometry;
+   procedure limpar_cache;
 
-    FUNCTION recorte_uf(p_geom SDO_GEOMETRY, p_uf VARCHAR2 DEFAULT 'PR') RETURN SDO_GEOMETRY;
-    FUNCTION dentro_da_uf(p_geom SDO_GEOMETRY, p_uf VARCHAR2 DEFAULT 'PR') RETURN VARCHAR2;
+   function recorte_uf (
+      p_geom sdo_geometry,
+      p_uf   varchar2 default 'PR'
+   ) return sdo_geometry;
+   function dentro_da_uf (
+      p_geom sdo_geometry,
+      p_uf   varchar2 default 'PR'
+   ) return varchar2;
 
     -- 'TRUE' quando a geometria esta inteiramente dentro da UF
-    FUNCTION contida_na_uf(p_geom SDO_GEOMETRY, p_uf VARCHAR2 DEFAULT 'PR') RETURN VARCHAR2;
+   function contida_na_uf (
+      p_geom sdo_geometry,
+      p_uf   varchar2 default 'PR'
+   ) return varchar2;
 
-    FUNCTION saneada(p_geom SDO_GEOMETRY) RETURN SDO_GEOMETRY;
-    FUNCTION valida(p_geom SDO_GEOMETRY) RETURN VARCHAR2;
+   function saneada (
+      p_geom sdo_geometry
+   ) return sdo_geometry;
+   function valida (
+      p_geom sdo_geometry
+   ) return varchar2;
 
     -- coordenadas de um ponto; o recorte por SDO_INTERSECTION devolve o ponto sem
     -- SDO_POINT (em SDO_ORDINATES), por isso os dois lugares sao lidos
-    FUNCTION ponto_x(p_geom SDO_GEOMETRY) RETURN NUMBER;
-    FUNCTION ponto_y(p_geom SDO_GEOMETRY) RETURN NUMBER;
-END PKG_GEO;
+   function ponto_x (
+      p_geom sdo_geometry
+   ) return number;
+   function ponto_y (
+      p_geom sdo_geometry
+   ) return number;
+end pkg_geo;
 /
 
-CREATE OR REPLACE PACKAGE BODY PKG_GEO AS
+create or replace package body pkg_geo as
 
-    g_uf_codigo VARCHAR2(20);
-    g_uf_geom   SDO_GEOMETRY;
+   g_uf_codigo varchar2(20);
+   g_uf_geom   sdo_geometry;
 
-    PROCEDURE limpar_cache IS
-    BEGIN
-        g_uf_codigo := NULL;
-        g_uf_geom := NULL;
-    END limpar_cache;
+   procedure limpar_cache is
+   begin
+      g_uf_codigo := null;
+      g_uf_geom := null;
+   end limpar_cache;
 
-    FUNCTION limite_uf(p_uf VARCHAR2 DEFAULT 'PR') RETURN SDO_GEOMETRY IS
-    BEGIN
-        IF g_uf_codigo = p_uf AND g_uf_geom IS NOT NULL THEN
-            RETURN g_uf_geom;
-        END IF;
+   function limite_uf (
+      p_uf varchar2 default 'PR'
+   ) return sdo_geometry is
+   begin
+      if
+         g_uf_codigo = p_uf
+         and g_uf_geom is not null
+      then
+         return g_uf_geom;
+      end if;
+      select lim_geometria
+        into g_uf_geom
+        from limite_territorial
+       where lim_tipo = 'UF'
+         and lim_codigo = p_uf;
 
-        SELECT lim_geometria INTO g_uf_geom
-          FROM LIMITE_TERRITORIAL
-         WHERE lim_tipo = 'UF' AND lim_codigo = p_uf;
-
-        g_uf_codigo := p_uf;
-        RETURN g_uf_geom;
-    EXCEPTION
-        WHEN NO_DATA_FOUND THEN
-            g_uf_codigo := NULL;
-            g_uf_geom := NULL;
-            RAISE_APPLICATION_ERROR(-20020,
-                'Limite da UF ' || p_uf || ' nao carregado em LIMITE_TERRITORIAL. '
-                || 'Processe a malha municipal do IBGE e chame '
-                || 'POST /api/pipeline/limite-territorial/recarregar.');
-    END limite_uf;
+      g_uf_codigo := p_uf;
+      return g_uf_geom;
+   exception
+      when no_data_found then
+         g_uf_codigo := null;
+         g_uf_geom := null;
+         raise_application_error(
+            -20020,
+            'Limite da UF '
+            || p_uf
+            || ' nao carregado em LIMITE_TERRITORIAL. '
+            || 'Processe a malha municipal do IBGE e chame '
+            || 'POST /api/pipeline/limite-territorial/recarregar.'
+         );
+   end limite_uf;
 
     -- Corrige geometrias invalidas (auto-intersecao, orientacao de aneis).
-    FUNCTION saneada(p_geom SDO_GEOMETRY) RETURN SDO_GEOMETRY IS
-    BEGIN
-        IF p_geom IS NULL THEN RETURN NULL; END IF;
-        RETURN SDO_UTIL.RECTIFY_GEOMETRY(p_geom, c_tol);
-    END saneada;
+   function saneada (
+      p_geom sdo_geometry
+   ) return sdo_geometry is
+   begin
+      if p_geom is null then
+         return null;
+      end if;
+      return sdo_util.rectify_geometry(
+         p_geom,
+         c_tol
+      );
+   end saneada;
 
     -- Area em hectares. NULL se a geometria for nula.
-    FUNCTION area_ha(p_geom SDO_GEOMETRY) RETURN NUMBER IS
-    BEGIN
-        IF p_geom IS NULL THEN RETURN NULL; END IF;
-        RETURN SDO_GEOM.SDO_AREA(p_geom, c_tol, 'unit=HECTARE');
-    EXCEPTION
-        WHEN OTHERS THEN
-            BEGIN
-                RETURN SDO_GEOM.SDO_AREA(saneada(p_geom), c_tol, 'unit=HECTARE');
-            EXCEPTION
-                WHEN OTHERS THEN RETURN NULL;
-            END;
-    END area_ha;
+   function area_ha (
+      p_geom sdo_geometry
+   ) return number is
+   begin
+      if p_geom is null then
+         return null;
+      end if;
+      return sdo_geom.sdo_area(
+         p_geom,
+         c_tol,
+         'unit=HECTARE'
+      );
+   exception
+      when others then
+         begin
+            return sdo_geom.sdo_area(
+               saneada(p_geom),
+               c_tol,
+               'unit=HECTARE'
+            );
+         exception
+            when others then
+               return null;
+         end;
+   end area_ha;
 
-    FUNCTION intersecao(p_a SDO_GEOMETRY, p_b SDO_GEOMETRY) RETURN SDO_GEOMETRY IS
-    BEGIN
-        IF p_a IS NULL OR p_b IS NULL THEN RETURN NULL; END IF;
-        RETURN SDO_GEOM.SDO_INTERSECTION(p_a, p_b, c_tol);
-    EXCEPTION
-        WHEN OTHERS THEN
-            BEGIN
-                RETURN SDO_GEOM.SDO_INTERSECTION(saneada(p_a), saneada(p_b), c_tol);
-            EXCEPTION
-                WHEN OTHERS THEN RETURN NULL;
-            END;
-    END intersecao;
+   function intersecao (
+      p_a sdo_geometry,
+      p_b sdo_geometry
+   ) return sdo_geometry is
+   begin
+      if p_a is null
+      or p_b is null then
+         return null;
+      end if;
+      return sdo_geom.sdo_intersection(
+         p_a,
+         p_b,
+         c_tol
+      );
+   exception
+      when others then
+         begin
+            return sdo_geom.sdo_intersection(
+               saneada(p_a),
+               saneada(p_b),
+               c_tol
+            );
+         exception
+            when others then
+               return null;
+         end;
+   end intersecao;
 
     -- Area sobreposta entre duas geometrias, em hectares. 0 quando nao se tocam.
-    FUNCTION area_intersecao_ha(p_a SDO_GEOMETRY, p_b SDO_GEOMETRY) RETURN NUMBER IS
-        v_inter SDO_GEOMETRY;
-    BEGIN
-        IF p_a IS NULL OR p_b IS NULL THEN RETURN 0; END IF;
-        IF SDO_GEOM.RELATE(p_a, 'ANYINTERACT', p_b, c_tol) <> 'TRUE' THEN
-            RETURN 0;
-        END IF;
-        v_inter := intersecao(p_a, p_b);
-        IF v_inter IS NULL THEN RETURN 0; END IF;
-        RETURN NVL(area_ha(v_inter), 0);
-    EXCEPTION
-        WHEN OTHERS THEN RETURN 0;
-    END area_intersecao_ha;
+   function area_intersecao_ha (
+      p_a sdo_geometry,
+      p_b sdo_geometry
+   ) return number is
+      v_inter sdo_geometry;
+   begin
+      if p_a is null
+      or p_b is null then
+         return 0;
+      end if;
+      if sdo_geom.relate(
+         p_a,
+         'ANYINTERACT',
+         p_b,
+         c_tol
+      ) <> 'TRUE' then
+         return 0;
+      end if;
+      v_inter := intersecao(
+         p_a,
+         p_b
+      );
+      if v_inter is null then
+         return 0;
+      end if;
+      return nvl(
+         area_ha(v_inter),
+         0
+      );
+   exception
+      when others then
+         return 0;
+   end area_intersecao_ha;
 
     -- RELATE decide sem construir geometria nova
-    FUNCTION contida_na_uf(p_geom SDO_GEOMETRY, p_uf VARCHAR2 DEFAULT 'PR') RETURN VARCHAR2 IS
-        v_limite SDO_GEOMETRY;
-    BEGIN
-        IF p_geom IS NULL THEN RETURN 'FALSE'; END IF;
-        v_limite := limite_uf(p_uf);
-        IF SDO_GEOM.RELATE(v_limite, 'CONTAINS+COVERS', p_geom, c_tol) = 'FALSE' THEN
-            RETURN 'FALSE';
-        END IF;
-        RETURN 'TRUE';
-    EXCEPTION
-        WHEN OTHERS THEN RETURN 'FALSE';
-    END contida_na_uf;
+   function contida_na_uf (
+      p_geom sdo_geometry,
+      p_uf   varchar2 default 'PR'
+   ) return varchar2 is
+      v_limite sdo_geometry;
+   begin
+      if p_geom is null then
+         return 'FALSE';
+      end if;
+      v_limite := limite_uf(p_uf);
+      if sdo_geom.relate(
+         v_limite,
+         'CONTAINS+COVERS',
+         p_geom,
+         c_tol
+      ) = 'FALSE' then
+         return 'FALSE';
+      end if;
+      return 'TRUE';
+   exception
+      when others then
+         return 'FALSE';
+   end contida_na_uf;
 
-    FUNCTION recorte_uf(p_geom SDO_GEOMETRY, p_uf VARCHAR2 DEFAULT 'PR') RETURN SDO_GEOMETRY IS
-    BEGIN
-        IF p_geom IS NULL THEN RETURN NULL; END IF;
-        RETURN intersecao(p_geom, limite_uf(p_uf));
-    END recorte_uf;
+   function recorte_uf (
+      p_geom sdo_geometry,
+      p_uf   varchar2 default 'PR'
+   ) return sdo_geometry is
+   begin
+      if p_geom is null then
+         return null;
+      end if;
+      return intersecao(
+         p_geom,
+         limite_uf(p_uf)
+      );
+   end recorte_uf;
 
-    FUNCTION dentro_da_uf(p_geom SDO_GEOMETRY, p_uf VARCHAR2 DEFAULT 'PR') RETURN VARCHAR2 IS
-    BEGIN
-        IF p_geom IS NULL THEN RETURN 'FALSE'; END IF;
-        RETURN SDO_GEOM.RELATE(p_geom, 'ANYINTERACT', limite_uf(p_uf), c_tol);
-    EXCEPTION
-        WHEN OTHERS THEN RETURN 'FALSE';
-    END dentro_da_uf;
+   function dentro_da_uf (
+      p_geom sdo_geometry,
+      p_uf   varchar2 default 'PR'
+   ) return varchar2 is
+   begin
+      if p_geom is null then
+         return 'FALSE';
+      end if;
+      return sdo_geom.relate(
+         p_geom,
+         'ANYINTERACT',
+         limite_uf(p_uf),
+         c_tol
+      );
+   exception
+      when others then
+         return 'FALSE';
+   end dentro_da_uf;
 
-    FUNCTION valida(p_geom SDO_GEOMETRY) RETURN VARCHAR2 IS
-    BEGIN
-        IF p_geom IS NULL THEN RETURN 'NULA'; END IF;
-        RETURN SDO_GEOM.VALIDATE_GEOMETRY_WITH_CONTEXT(p_geom, c_tol);
-    END valida;
+   function valida (
+      p_geom sdo_geometry
+   ) return varchar2 is
+   begin
+      if p_geom is null then
+         return 'NULA';
+      end if;
+      return sdo_geom.validate_geometry_with_context(
+         p_geom,
+         c_tol
+      );
+   end valida;
 
-    FUNCTION ponto_x(p_geom SDO_GEOMETRY) RETURN NUMBER IS
-    BEGIN
-        IF p_geom IS NULL THEN RETURN NULL; END IF;
-        IF p_geom.SDO_POINT IS NOT NULL THEN RETURN p_geom.SDO_POINT.X; END IF;
-        IF p_geom.SDO_ORDINATES IS NOT NULL AND p_geom.SDO_ORDINATES.COUNT >= 2 THEN
-            RETURN p_geom.SDO_ORDINATES(1);
-        END IF;
-        RETURN NULL;
-    END ponto_x;
+   function ponto_x (
+      p_geom sdo_geometry
+   ) return number is
+   begin
+      if p_geom is null then
+         return null;
+      end if;
+      if p_geom.sdo_point is not null then
+         return p_geom.sdo_point.x;
+      end if;
+      if
+         p_geom.sdo_ordinates is not null
+         and p_geom.sdo_ordinates.count >= 2
+      then
+         return p_geom.sdo_ordinates(1);
+      end if;
+      return null;
+   end ponto_x;
 
-    FUNCTION ponto_y(p_geom SDO_GEOMETRY) RETURN NUMBER IS
-    BEGIN
-        IF p_geom IS NULL THEN RETURN NULL; END IF;
-        IF p_geom.SDO_POINT IS NOT NULL THEN RETURN p_geom.SDO_POINT.Y; END IF;
-        IF p_geom.SDO_ORDINATES IS NOT NULL AND p_geom.SDO_ORDINATES.COUNT >= 2 THEN
-            RETURN p_geom.SDO_ORDINATES(2);
-        END IF;
-        RETURN NULL;
-    END ponto_y;
+   function ponto_y (
+      p_geom sdo_geometry
+   ) return number is
+   begin
+      if p_geom is null then
+         return null;
+      end if;
+      if p_geom.sdo_point is not null then
+         return p_geom.sdo_point.y;
+      end if;
+      if
+         p_geom.sdo_ordinates is not null
+         and p_geom.sdo_ordinates.count >= 2
+      then
+         return p_geom.sdo_ordinates(2);
+      end if;
+      return null;
+   end ponto_y;
 
-END PKG_GEO;
+    -- Na especificacao de PKG_GEO:
+function area_equivalente_ha (
+   p_geom    sdo_geometry,
+   p_srid_eq number default 102033
+) return number;
+
+-- No BODY de PKG_GEO:
+   function area_equivalente_ha (
+      p_geom    sdo_geometry,
+      p_srid_eq number default 102033
+   ) return number is
+      v_proj sdo_geometry;
+   begin
+      if p_geom is null then
+         return null;
+      end if;
+      begin
+         v_proj := sdo_cs.transform(
+            p_geom,
+            p_srid_eq
+         );
+         return sdo_geom.sdo_area(
+            v_proj,
+            c_tol
+         ) / 10000;
+      exception
+         when others then
+            return area_ha(p_geom);
+      end;
+   end area_equivalente_ha;
+
+end pkg_geo;
 /
