@@ -9,6 +9,10 @@ import br.com.fatec.georural.exception.RecursoNaoEncontradoException;
 import br.com.fatec.georural.exception.RequisicaoInvalidaException;
 import br.com.fatec.georural.repository.ArquivoBrutoRepository;
 import br.com.fatec.georural.repository.UsuarioRepository;
+import br.com.fatec.georural.service.pipeline.ResolvedorCompetencia;
+import br.com.fatec.georural.service.pipeline.formato.DetectorFormato;
+import br.com.fatec.georural.service.pipeline.formato.FormatoArquivo;
+import br.com.fatec.georural.service.pipeline.formato.FormatoDetectado;
 import com.oracle.bmc.model.BmcException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -43,22 +47,18 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-/**
- * Testes unitários do fluxo de recebimento. Repositórios e armazenamento são simulados.
- *
- * <p>Não provam: a unicidade do hash no banco (constraint uk_arquivo_hash), a permissão de apagar na IAM
- * da OCI nem a regra de retenção do bucket. Esses pontos dependem do Oracle e da OCI reais.
- */
 class RecebimentoArquivoServiceTest {
 
     private static final Long CONJUNTO_ID = 1L;
     private static final Long USUARIO_ID = 2L;
+    private static final String COMPETENCIA = "2026-10";
     private static final byte[] CONTEUDO = "abc".getBytes(StandardCharsets.UTF_8);
     private static final String HASH_ABC = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
 
@@ -67,11 +67,12 @@ class RecebimentoArquivoServiceTest {
     private VerificadorDuplicidade verificadorDuplicidade;
     private ArmazenamentoZonaPort armazenamento;
     private ValidadorConjuntoDados validadorConjuntoDados;
+    private ResolvedorCompetencia resolvedorCompetencia;
+    private DetectorFormato detectorFormato;
     private RecebimentoArquivoService service;
 
     private ConjuntoDados conjunto;
 
-    // Registros do que aconteceu durante as chamadas simuladas.
     private final List<String> situacoesNoFlush = new ArrayList<>();
     private final AtomicReference<byte[]> bytesGravados = new AtomicReference<>();
     private final AtomicReference<String> caminhoGravado = new AtomicReference<>();
@@ -85,6 +86,13 @@ class RecebimentoArquivoServiceTest {
         verificadorDuplicidade = Mockito.mock(VerificadorDuplicidade.class);
         armazenamento = Mockito.mock(ArmazenamentoZonaPort.class);
         validadorConjuntoDados = Mockito.mock(ValidadorConjuntoDados.class);
+        resolvedorCompetencia = Mockito.mock(ResolvedorCompetencia.class);
+        detectorFormato = Mockito.mock(DetectorFormato.class);
+
+        lenient().when(detectorFormato.detectar(any(InputStream.class), any()))
+                .thenReturn(FormatoDetectado.de(FormatoArquivo.CSV, "text/csv", "csv"));
+        lenient().when(detectorFormato.detectar(any(byte[].class), any()))
+                .thenReturn(FormatoDetectado.de(FormatoArquivo.CSV, "text/csv", "csv"));
 
         service = new RecebimentoArquivoService(
                 usuarioRepository,
@@ -92,7 +100,9 @@ class RecebimentoArquivoServiceTest {
                 verificadorDuplicidade,
                 armazenamento,
                 validadorConjuntoDados,
-                new ValidadorFormatoArquivo());
+                new ValidadorFormatoArquivo(),
+                resolvedorCompetencia,
+                detectorFormato);
 
         conjunto = new ConjuntoDados();
         conjunto.setId(CONJUNTO_ID);
@@ -102,7 +112,6 @@ class RecebimentoArquivoServiceTest {
         when(validadorConjuntoDados.validar(CONJUNTO_ID)).thenReturn(conjunto);
         when(usuarioRepository.existsById(USUARIO_ID)).thenReturn(true);
 
-        // saveAndFlush registra a situação no momento da chamada (o mesmo objeto é alterado depois).
         when(arquivoRepository.saveAndFlush(any(ArquivoBruto.class))).thenAnswer(invocacao -> {
             ArquivoBruto registro = invocacao.getArgument(0);
             situacoesNoFlush.add(registro.getStatus());
@@ -110,7 +119,6 @@ class RecebimentoArquivoServiceTest {
         });
         when(arquivoRepository.save(any(ArquivoBruto.class))).thenAnswer(invocacao -> invocacao.getArgument(0));
 
-        // A gravação lê o stream recebido durante a chamada, porque ele é fechado em seguida.
         doAnswer(invocacao -> {
             caminhoGravado.set(invocacao.getArgument(1));
             InputStream entrada = invocacao.getArgument(2);
@@ -169,7 +177,6 @@ class RecebimentoArquivoServiceTest {
         assertEquals(3L, resultado.getTamanhoBytes());
         assertSame(conjunto, resultado.getConjunto());
 
-        // Conteúdo idêntico ao recebido, e caminho e metadados coerentes com o registro.
         assertArrayEquals(CONTEUDO, bytesGravados.get());
         assertEquals(3L, tamanhoGravado.get());
         assertEquals(resultado.getPathArmazenamento(), caminhoGravado.get());
@@ -178,7 +185,6 @@ class RecebimentoArquivoServiceTest {
         assertEquals("1", metadadosGravados.get().get("con-id"));
         assertEquals("2", metadadosGravados.get().get("usu-id"));
 
-        // A vaga é reservada (RECEBENDO) antes da gravação; a conclusão vem depois.
         assertEquals(List.of("RECEBENDO"), situacoesNoFlush);
         InOrder ordem = inOrder(arquivoRepository, armazenamento);
         ordem.verify(arquivoRepository).saveAndFlush(any(ArquivoBruto.class));
@@ -280,7 +286,7 @@ class RecebimentoArquivoServiceTest {
 
     @Test
     void receber_arquivoDuplicado_deveLancarDuplicadoSemReservarVagaNemGravar() {
-        when(verificadorDuplicidade.verificar(CONJUNTO_ID, HASH_ABC))
+        when(verificadorDuplicidade.verificar(CONJUNTO_ID, COMPETENCIA, HASH_ABC))
                 .thenThrow(new ArquivoDuplicadoException(CONJUNTO_ID, HASH_ABC));
 
         assertThrows(ArquivoDuplicadoException.class, () -> receberCsv());
@@ -401,7 +407,7 @@ class RecebimentoArquivoServiceTest {
     @Test
     void receber_registroAbandonadoComObjetoJaGravado_deveConcluirSemGravarDeNovo() {
         ArquivoBruto abandonado = registroAbandonado();
-        when(verificadorDuplicidade.verificar(CONJUNTO_ID, HASH_ABC)).thenReturn(Optional.of(abandonado));
+        when(verificadorDuplicidade.verificar(CONJUNTO_ID, COMPETENCIA, HASH_ABC)).thenReturn(Optional.of(abandonado));
         when(armazenamento.existe(Zona.BRUTA, abandonado.getPathArmazenamento())).thenReturn(true);
 
         ArquivoBruto resultado = receberCsv();
@@ -416,7 +422,7 @@ class RecebimentoArquivoServiceTest {
     void receber_registroAbandonadoSemObjeto_deveGravarNoCaminhoJaRegistradoSemCriarOutroRegistro() {
         ArquivoBruto abandonado = registroAbandonado();
         String caminhoOriginal = abandonado.getPathArmazenamento();
-        when(verificadorDuplicidade.verificar(CONJUNTO_ID, HASH_ABC)).thenReturn(Optional.of(abandonado));
+        when(verificadorDuplicidade.verificar(CONJUNTO_ID, COMPETENCIA, HASH_ABC)).thenReturn(Optional.of(abandonado));
         when(armazenamento.existe(Zona.BRUTA, caminhoOriginal)).thenReturn(false);
 
         ArquivoBruto resultado = receberCsv();

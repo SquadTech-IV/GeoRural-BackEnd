@@ -1,5 +1,6 @@
 package br.com.fatec.georural.exception;
 
+import br.com.fatec.georural.config.RegistroErroFilter;
 import br.com.fatec.georural.dto.response.ErroResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
@@ -64,130 +65,186 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErroResponse> tratarGenerico(
             Exception ex, HttpServletRequest req) {
-        // imprime o erro completo no console para diagnostico
-        ex.printStackTrace();
+        // pelo logger, nao por printStackTrace: so assim o erro sai com horario,
+        // nivel e correlacao, e chega no log centralizado da nuvem
+        log.error("500 {} {} -> {}: {}", req.getMethod(), req.getRequestURI(),
+                ex.getClass().getSimpleName(), ex.getMessage(), ex);
+
+        // a resposta e generica de proposito;
+        req.setAttribute(RegistroErroFilter.ATRIBUTO_EXCECAO, ex.getClass().getName());
+        req.setAttribute(RegistroErroFilter.ATRIBUTO_MENSAGEM, mensagemDaCausa(ex));
+        req.setAttribute(RegistroErroFilter.ATRIBUTO_PILHA, pilhaDoProjeto(ex));
+
         return montar(HttpStatus.INTERNAL_SERVER_ERROR,
                 "Erro interno no servidor.", req);
     }
 
-        @ExceptionHandler(MethodArgumentNotValidException.class)
-public ResponseEntity<ErroResponse> tratarCamposInvalidos(
-    MethodArgumentNotValidException erro,
-    HttpServletRequest request
-) {
-    String mensagem = erro.getBindingResult()
-        .getFieldErrors()
-        .stream()
-        .map(campo ->
-            campo.getField() + ": " +
-            campo.getDefaultMessage()
-        )
-        .distinct()
-        .sorted()
-        .collect(Collectors.joining("; "));
-
-    if (mensagem.isBlank()) {
-        mensagem = "Confira os campos informados.";
+    // mensagem da causa raiz: "could not execute statement" sozinho nao diz nada
+    private static String mensagemDaCausa(Throwable ex) {
+        Throwable atual = ex;
+        StringBuilder texto = new StringBuilder();
+        int nivel = 0;
+        while (atual != null && nivel < 4) {
+            if (atual.getMessage() != null && !atual.getMessage().isBlank()) {
+                if (!texto.isEmpty()) {
+                    texto.append(" | ");
+                }
+                texto.append(atual.getClass().getSimpleName()).append(": ").append(atual.getMessage());
+            }
+            atual = atual.getCause() == atual ? null : atual.getCause();
+            nivel++;
+        }
+        return texto.isEmpty() ? ex.getClass().getSimpleName() : texto.toString();
     }
 
-    return montar(
-        HttpStatus.BAD_REQUEST,
-        mensagem,
-        request
-    );
-}
+    // so os quadros do proprio projeto: pilha inteira enche a tabela e vaza
+    // caminho de classe de framework sem ajudar em nada
+    private static String pilhaDoProjeto(Throwable ex) {
+        StringBuilder pilha = new StringBuilder();
+        int quadros = 0;
+        for (StackTraceElement elemento : ex.getStackTrace()) {
+            if (!elemento.getClassName().startsWith("br.com.fatec.georural")) {
+                continue;
+            }
+            pilha.append(elemento).append('\n');
+            if (++quadros >= 15) {
+                break;
+            }
+        }
+        return pilha.isEmpty() ? null : pilha.toString();
+    }
 
-@ExceptionHandler(HttpMessageNotReadableException.class)
-public ResponseEntity<ErroResponse> tratarJsonInvalido(
-    HttpMessageNotReadableException erro,
-    HttpServletRequest request
-) {
-    return montar(
-        HttpStatus.BAD_REQUEST,
-        "O corpo da requisição está ausente ou contém " +
-            "um JSON inválido. Confira os campos e seus tipos.",
-        request
-    );
-}
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ErroResponse> tratarCamposInvalidos(
+            MethodArgumentNotValidException erro,
+            HttpServletRequest request
+    ) {
+        String mensagem = erro.getBindingResult()
+                .getFieldErrors()
+                .stream()
+                .map(campo ->
+                        campo.getField() + ": " +
+                                campo.getDefaultMessage()
+                )
+                .distinct()
+                .sorted()
+                .collect(Collectors.joining("; "));
 
-@ExceptionHandler(MissingServletRequestParameterException.class)
-public ResponseEntity<ErroResponse> tratarParametroAusente(
-    MissingServletRequestParameterException erro,
-    HttpServletRequest request
-) {
-    return montar(
-        HttpStatus.BAD_REQUEST,
-        "O parâmetro '" + erro.getParameterName() +
-            "' é obrigatório.",
-        request
-    );
-}
+        if (mensagem.isBlank()) {
+            mensagem = "Confira os campos informados.";
+        }
 
-@ExceptionHandler(MissingServletRequestPartException.class)
-public ResponseEntity<ErroResponse> tratarParteAusente(
-    MissingServletRequestPartException erro,
-    HttpServletRequest request
-) {
-    return montar(
-        HttpStatus.BAD_REQUEST,
-        "O campo de upload '" +
-            erro.getRequestPartName() +
-            "' é obrigatório.",
-        request
-    );
-}
+        return montar(
+                HttpStatus.BAD_REQUEST,
+                mensagem,
+                request
+        );
+    }
 
-@ExceptionHandler(MultipartException.class)
-public ResponseEntity<ErroResponse> tratarUploadInvalido(
-    MultipartException erro,
-    HttpServletRequest request
-) {
-    return montar(
-        HttpStatus.BAD_REQUEST,
-        "Não foi possível interpretar o upload. " +
-            "Envie os arquivos usando multipart/form-data.",
-        request
-    );
-}
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErroResponse> tratarJsonInvalido(
+            HttpMessageNotReadableException erro,
+            HttpServletRequest request
+    ) {
+        return montar(
+                HttpStatus.BAD_REQUEST,
+                "O corpo da requisição está ausente ou contém " +
+                        "um JSON inválido. Confira os campos e seus tipos.",
+                request
+        );
+    }
 
-@ExceptionHandler(DataIntegrityViolationException.class)
-public ResponseEntity<ErroResponse> tratarIntegridade(
-    DataIntegrityViolationException erro,
-    HttpServletRequest request
-) {
-    return montar(
-        HttpStatus.CONFLICT,
-        "Não foi possível salvar o cadastro. " +
-            "Verifique se existem dados duplicados " +
-            "ou associações incompatíveis.",
-        request
-    );
-}
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ErroResponse> tratarParametroAusente(
+            MissingServletRequestParameterException erro,
+            HttpServletRequest request
+    ) {
+        return montar(
+                HttpStatus.BAD_REQUEST,
+                "O parâmetro '" + erro.getParameterName() +
+                        "' é obrigatório.",
+                request
+        );
+    }
 
-@ExceptionHandler({
-    PessimisticLockingFailureException.class,
-    ObjectOptimisticLockingFailureException.class
-})
-public ResponseEntity<ErroResponse> tratarConcorrencia(
-    Exception erro,
-    HttpServletRequest request
-) {
-    return montar(
-        HttpStatus.CONFLICT,
-        "O registro foi alterado ou está sendo utilizado " +
-            "por outra operação. Recarregue os dados " +
-            "e tente novamente.",
-        request
-    );
-}
+    @ExceptionHandler(MissingServletRequestPartException.class)
+    public ResponseEntity<ErroResponse> tratarParteAusente(
+            MissingServletRequestPartException erro,
+            HttpServletRequest request
+    ) {
+        return montar(
+                HttpStatus.BAD_REQUEST,
+                "O campo de upload '" +
+                        erro.getRequestPartName() +
+                        "' é obrigatório.",
+                request
+        );
+    }
+
+    @ExceptionHandler(MultipartException.class)
+    public ResponseEntity<ErroResponse> tratarUploadInvalido(
+            MultipartException erro,
+            HttpServletRequest request
+    ) {
+        return montar(
+                HttpStatus.BAD_REQUEST,
+                "Não foi possível interpretar o upload. " +
+                        "Envie os arquivos usando multipart/form-data.",
+                request
+        );
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ErroResponse> tratarIntegridade(
+            DataIntegrityViolationException erro,
+            HttpServletRequest request
+    ) {
+        return montar(
+                HttpStatus.CONFLICT,
+                "Não foi possível salvar o cadastro. " +
+                        "Verifique se existem dados duplicados " +
+                        "ou associações incompatíveis.",
+                request
+        );
+    }
+
+    @ExceptionHandler({
+            PessimisticLockingFailureException.class,
+            ObjectOptimisticLockingFailureException.class
+    })
+    public ResponseEntity<ErroResponse> tratarConcorrencia(
+            Exception erro,
+            HttpServletRequest request
+    ) {
+        return montar(
+                HttpStatus.CONFLICT,
+                "O registro foi alterado ou está sendo utilizado " +
+                        "por outra operação. Recarregue os dados " +
+                        "e tente novamente.",
+                request
+        );
+    }
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ResponseEntity<ErroResponse> tratarArquivoGrande(MaxUploadSizeExceededException ex, HttpServletRequest req) {
         return montar(HttpStatus.CONTENT_TOO_LARGE, "O arquivo excede o tamanho máximo permitido.", req);
     }
 
+    @ExceptionHandler(KeycloakIndisponivelException.class)
+    public ResponseEntity<ErroResponse> tratarKeycloakIndisponivel(
+            KeycloakIndisponivelException ex, HttpServletRequest req) {
+        log.error("502 {} {} -> {}", req.getMethod(), req.getRequestURI(), ex.getMessage(), ex);
+        return montar(HttpStatus.BAD_GATEWAY, ex.getMessage(), req);
+    }
+
     private ResponseEntity<ErroResponse> montar(
             HttpStatus status, String mensagem, HttpServletRequest req) {
+        // o RegistroErroFilter le estes atributos para gravar em ERRO_API.
+        // Nao sobrescreve o que o tratarGenerico ja colocou, que e mais detalhado.
+        if (req.getAttribute(RegistroErroFilter.ATRIBUTO_MENSAGEM) == null) {
+            req.setAttribute(RegistroErroFilter.ATRIBUTO_MENSAGEM, mensagem);
+        }
+
         ErroResponse corpo = new ErroResponse(
                 LocalDateTime.now(),
                 status.value(),

@@ -17,6 +17,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import br.com.fatec.georural.security.IsolamentoCargaService;
 
 import java.util.List;
 
@@ -27,11 +28,14 @@ public class IngestaoController {
 
     private final IngestaoService service;
     private final ProcessamentoPosEnvioService processamentoPosEnvio;
+    private final IsolamentoCargaService isolamentoCargaService;
 
     public IngestaoController(IngestaoService service,
-                              ProcessamentoPosEnvioService processamentoPosEnvio) {
+                              ProcessamentoPosEnvioService processamentoPosEnvio,
+                              IsolamentoCargaService isolamentoCargaService) {
         this.service = service;
         this.processamentoPosEnvio = processamentoPosEnvio;
+        this.isolamentoCargaService = isolamentoCargaService;
     }
 
     // rota antiga, mantida pela tela atual; a nova e a /lote
@@ -62,7 +66,8 @@ public class IngestaoController {
             @Parameter(description = "Responsavel pelo envio; omitido, usa o do conjunto")
             @RequestParam(value = "usuId", required = false) Long usuId
     ) {
-        return ResponseEntity.ok(service.ingerir(arquivos, conjuntoId, competencia, usuId));
+        Long usuarioEfetivoId = isolamentoCargaService.resolverUsuarioIdAutenticado(usuId);
+        return ResponseEntity.ok(service.ingerir(arquivos, conjuntoId, competencia, usuarioEfetivoId));
     }
 
     // mesmo envio, com totais e id de correlacao
@@ -96,7 +101,8 @@ public class IngestaoController {
             @RequestParam(value = "processarAposEnvio", required = false, defaultValue = "false")
             boolean processarAposEnvio
     ) {
-        EnvioLoteResponse envio = service.ingerirLote(arquivos, conjuntoId, competencia, usuId);
+        Long usuarioEfetivoId = isolamentoCargaService.resolverUsuarioIdAutenticado(usuId);
+        EnvioLoteResponse envio = service.ingerirLote(arquivos, conjuntoId, competencia, usuarioEfetivoId);
         if (processarAposEnvio) {
             envio = envio.comProcessamento(processamentoPosEnvio.rodar(envio));
         }

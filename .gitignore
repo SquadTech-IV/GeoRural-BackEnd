@@ -1,0 +1,4 @@
+
+# Python - bytecode gerado automaticamente pelo Airflow
+__pycache__/
+*.pyc

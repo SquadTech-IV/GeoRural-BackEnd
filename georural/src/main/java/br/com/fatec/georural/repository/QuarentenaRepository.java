@@ -52,4 +52,10 @@ public interface QuarentenaRepository extends JpaRepository<Quarentena, Long> {
             @Param("execucaoId") Long execucaoId,
             @Param("situacao") String situacao,
             Pageable pageable);
+
+    @Query(value = "SELECT PKG_AUTH.dono_quarentena(:quaId) FROM DUAL", nativeQuery = true)
+    Long findDonoArquivoRaizIdPorQuarentena(@Param("quaId") Long quaId);
+
+    @Query(value = "SELECT PKG_AUTH.dono_arquivo_raiz(:arqBrutoId) FROM DUAL", nativeQuery = true)
+    Long findDonoArquivoRaizIdPorArquivo(@Param("arqBrutoId") Long arqBrutoId);
 }

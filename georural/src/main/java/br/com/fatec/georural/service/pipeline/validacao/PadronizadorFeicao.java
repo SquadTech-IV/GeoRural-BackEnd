@@ -54,8 +54,9 @@ public class PadronizadorFeicao {
             }
         }
 
-        String identificador = texto(padronizados.get(perfil.campoIdentificador()));
-        Geometry geometria = avaliarGeometria(perfil, feicao, srsOrigem, identificador, problemas);
+        String identificadorDoCampo = texto(padronizados.get(perfil.campoIdentificador()));
+        Geometry geometria = avaliarGeometria(perfil, feicao, srsOrigem, identificadorDoCampo, problemas);
+        String identificador = perfil.identificadorDe(padronizados, geometria, identificadorDoCampo);
 
         return new FeicaoPadronizada(identificador, feicao.linha(), padronizados,
                 feicao.atributos(), geometria, problemas);

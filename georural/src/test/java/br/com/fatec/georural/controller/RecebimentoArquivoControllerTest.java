@@ -17,7 +17,9 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import br.com.fatec.georural.security.IsolamentoCargaService;
 
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -36,13 +38,17 @@ class RecebimentoArquivoControllerTest {
 
     private RecebimentoArquivoService service;
     private MockMvc mockMvc;
+    private IsolamentoCargaService isolamentoCargaService;
 
     @BeforeEach
     void setUp() {
         service = Mockito.mock(RecebimentoArquivoService.class);
+        isolamentoCargaService = Mockito.mock(IsolamentoCargaService.class);
+        when(isolamentoCargaService.resolverUsuarioIdAutenticado(any()))
+                .thenAnswer(inv -> inv.getArgument(0));
 
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new RecebimentoArquivoController(service))
+                .standaloneSetup(new RecebimentoArquivoController(service, isolamentoCargaService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }

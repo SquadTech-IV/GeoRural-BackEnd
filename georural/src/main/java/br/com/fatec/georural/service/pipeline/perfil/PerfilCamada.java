@@ -1,6 +1,9 @@
 package br.com.fatec.georural.service.pipeline.perfil;
 
+import org.locationtech.jts.geom.Geometry;
+
 import java.util.List;
+import java.util.Map;
 
 // descreve o que uma camada espera; nao tem logica, so declaracao
 public interface PerfilCamada {
@@ -14,6 +17,14 @@ public interface PerfilCamada {
     String campoIdentificador();
 
     TipoGeometria geometriaEsperada();
+
+    // identificador final da feicao. Por padrao e o proprio campo; camada sem campo
+    // identificador (ex.: focos de calor) compoe um a partir do conteudo, para a
+    // deteccao de duplicidade e o hash da versao enxergarem cada feicao
+    default String identificadorDe(Map<String, Object> campos, Geometry geometria,
+                                   String identificadorDoCampo) {
+        return identificadorDoCampo;
+    }
 
     // se false, a feicao sem geometria ainda e aceita
     default boolean exigeGeometria() {

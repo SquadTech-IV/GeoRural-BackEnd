@@ -1,5 +1,6 @@
 package br.com.fatec.georural.service.pipeline.etapa;
 
+import br.com.fatec.georural.repository.ImovelRuralRepository;
 import br.com.fatec.georural.service.pipeline.ContextoExecucao;
 import br.com.fatec.georural.service.pipeline.Etapa;
 import br.com.fatec.georural.service.pipeline.EtapaPipeline;
@@ -17,7 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.ArrayList;
 import java.util.List;
 
-// etapa 4 - CALCULO: IRL, IAE e ICV sobre os imoveis alcancados pela rodada
+// etapa 4 - CALCULO: IRL, IAE, ICV e ISAP sobre os imoveis alcancados pela rodada
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -31,6 +32,7 @@ public class CalculoEtapa implements EtapaPipeline {
     private final RegraVigenteService regras;
     private final CalculoOracle oracle;
     private final RegistroTransformacaoService transformacoes;
+    private final ImovelRuralRepository imovelRepository;
 
     @Override
     public Etapa etapa() {
@@ -51,7 +53,10 @@ public class CalculoEtapa implements EtapaPipeline {
                     + " nao alimenta indicador: ela e base territorial.");
         }
 
-        long imoveis = oracle.imoveisNoEscopo(versaoId, escopo);
+        long imoveis = "AREA_PROTEGIDA".equals(escopo)
+                ? imovelRepository.count()
+                : oracle.imoveisNoEscopo(versaoId, escopo);
+
         if (imoveis == 0) {
             return ResultadoEtapa.semFeicoes(
                     "Nenhum imovel alcancado pela versao. Rode o TRATAMENTO do imovel rural antes.");
@@ -59,7 +64,6 @@ public class CalculoEtapa implements EtapaPipeline {
 
         RegistroTransformacaoService.Trilha trilha = transformacoes.abrir();
         List<String> resumos = new ArrayList<>();
-        long calculados = 0;
 
         if (indicadores.contains("IRL")) {
             RegraVigenteService.RegraEmUso regra =
@@ -67,7 +71,6 @@ public class CalculoEtapa implements EtapaPipeline {
             double minimo = regra.numero("minimo_rl_percent", MINIMO_RL_PADRAO);
 
             long feitos = oracle.calcularIrl(versaoId, execucaoId, regra.id(), minimo, escopo);
-            calculados += feitos;
             resumos.add("IRL " + regra.versao() + " em " + feitos + " imovel(eis)");
             ctx.comParametro("regraIrl", regra.versao());
             ctx.comParametro("minimo_rl_percent", String.valueOf(minimo));
@@ -81,7 +84,6 @@ public class CalculoEtapa implements EtapaPipeline {
                     regras.emUso("IAE", regraForcada(ctx, "rcaIdIae"));
 
             long feitos = oracle.calcularIae(versaoId, execucaoId, regra.id(), escopo);
-            calculados += feitos;
             resumos.add("IAE " + regra.versao() + " em " + feitos + " imovel(eis)");
             ctx.comParametro("regraIae", regra.versao());
             trilha.passo("CRUZAMENTO", "IAE pela regra " + regra.versao()
@@ -95,7 +97,6 @@ public class CalculoEtapa implements EtapaPipeline {
             double minimo = regra.numero("minimo_cobertura_percent", MINIMO_ICV_PADRAO);
 
             long feitos = oracle.calcularIcv(versaoId, execucaoId, regra.id(), minimo, escopo);
-            calculados += feitos;
             resumos.add("ICV " + regra.versao() + " em " + feitos + " imovel(eis)");
             ctx.comParametro("regraIcv", regra.versao());
             ctx.comParametro("minimo_cobertura_percent", String.valueOf(minimo));
@@ -106,6 +107,36 @@ public class CalculoEtapa implements EtapaPipeline {
                     "VEGETACAO_NATIVA + IMOVEL_RURAL", "RESULTADO_INDICADOR");
         }
 
+        if (indicadores.contains("ISAP")) {
+            RegraVigenteService.RegraEmUso regra =
+                    regras.emUso("ISAP", regraForcada(ctx, "rcaIdIsap"));
+            Long camadaVersaoId = "AREA_PROTEGIDA".equals(escopo) ? versaoId : null;
+
+            long feitos = oracle.calcularIsap(versaoId, execucaoId, regra.id(), escopo, camadaVersaoId);
+            resumos.add("ISAP " + regra.versao() + " em " + feitos + " imovel(eis)");
+            ctx.comParametro("regraIsap", regra.versao());
+            trilha.passo("CRUZAMENTO", "ISAP pela regra " + regra.versao()
+                            + " (sobreposicao imovel x areas protegidas com SDO_AGGR_UNION"
+                            + " e detalhamento por area): " + feitos + " resultado(s).",
+                    "AREA_PROTEGIDA + IMOVEL_RURAL", "RESULTADO_ISAP_RESUMO");
+        }
+
+        if (indicadores.contains("IAPP")) {
+            RegraVigenteService.RegraEmUso regra =
+                    regras.emUso("IAPP", regraForcada(ctx, "rcaIdIapp"));
+            Long appVersaoId = "APP".equals(escopo) ? versaoId : null;
+            Long vegVersaoId = "VEGETACAO".equals(escopo) ? versaoId : null;
+
+            long feitos = oracle.calcularIapp(
+                    versaoId, execucaoId, regra.id(), escopo, appVersaoId, vegVersaoId);
+            resumos.add("IAPP " + regra.versao() + " em " + feitos + " imovel(eis)");
+            ctx.comParametro("regraIapp", regra.versao());
+            trilha.passo("CRUZAMENTO", "IAPP pela regra " + regra.versao()
+                            + " (dissolucao de APP e VEGETACAO_NATIVA, recorte da APP no imovel"
+                            + " e calculo de passivo ambiental em ha): " + feitos + " resultado(s).",
+                    "APP + VEGETACAO_NATIVA + IMOVEL_RURAL", "RESULTADO_IAPP");
+        }
+
         transformacoes.gravar(execucaoId, trilha.passos());
         ctx.comParametro("escopoCalculo", escopo);
 
@@ -114,13 +145,15 @@ public class CalculoEtapa implements EtapaPipeline {
                                 + "ficam valendo quando a versao for publicada.")
                 .comVersao(versaoId);
     }
-    
+
     private List<String> indicadoresDoEscopo(String tipoConjunto) {
         return switch (tipoConjunto == null ? "" : tipoConjunto) {
-            case "IMOVEL" -> List.of("IRL", "IAE", "ICV");
+            case "IMOVEL" -> List.of("IRL", "IAE", "ICV", "ISAP", "IAPP");
             case "RESERVA_LEGAL" -> List.of("IRL");
             case "EMBARGO" -> List.of("IAE");
-            case "VEGETACAO" -> List.of("ICV");
+            case "VEGETACAO" -> List.of("ICV", "IAPP");
+            case "AREA_PROTEGIDA" -> List.of("ISAP");
+            case "APP" -> List.of("IAPP");
             default -> List.of();
         };
     }

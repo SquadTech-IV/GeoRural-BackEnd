@@ -18,6 +18,11 @@ CREATE OR REPLACE PACKAGE PKG_GEO AS
 
     FUNCTION saneada(p_geom SDO_GEOMETRY) RETURN SDO_GEOMETRY;
     FUNCTION valida(p_geom SDO_GEOMETRY) RETURN VARCHAR2;
+
+    -- coordenadas de um ponto; o recorte por SDO_INTERSECTION devolve o ponto sem
+    -- SDO_POINT (em SDO_ORDINATES), por isso os dois lugares sao lidos
+    FUNCTION ponto_x(p_geom SDO_GEOMETRY) RETURN NUMBER;
+    FUNCTION ponto_y(p_geom SDO_GEOMETRY) RETURN NUMBER;
 END PKG_GEO;
 /
 
@@ -136,6 +141,26 @@ CREATE OR REPLACE PACKAGE BODY PKG_GEO AS
         IF p_geom IS NULL THEN RETURN 'NULA'; END IF;
         RETURN SDO_GEOM.VALIDATE_GEOMETRY_WITH_CONTEXT(p_geom, c_tol);
     END valida;
+
+    FUNCTION ponto_x(p_geom SDO_GEOMETRY) RETURN NUMBER IS
+    BEGIN
+        IF p_geom IS NULL THEN RETURN NULL; END IF;
+        IF p_geom.SDO_POINT IS NOT NULL THEN RETURN p_geom.SDO_POINT.X; END IF;
+        IF p_geom.SDO_ORDINATES IS NOT NULL AND p_geom.SDO_ORDINATES.COUNT >= 2 THEN
+            RETURN p_geom.SDO_ORDINATES(1);
+        END IF;
+        RETURN NULL;
+    END ponto_x;
+
+    FUNCTION ponto_y(p_geom SDO_GEOMETRY) RETURN NUMBER IS
+    BEGIN
+        IF p_geom IS NULL THEN RETURN NULL; END IF;
+        IF p_geom.SDO_POINT IS NOT NULL THEN RETURN p_geom.SDO_POINT.Y; END IF;
+        IF p_geom.SDO_ORDINATES IS NOT NULL AND p_geom.SDO_ORDINATES.COUNT >= 2 THEN
+            RETURN p_geom.SDO_ORDINATES(2);
+        END IF;
+        RETURN NULL;
+    END ponto_y;
 
 END PKG_GEO;
 /

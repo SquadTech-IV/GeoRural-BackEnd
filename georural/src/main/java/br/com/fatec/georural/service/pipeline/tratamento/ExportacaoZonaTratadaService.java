@@ -211,6 +211,18 @@ public class ExportacaoZonaTratadaService {
                      ORDER BY b.emb_identificador
                     """, new String[] {"identificador"});
 
+            case "FOCO_CALOR" -> new Consulta("""
+                    SELECT TO_CHAR(f.foc_data, 'YYYY-MM-DD') AS data_foco,
+                           TO_CHAR(f.foc_latitude, 'FM990.000000',
+                                   'NLS_NUMERIC_CHARACTERS=''.,''') AS latitude,
+                           TO_CHAR(f.foc_longitude, 'FM990.000000',
+                                   'NLS_NUMERIC_CHARACTERS=''.,''') AS longitude,
+                           SDO_UTIL.TO_GEOJSON(f.foc_geometria) AS geojson
+                      FROM FOCO_CALOR f
+                     WHERE f.ver_id = ?
+                     ORDER BY f.foc_data, f.foc_latitude, f.foc_longitude
+                    """, new String[] {"data_foco", "latitude", "longitude"});
+
             default -> null;
         };
     }

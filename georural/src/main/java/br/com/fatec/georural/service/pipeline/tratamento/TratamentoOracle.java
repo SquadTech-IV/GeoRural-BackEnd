@@ -99,6 +99,22 @@ public class TratamentoOracle {
                 execucaoId, versaoId, arquivoId);
     }
 
+    // gravadas = focos novos; ignoradas = focos que ja existiam (mesma data e posicao)
+    public Carga carregarFocoCalor(Long execucaoId, Long versaoId, Long arquivoId) {
+        return jdbc.execute((java.sql.Connection conexao) -> {
+            try (CallableStatement cs = conexao.prepareCall(
+                    "BEGIN PKG_TRATAMENTO.carregar_foco_calor(?, ?, ?, ?, ?); END;")) {
+                cs.setLong(1, execucaoId);
+                cs.setLong(2, versaoId);
+                cs.registerOutParameter(3, Types.NUMERIC);
+                cs.registerOutParameter(4, Types.NUMERIC);
+                cs.setObject(5, arquivoId);
+                cs.execute();
+                return new Carga(cs.getLong(3), cs.getLong(4));
+            }
+        });
+    }
+
     public long carregarMunicipio(Long execucaoId, Long arquivoId) {
         return comSaidaNoMeio("PKG_TRATAMENTO.carregar_municipio(?, ?, ?)", 2,
                 execucaoId, arquivoId);

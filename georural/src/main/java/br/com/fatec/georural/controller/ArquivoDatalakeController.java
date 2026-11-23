@@ -11,6 +11,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import br.com.fatec.georural.security.IsolamentoCargaService;
 
 import java.util.List;
 
@@ -24,11 +25,14 @@ public class ArquivoDatalakeController {
 
     private final ArquivoDatalakeService service;
     private final IndicadorAutomaticoService indicadorAutomaticoService;
+    private final IsolamentoCargaService isolamentoCargaService;
 
     public ArquivoDatalakeController(ArquivoDatalakeService service,
-                                     IndicadorAutomaticoService indicadorAutomaticoService) {
+                                     IndicadorAutomaticoService indicadorAutomaticoService,
+                                     IsolamentoCargaService isolamentoCargaService) {
         this.service = service;
         this.indicadorAutomaticoService = indicadorAutomaticoService;
+        this.isolamentoCargaService = isolamentoCargaService;
     }
 
     @GetMapping
@@ -55,6 +59,7 @@ public class ArquivoDatalakeController {
 
     @PostMapping("/{id}/processar")
     public EnvioProcessamentoResponse processar(@PathVariable Long id) {
+        isolamentoCargaService.validarAcessoArquivoBruto(id);
         // 1) processa (e commita) o arquivo bruto
         EnvioProcessamentoResponse resposta = service.enviarParaProcessamento(id);
         // 2) recalcula automaticamente os indicadores dos imóveis afetados (IRL agora; IAE quando o
