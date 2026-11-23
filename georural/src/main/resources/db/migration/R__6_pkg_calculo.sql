@@ -825,7 +825,6 @@ create or replace package body pkg_calculo as
        v_m2008    DATE := DATE '2008-07-22';
        v_m2019    DATE := DATE '2019-07-31';
        v_m2020    DATE := DATE '2020-12-31';
-       v_srid_eq  NUMBER := 102033;
    BEGIN
        IF v_ids.COUNT = 0 THEN
            p_calculados := 0;
@@ -836,7 +835,6 @@ create or replace package body pkg_calculo as
            IF r.prc_nome = 'marco_2008' THEN v_m2008 := TO_DATE(SUBSTR(r.prc_valor, 1, 10), 'YYYY-MM-DD'); END IF;
            IF r.prc_nome = 'marco_2019' THEN v_m2019 := TO_DATE(SUBSTR(r.prc_valor, 1, 10), 'YYYY-MM-DD'); END IF;
            IF r.prc_nome = 'marco_2020' THEN v_m2020 := TO_DATE(SUBSTR(r.prc_valor, 1, 10), 'YYYY-MM-DD'); END IF;
-           IF r.prc_nome = 'srid_equivalente' THEN v_srid_eq := TO_NUMBER(r.prc_valor); END IF;
        END LOOP;
 
        MERGE INTO RESULTADO_INDICADOR d
@@ -847,7 +845,6 @@ create or replace package body pkg_calculo as
                   LEAST(o.ha_2008, o.area_imovel) AS ha_2008,
                   CASE WHEN o.ha_2008 > 0 THEN 'COM_DESMATAMENTO' ELSE 'SEM_DESMATAMENTO' END AS situacao,
                   '{"area_imovel_ha":' || TO_CHAR(ROUND(o.area_imovel, 4))
-                  || ',"srid_equivalente":' || TO_CHAR(v_srid_eq)
                   || ',"dissolvido":true'
                   || ',"marcos":['
                   || '{"marco":"marco_2008","data":"' || TO_CHAR(v_m2008, 'YYYY-MM-DD')
@@ -862,8 +859,8 @@ create or replace package body pkg_calculo as
                   || ']}' AS detalhes
              FROM (
                  SELECT i.imo_id,
-                        NVL(PKG_GEO.area_equivalente_ha(i.imo_geometria, v_srid_eq), NVL(i.imo_area_total, 0)) AS area_imovel,
-                        NVL(PKG_GEO.area_equivalente_ha(
+                        NVL(PKG_GEO.area_ha(i.imo_geometria), NVL(i.imo_area_total, 0)) AS area_imovel,
+                        NVL(PKG_GEO.area_ha(
                             PKG_GEO.intersecao(
                                 i.imo_geometria,
                                 (SELECT SDO_AGGR_UNION(SDOAGGRTYPE(ds.des_geometria, 0.05))
@@ -871,8 +868,8 @@ create or replace package body pkg_calculo as
                                   WHERE ds.des_geometria IS NOT NULL
                                     AND NVL(ds.des_data_corte, TO_DATE(ds.des_ano_ref || '-12-31', 'YYYY-MM-DD')) > v_m2008
                                     AND SDO_RELATE(ds.des_geometria, i.imo_geometria, 'mask=ANYINTERACT') = 'TRUE')
-                            ), v_srid_eq), 0) AS ha_2008,
-                        NVL(PKG_GEO.area_equivalente_ha(
+                            )), 0) AS ha_2008,
+                        NVL(PKG_GEO.area_ha(
                             PKG_GEO.intersecao(
                                 i.imo_geometria,
                                 (SELECT SDO_AGGR_UNION(SDOAGGRTYPE(ds.des_geometria, 0.05))
@@ -880,8 +877,8 @@ create or replace package body pkg_calculo as
                                   WHERE ds.des_geometria IS NOT NULL
                                     AND NVL(ds.des_data_corte, TO_DATE(ds.des_ano_ref || '-12-31', 'YYYY-MM-DD')) > v_m2019
                                     AND SDO_RELATE(ds.des_geometria, i.imo_geometria, 'mask=ANYINTERACT') = 'TRUE')
-                            ), v_srid_eq), 0) AS ha_2019,
-                        NVL(PKG_GEO.area_equivalente_ha(
+                            )), 0) AS ha_2019,
+                        NVL(PKG_GEO.area_ha(
                             PKG_GEO.intersecao(
                                 i.imo_geometria,
                                 (SELECT SDO_AGGR_UNION(SDOAGGRTYPE(ds.des_geometria, 0.05))
@@ -889,7 +886,7 @@ create or replace package body pkg_calculo as
                                   WHERE ds.des_geometria IS NOT NULL
                                     AND NVL(ds.des_data_corte, TO_DATE(ds.des_ano_ref || '-12-31', 'YYYY-MM-DD')) > v_m2020
                                     AND SDO_RELATE(ds.des_geometria, i.imo_geometria, 'mask=ANYINTERACT') = 'TRUE')
-                            ), v_srid_eq), 0) AS ha_2020
+                            )), 0) AS ha_2020
                    FROM IMOVEL_RURAL i
                   WHERE i.imo_id IN (SELECT column_value FROM TABLE(v_ids))
              ) o

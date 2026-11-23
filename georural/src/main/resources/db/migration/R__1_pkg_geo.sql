@@ -49,10 +49,6 @@ create or replace package pkg_geo as
    function ponto_y (
       p_geom sdo_geometry
    ) return number;
-   function area_equivalente_ha (
-      p_geom    sdo_geometry,
-      p_srid_eq number default 102033
-   ) return number;
 end pkg_geo;
 /
 
@@ -311,30 +307,6 @@ create or replace package body pkg_geo as
       end if;
       return null;
    end ponto_y;
-
-   function area_equivalente_ha (
-      p_geom    sdo_geometry,
-      p_srid_eq number default 102033
-   ) return number is
-      v_proj sdo_geometry;
-   begin
-      if p_geom is null then
-         return null;
-      end if;
-      begin
-         v_proj := sdo_cs.transform(
-            p_geom,
-            p_srid_eq
-         );
-         return sdo_geom.sdo_area(
-            v_proj,
-            c_tol
-         ) / 10000;
-      exception
-         when others then
-            return area_ha(p_geom);
-      end;
-   end area_equivalente_ha;
 
 end pkg_geo;
 /

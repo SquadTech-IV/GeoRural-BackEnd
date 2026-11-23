@@ -18,7 +18,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.ArrayList;
 import java.util.List;
 
-// etapa 4 - CALCULO: IRL, IAE, ICV, ISAP e IDESMAT sobre os imoveis alcancados pela rodada
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -128,7 +127,6 @@ public class CalculoEtapa implements EtapaPipeline {
             String m2008 = regra.parametros().getOrDefault("marco_2008", "2008-07-22");
             String m2019 = regra.parametros().getOrDefault("marco_2019", "2019-07-31");
             String m2020 = regra.parametros().getOrDefault("marco_2020", "2020-12-31");
-            String sridEq = regra.parametros().getOrDefault("srid_equivalente", "102033");
 
             long feitos = oracle.calcularIdesmat(versaoId, execucaoId, regra.id(), escopo);
             resumos.add("IDESMAT " + regra.versao() + " em " + feitos + " imovel(eis)");
@@ -136,10 +134,9 @@ public class CalculoEtapa implements EtapaPipeline {
             ctx.comParametro("marco_2008", m2008);
             ctx.comParametro("marco_2019", m2019);
             ctx.comParametro("marco_2020", m2020);
-            ctx.comParametro("srid_equivalente", sridEq);
             trilha.passo("DISSOLVER", "IDESMAT pela regra " + regra.versao()
-                            + " (cruzamento EPSG:4674, dissolucao SDO_AGGR_UNION e medicao em"
-                            + " projecao equivalente SRID " + sridEq + " apos "
+                            + " (cruzamento EPSG:4674, dissolucao SDO_AGGR_UNION e medicao de"
+                            + " area no elipsoide SIRGAS 2000 apos "
                             + m2008 + ", " + m2019 + " e " + m2020 + "): "
                             + feitos + " resultado(s).",
                     "DESMATAMENTO + IMOVEL_RURAL", "RESULTADO_INDICADOR");
