@@ -1,81 +1,16 @@
-CREATE OR REPLACE PACKAGE PKG_CALCULO_ICV AS
-
-    PROCEDURE calcular_icv(p_ver_id NUMBER, p_exe_id NUMBER, p_rca_id NUMBER,
-                           p_minimo_pct NUMBER, p_escopo VARCHAR2, p_calculados OUT NUMBER);
-
-END PKG_CALCULO_ICV;
-/
-
-CREATE OR REPLACE PACKAGE BODY PKG_CALCULO_ICV AS
-
-    PROCEDURE calcular_icv(p_ver_id NUMBER, p_exe_id NUMBER, p_rca_id NUMBER,
-                           p_minimo_pct NUMBER, p_escopo VARCHAR2, p_calculados OUT NUMBER) IS
-        v_ids SYS.ODCINUMBERLIST := PKG_CALCULO.imoveis_no_escopo(p_ver_id, p_escopo);
-        v_ind NUMBER := PKG_CALCULO.id_indicador('ICV');
-    BEGIN
-        IF v_ids.COUNT = 0 THEN
-            p_calculados := 0;
-            RETURN;
-        END IF;
-
-        MERGE INTO RESULTADO_INDICADOR d
-        USING (SELECT o.imo_id,
-                      v_ind AS ind_id,
-                      o.pct,
-                      o.area_veg,
-                      o.area_veg - o.minimo_ha AS saldo_ha,
-                      CASE WHEN o.pct >= p_minimo_pct THEN 'CONFORME' ELSE 'DEFICIT' END AS situacao,
-                      '{"area_imovel_ha":' || to_char(ROUND(o.area_imovel, 4), 'FM99999999999999990.0999999', 'NLS_NUMERIC_CHARACTERS = ''.,''')
-                        || ',"area_vegetacao_ha":' || to_char(ROUND(o.area_veg, 4), 'FM99999999999999990.0999999', 'NLS_NUMERIC_CHARACTERS = ''.,''')
-                        || ',"minimo_pct":' || to_char(p_minimo_pct, 'FM99999999999999990.0999999', 'NLS_NUMERIC_CHARACTERS = ''.,''')
-                        || ',"minimo_ha":' || to_char(ROUND(o.minimo_ha, 4), 'FM99999999999999990.0999999', 'NLS_NUMERIC_CHARACTERS = ''.,''')
-                        || ',"saldo_ha":' || to_char(ROUND(o.area_veg - o.minimo_ha, 4), 'FM99999999999999990.0999999', 'NLS_NUMERIC_CHARACTERS = ''.,''')
-                        || ',"vegetacoes_consideradas":' || to_char(o.vegetacoes, 'FM99999999999999990.0999999', 'NLS_NUMERIC_CHARACTERS = ''.,''') || '}' AS detalhes
-                 FROM (SELECT i.imo_id,
-                              NVL(i.imo_area_total, 0) AS area_imovel,
-                              NVL(i.imo_area_total, 0) * p_minimo_pct / 100 AS minimo_ha,
-                              NVL((SELECT SUM(PKG_GEO.area_intersecao_ha(i.imo_geometria,
-                                                                         v.veg_geometria))
-                                     FROM VEGETACAO_NATIVA v
-                                    WHERE v.ver_id = p_ver_id
-                                      AND v.veg_geometria IS NOT NULL
-                                      AND SDO_RELATE(v.veg_geometria, i.imo_geometria,
-                                                     'mask=ANYINTERACT') = 'TRUE'), 0) AS area_veg,
-                              NVL((SELECT COUNT(*)
-                                     FROM VEGETACAO_NATIVA v
-                                    WHERE v.ver_id = p_ver_id
-                                      AND v.veg_geometria IS NOT NULL
-                                      AND SDO_RELATE(v.veg_geometria, i.imo_geometria,
-                                                     'mask=ANYINTERACT') = 'TRUE'), 0) AS vegetacoes,
-                              NVL((SELECT SUM(PKG_GEO.area_intersecao_ha(i.imo_geometria,
-                                                                         v.veg_geometria))
-                                     FROM VEGETACAO_NATIVA v
-                                    WHERE v.ver_id = p_ver_id
-                                      AND v.veg_geometria IS NOT NULL
-                                      AND SDO_RELATE(v.veg_geometria, i.imo_geometria,
-                                                     'mask=ANYINTERACT') = 'TRUE'), 0)
-                                / NULLIF(i.imo_area_total, 0) * 100 AS pct
-                         FROM IMOVEL_RURAL i
-                        WHERE i.imo_id IN (SELECT column_value FROM TABLE(v_ids))) o) f
-           ON (d.imo_id = f.imo_id AND d.ind_id = f.ind_id AND d.ver_id = p_ver_id)
-         WHEN MATCHED THEN
-              UPDATE SET d.rin_valor_percentual = f.pct,
-                         d.rin_valor_hectares   = f.area_veg,
-                         d.rin_valor_absoluto   = f.saldo_ha,
-                         d.rin_situacao         = f.situacao,
-                         d.rin_detalhes         = f.detalhes,
-                         d.rin_data_calculo     = SYSTIMESTAMP,
-                         d.exe_id               = p_exe_id,
-                         d.rca_id               = p_rca_id
-         WHEN NOT MATCHED THEN
-              INSERT (imo_id, ind_id, ver_id, exe_id, rca_id, rin_valor_percentual,
-                      rin_valor_hectares, rin_valor_absoluto, rin_situacao, rin_detalhes,
-                      rin_data_calculo, rin_vigente)
-              VALUES (f.imo_id, f.ind_id, p_ver_id, p_exe_id, p_rca_id, f.pct,
-                      f.area_veg, f.saldo_ha, f.situacao, f.detalhes,
-                      SYSTIMESTAMP, 'N');
-        p_calculados := SQL%ROWCOUNT;
-    END calcular_icv;
-
-END PKG_CALCULO_ICV;
-/
+-- =====================================================================
+-- GeoRural DataHub - R__8 - vazio de proposito
+-- =====================================================================
+-- Este arquivo criava o PKG_CALCULO_ICV, uma segunda implementacao do
+-- calcular_icv que ninguem chamava: o CalculoOracle chama
+-- PKG_CALCULO.calcular_icv, do R__6. Duas implementacoes do mesmo
+-- indicador podiam divergir sem ninguem perceber.
+--
+-- O conteudo saiu, o arquivo ficou. Apagar o arquivo de um repetivel mexe
+-- no historico do Flyway e eu nao tenho como testar isso aqui; trocar o
+-- conteudo e a mudanca que o Flyway trata como rotina -- e a que ja
+-- funcionou quatro vezes hoje. Com o checksum novo ele reaplica isto, que
+-- nao executa nada.
+--
+-- O pacote em si continua no Oracle: quem derruba e o DROP da consulta 5
+-- do sql/conferir-indicadores.sql.

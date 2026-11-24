@@ -160,6 +160,11 @@ public class ValidacaoEtapa implements EtapaPipeline {
                 FeicaoPadronizada padronizada = padronizador.padronizar(perfil, feicao, alvo.srsUtilizado());
 
                 for (ProblemaFeicao problema : padronizada.problemas()) {
+                    // campo opcional ausente nao e defeito do dado, e variacao entre
+                    // fontes: inflava a quarentena e chegava a bloquear a publicacao
+                    if (RegrasQualidade.CAMPO_OPCIONAL_AUSENTE.equals(problema.regra())) {
+                        continue;
+                    }
                     if (problema.rejeita()
                             || avisosJaRegistrados.add(problema.regra() + "|" + problema.campo())) {
                         loteQuarentena.add(RegistroPendente.de(padronizada, problema));

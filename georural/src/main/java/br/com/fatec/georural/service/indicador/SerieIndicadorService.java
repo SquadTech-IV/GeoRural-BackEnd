@@ -157,8 +157,11 @@ public class SerieIndicadorService {
     private Histograma histograma(Filtro f, Escala e, int qtd, long total) {
         Map<Integer, Long> porBalde = new java.util.HashMap<>();
         String balde = "CASE WHEN " + VALOR + " = ? THEN ? ELSE WIDTH_BUCKET(" + VALOR + ", ?, ?, ?) END";
-        jdbc.query("SELECT " + balde + " AS balde, COUNT(*) AS n " + DE + f.where()
-                        + " GROUP BY " + balde,
+        // O balde e calculado dentro e agrupado fora. Repetir a mesma expressao no
+        // SELECT e no GROUP BY da ORA-00979: com bind variable no meio, o Oracle nao
+        // trata as duas como a mesma expressao e cobra a coluna no GROUP BY.
+        jdbc.query("SELECT balde, COUNT(*) AS n FROM ("
+                        + "SELECT " + balde + " AS balde " + DE + f.where() + ") GROUP BY balde",
                 rs -> { porBalde.put(rs.getInt("BALDE"), rs.getLong("N")); },
                 parametrosDoBalde(f, e, qtd));
 
@@ -175,13 +178,11 @@ public class SerieIndicadorService {
         return new Histograma(barras, porBalde.getOrDefault(0, 0L), porBalde.getOrDefault(qtd + 1, 0L));
     }
 
-    // o balde aparece no SELECT e no GROUP BY, entao os 5 parametros dele vao duas vezes,
-    // com os filtros no meio
+    // o balde esta so na subconsulta: os 5 parametros dele vao uma vez, antes dos filtros
     private Object[] parametrosDoBalde(Filtro f, Escala e, int qtd) {
         List<Object> todos = new ArrayList<>();
         todos.addAll(List.of(e.max(), qtd, e.min(), e.max(), qtd));
         todos.addAll(List.of(f.params()));
-        todos.addAll(List.of(e.max(), qtd, e.min(), e.max(), qtd));
         return todos.toArray();
     }
 

@@ -5,7 +5,6 @@ import br.com.fatec.georural.exception.GlobalExceptionHandler;
 import br.com.fatec.georural.exception.RecursoNaoEncontradoException;
 import br.com.fatec.georural.security.IsolamentoCargaService;
 import br.com.fatec.georural.service.ArquivoDatalakeService;
-import br.com.fatec.georural.service.IndicadorAutomaticoService;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -25,18 +24,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class ArquivoDatalakeControllerTest {
 
     private ArquivoDatalakeService service;
-    private IndicadorAutomaticoService indicadorAutomaticoService;
     private IsolamentoCargaService isolamentoCargaService;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         service = Mockito.mock(ArquivoDatalakeService.class);
-        indicadorAutomaticoService = Mockito.mock(IndicadorAutomaticoService.class);
         isolamentoCargaService = Mockito.mock(IsolamentoCargaService.class);
 
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new ArquivoDatalakeController(service, indicadorAutomaticoService, isolamentoCargaService))
+                .standaloneSetup(new ArquivoDatalakeController(service, isolamentoCargaService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }

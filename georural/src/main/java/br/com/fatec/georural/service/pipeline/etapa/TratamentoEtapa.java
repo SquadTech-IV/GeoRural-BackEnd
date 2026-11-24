@@ -249,6 +249,13 @@ public class TratamentoEtapa implements EtapaPipeline {
                             + ": carga em RESERVA_LEGAL ligada ao imovel pelo CAR, "
                             + gravadas + " registro(s).", "FEICAO_STAGING", "RESERVA_LEGAL");
                 }
+                case "APP" -> {
+                    long gravadas = oracle.carregarApp(stagingId, versaoId, arq);
+                    resumo.add(gravadas + " APP");
+                    trilha.passo("PADRONIZACAO", camada.nome()
+                            + ": carga em APP ligada ao imovel pelo CAR, "
+                            + gravadas + " registro(s).", "FEICAO_STAGING", "APP");
+                }
                 case "EMBARGO" -> {
                     long gravadas = oracle.carregarEmbargo(stagingId, versaoId, arq);
                     resumo.add(gravadas + " embargo(s)");
@@ -270,6 +277,22 @@ public class TratamentoEtapa implements EtapaPipeline {
                                         + " posicao, e nao foram repetidos para nao contar duas vezes.",
                                 "FEICAO_STAGING", "-");
                     }
+                }
+                case "DESMATAMENTO" -> {
+                    long gravadas = oracle.carregarDesmatamento(stagingId, versaoId, arq);
+                    resumo.add(gravadas + " poligono(s) de desmatamento");
+                    trilha.passo("PADRONIZACAO", camada.nome()
+                            + ": carga em DESMATAMENTO, " + gravadas
+                            + " registro(s).", "FEICAO_STAGING", "DESMATAMENTO");
+                }
+                case "AREA_PROTEGIDA" -> {
+                    long gravadas = oracle.carregarAreaProtegida(stagingId, versaoId, arq);
+                    resumo.add(gravadas + " area(s) protegida(s)");
+                    trilha.passo("PADRONIZACAO", camada.nome()
+                            + ": carga em AREA_PROTEGIDA com a categoria normalizada"
+                            + " (UC, terra indigena, quilombola, floresta publica), "
+                            + gravadas + " registro(s).",
+                            "FEICAO_STAGING", "AREA_PROTEGIDA");
                 }
                 case "MALHA_MUNICIPAL" -> {
                     long gravadas = oracle.carregarMunicipio(stagingId, arq);

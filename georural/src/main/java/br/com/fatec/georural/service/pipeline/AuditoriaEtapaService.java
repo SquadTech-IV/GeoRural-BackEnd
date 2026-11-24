@@ -118,8 +118,21 @@ public class AuditoriaEtapaService {
         });
     }
 
+    // EXE_MENSAGEM e VARCHAR2(400) e o Oracle conta BYTES, nao caracteres: cada
+    // acento em UTF-8 ocupa 2. Cortar em 400 caracteres deixava passar 404 bytes
+    // quando a mensagem tinha acento ("restricao de verificacao" tem quatro), e aí
+    // o proprio registro da falha falhava com ORA-12899, virando 500 e escondendo
+    // o erro de verdade. Agora o corte e por byte.
     private String truncar(String texto) {
         if (texto == null) return null;
-        return texto.length() > 400 ? texto.substring(0, 397) + "..." : texto;
+        if (texto.getBytes(java.nio.charset.StandardCharsets.UTF_8).length <= 400) {
+            return texto;
+        }
+        int corte = Math.min(texto.length(), 397);
+        while (corte > 0 && texto.substring(0, corte)
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 397) {
+            corte--;
+        }
+        return texto.substring(0, corte) + "...";
     }
 }

@@ -89,6 +89,11 @@ public class TratamentoOracle {
                 execucaoId, versaoId, arquivoId);
     }
 
+    public long carregarApp(Long execucaoId, Long versaoId, Long arquivoId) {
+        return comSaidaNoMeio("PKG_TRATAMENTO.carregar_app(?, ?, ?, ?)", 3,
+                execucaoId, versaoId, arquivoId);
+    }
+
     public long carregarEmbargo(Long execucaoId, Long versaoId, Long arquivoId) {
         return comSaidaNoMeio("PKG_TRATAMENTO.carregar_embargo(?, ?, ?, ?)", 3,
                 execucaoId, versaoId, arquivoId);
@@ -139,6 +144,11 @@ public class TratamentoOracle {
         return restantes(execucaoId, null);
     }
     
+    public long carregarAreaProtegida(Long execucaoId, Long versaoId, Long arquivoId) {
+        return comSaidaNoMeio("PKG_TRATAMENTO.carregar_area_protegida(?, ?, ?, ?)", 3,
+                execucaoId, versaoId, arquivoId);
+    }
+
     public long carregarDesmatamento(Long execucaoId, Long versaoId, Long arquivoId) {
         return comSaidaNoMeio("PKG_TRATAMENTO.carregar_desmatamento(?, ?, ?, ?)", 3,
                 execucaoId, versaoId, arquivoId);

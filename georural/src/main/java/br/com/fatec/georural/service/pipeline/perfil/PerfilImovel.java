@@ -1,8 +1,10 @@
 package br.com.fatec.georural.service.pipeline.perfil;
 
+import org.locationtech.jts.geom.Geometry;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Map;
 
 // imovel rural do CAR (camada AREA_IMOVEL do SICAR)
 @Component
@@ -56,6 +58,20 @@ public class PerfilImovel implements PerfilCamada {
     @Override
     public String campoIdentificador() {
         return "codigo_car";
+    }
+
+    // o pacote por imovel do SICAR traz a area do imovel e a area liquida como duas
+    // feicoes na mesma camada, as duas com o mesmo codigo do CAR. O tema diferencia:
+    // sem ele as duas pareciam a mesma feicao repetida e a segunda caia na quarentena
+    @Override
+    public String identificadorDe(Map<String, Object> campos, Geometry geometria,
+                                  String identificadorDoCampo) {
+        Object tema = campos.get("tipo");
+        if (identificadorDoCampo == null || tema == null) {
+            return identificadorDoCampo;
+        }
+        String texto = String.valueOf(tema).trim();
+        return texto.isEmpty() ? identificadorDoCampo : identificadorDoCampo + "|" + texto;
     }
 
     @Override
