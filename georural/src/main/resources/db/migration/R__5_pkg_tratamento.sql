@@ -40,6 +40,10 @@ CREATE OR REPLACE PACKAGE PKG_TRATAMENTO AS
     PROCEDURE carregar_reserva_legal(p_exe_id NUMBER, p_ver_id NUMBER, p_gravadas OUT NUMBER,
                                      p_arq_id NUMBER DEFAULT NULL);
 
+    -- APP do CAR, ligada ao imovel pelo codigo do CAR (APP.imo_id e NOT NULL)
+    PROCEDURE carregar_app(p_exe_id NUMBER, p_ver_id NUMBER, p_gravadas OUT NUMBER,
+                           p_arq_id NUMBER DEFAULT NULL);
+
     -- so grava a classe de vegetacao nativa; devolve quantas ficaram de fora
     PROCEDURE carregar_vegetacao(p_exe_id NUMBER, p_ver_id NUMBER,
                                  p_gravadas OUT NUMBER, p_ignoradas OUT NUMBER,
@@ -57,6 +61,11 @@ CREATE OR REPLACE PACKAGE PKG_TRATAMENTO AS
     PROCEDURE vincular_municipio(p_exe_id NUMBER, p_ver_id NUMBER,
                                  p_por_codigo OUT NUMBER, p_por_geometria OUT NUMBER,
                                  p_arq_id NUMBER DEFAULT NULL);
+
+    -- focos de calor: append-only com deduplicacao por data e posicao
+    PROCEDURE carregar_foco_calor(p_exe_id NUMBER, p_ver_id NUMBER,
+                                  p_gravadas OUT NUMBER, p_ignoradas OUT NUMBER,
+                                  p_arq_id NUMBER DEFAULT NULL);
 
     PROCEDURE carregar_desmatamento(p_exe_id NUMBER, p_ver_id NUMBER, p_gravadas OUT NUMBER,
                                     p_arq_id NUMBER DEFAULT NULL);
@@ -334,9 +343,11 @@ CREATE OR REPLACE PACKAGE BODY PKG_TRATAMENTO AS
                                       DEFAULT NULL ON CONVERSION ERROR,
                                       'YYYY-MM-DD') AS data_informada,
                               NVL(s.stg_arq_bruto_id, e.arq_bruto_id) AS arq_bruto_id,
+                              -- o CAR traz Area do Imovel e Area Liquida com o mesmo recibo;
+                              -- a maior e a bruta, denominador dos indicadores
                               ROW_NUMBER() OVER (
                                   PARTITION BY JSON_VALUE(s.stg_atributos, '$.codigo_car')
-                                  ORDER BY s.stg_id DESC) AS ordem
+                                  ORDER BY s.stg_area_ha DESC NULLS LAST, s.stg_id DESC) AS ordem
                          FROM FEICAO_STAGING s
                          JOIN EXECUCAO_PIPELINE e ON e.exe_id = s.exe_id
                         WHERE s.exe_id = p_exe_id AND (p_arq_id IS NULL OR s.stg_arq_bruto_id = p_arq_id)
@@ -375,12 +386,23 @@ CREATE OR REPLACE PACKAGE BODY PKG_TRATAMENTO AS
         DELETE FROM VEGETACAO_NATIVA v
          WHERE (p_arq_id IS NOT NULL AND v.arq_bruto_id = p_arq_id)
             OR (p_arq_id IS NULL AND v.ver_id = p_ver_id);
-        INSERT INTO VEGETACAO_NATIVA (arq_bruto_id, ver_id, veg_area_ha, veg_geometria)
+        -- A veg_classe entra aqui porque o V13__modelo_iapp criou a coluna e o
+        -- PKG_IAPP filtra por ela (item_permitido(v.veg_classe, ...)), mas este INSERT
+        -- nunca gravou: ficava nula em todas as feicoes, e ai qualquer valor de filtro
+        -- diferente de '*' zerava a vegetacao de todos os imoveis.
+        --
+        -- Grava o texto ORIGINAL do atributo, com acento, nao a versao normalizada que
+        -- a subconsulta usa para filtrar: o item_permitido do PKG_IAPP so faz UPPER e
+        -- TRIM no filtro, sem tirar acento, entao os dois lados tem de ter o mesmo texto.
+        -- Para isso o stg_atributos precisa sair da subconsulta.
+        INSERT INTO VEGETACAO_NATIVA (arq_bruto_id, ver_id, veg_classe, veg_area_ha, veg_geometria)
         SELECT NVL(s.stg_arq_bruto_id, e.arq_bruto_id),
                p_ver_id,
+               SUBSTR(JSON_VALUE(s.stg_atributos, '$.classe'), 1, 100),
                s.stg_area_ha,
                s.stg_geometria
           FROM (SELECT f.exe_id, f.stg_arq_bruto_id, f.stg_area_ha, f.stg_geometria,
+                       f.stg_atributos,
                        UPPER(TRANSLATE(JSON_VALUE(f.stg_atributos, '$.classe'),
                                        'áàâãçéêíóôõúüÁÀÂÃÇÉÊÍÓÔÕÚÜ',
                                        'aaaaceeiooouuAAAACEEIOOOUU')) AS classe
@@ -424,6 +446,41 @@ CREATE OR REPLACE PACKAGE BODY PKG_TRATAMENTO AS
          WHERE s.exe_id = p_exe_id AND (p_arq_id IS NULL OR s.stg_arq_bruto_id = p_arq_id);
         p_gravadas := SQL%ROWCOUNT;
     END carregar_reserva_legal;
+
+    -- mesmo molde do carregar_reserva_legal: delete-then-insert por imovel, porque
+    -- APP.imo_id e NOT NULL e a ligacao sai do codigo do CAR. Sem esta procedure a
+    -- tabela APP nunca recebia linha e o IAPP respondia sempre SEM_APP.
+    PROCEDURE carregar_app(p_exe_id NUMBER, p_ver_id NUMBER, p_gravadas OUT NUMBER,
+                           p_arq_id NUMBER DEFAULT NULL) IS
+    BEGIN
+        DELETE FROM APP a
+         WHERE a.imo_id IN (SELECT i.imo_id
+                              FROM FEICAO_STAGING s
+                              JOIN IMOVEL_RURAL i
+                                ON i.imo_codigo_car = JSON_VALUE(s.stg_atributos, '$.codigo_car')
+                             WHERE s.exe_id = p_exe_id
+                               AND (p_arq_id IS NULL OR s.stg_arq_bruto_id = p_arq_id));
+
+        -- O app_tipo entra aqui porque o V13__modelo_iapp criou a coluna e o
+        -- PKG_IAPP filtra por ela (item_permitido(a.app_tipo, ...)), mas este INSERT
+        -- nunca gravou: ficava nulo em todas as feicoes. O tema do SICAR e o que
+        -- distingue APP de curso d agua, de nascente e de topo de morro -- o curso
+        -- d agua e o corpo hidrico, nao APP.
+        INSERT INTO APP (imo_id, arq_bruto_id, ver_id, app_tipo, app_area_ha, app_geometria)
+        SELECT i.imo_id,
+               NVL(s.stg_arq_bruto_id, e.arq_bruto_id),
+               p_ver_id,
+               SUBSTR(JSON_VALUE(s.stg_atributos, '$.tipo'), 1, 100),
+               s.stg_area_ha,
+               s.stg_geometria
+          FROM FEICAO_STAGING s
+          JOIN EXECUCAO_PIPELINE e ON e.exe_id = s.exe_id
+          JOIN IMOVEL_RURAL i ON i.imo_codigo_car = JSON_VALUE(s.stg_atributos, '$.codigo_car')
+         WHERE s.exe_id = p_exe_id
+           AND (p_arq_id IS NULL OR s.stg_arq_bruto_id = p_arq_id)
+           AND s.stg_geometria IS NOT NULL;
+        p_gravadas := SQL%ROWCOUNT;
+    END carregar_app;
 
     PROCEDURE carregar_embargo(p_exe_id NUMBER, p_ver_id NUMBER, p_gravadas OUT NUMBER,
                                p_arq_id NUMBER DEFAULT NULL) IS
@@ -505,6 +562,47 @@ CREATE OR REPLACE PACKAGE BODY PKG_TRATAMENTO AS
 
         p_gravadas := SQL%ROWCOUNT;
     END carregar_area_protegida;
+
+    -- Foco de calor e serie temporal: nao se apaga o anterior, como as outras cargas
+    -- fazem. Data + latitude + longitude e o que torna dois focos "o mesmo foco" -- e e
+    -- o idx_foc_dia_pos criado na V16 exatamente para esta deduplicacao. O
+    -- PerfilFocoCalor usa a mesma trinca, com 6 casas, no identificador da feicao.
+    PROCEDURE carregar_foco_calor(p_exe_id NUMBER, p_ver_id NUMBER,
+                                  p_gravadas OUT NUMBER, p_ignoradas OUT NUMBER,
+                                  p_arq_id NUMBER DEFAULT NULL) IS
+        v_candidatos NUMBER;
+    BEGIN
+        INSERT INTO FOCO_CALOR (arq_bruto_id, ver_id, foc_data,
+                                foc_latitude, foc_longitude, foc_geometria)
+        SELECT s.arq_bruto_id, p_ver_id, s.data_foco, s.lat, s.lon, s.geometria
+          FROM (SELECT NVL(f.stg_arq_bruto_id, e.arq_bruto_id) AS arq_bruto_id,
+                       f.stg_geometria                         AS geometria,
+                       TO_DATE(SUBSTR(JSON_VALUE(f.stg_atributos, '$.data_foco'), 1, 10)
+                               DEFAULT NULL ON CONVERSION ERROR, 'YYYY-MM-DD') AS data_foco,
+                       ROUND(PKG_GEO.ponto_y(f.stg_geometria), 6) AS lat,
+                       ROUND(PKG_GEO.ponto_x(f.stg_geometria), 6) AS lon
+                  FROM FEICAO_STAGING f
+                  JOIN EXECUCAO_PIPELINE e ON e.exe_id = f.exe_id
+                 WHERE f.exe_id = p_exe_id
+                   AND (p_arq_id IS NULL OR f.stg_arq_bruto_id = p_arq_id)
+                   AND f.stg_geometria IS NOT NULL) s
+         WHERE s.data_foco IS NOT NULL
+           AND s.lat IS NOT NULL
+           AND s.lon IS NOT NULL
+           AND NOT EXISTS (SELECT 1
+                             FROM FOCO_CALOR x
+                            WHERE x.foc_data      = s.data_foco
+                              AND x.foc_latitude  = s.lat
+                              AND x.foc_longitude = s.lon);
+        p_gravadas := SQL%ROWCOUNT;
+
+        SELECT COUNT(*) INTO v_candidatos
+          FROM FEICAO_STAGING f
+         WHERE f.exe_id = p_exe_id
+           AND (p_arq_id IS NULL OR f.stg_arq_bruto_id = p_arq_id)
+           AND f.stg_geometria IS NOT NULL;
+        p_ignoradas := v_candidatos - p_gravadas;
+    END carregar_foco_calor;
 
     PROCEDURE carregar_municipio(p_exe_id NUMBER, p_gravadas OUT NUMBER,
                                  p_arq_id NUMBER DEFAULT NULL) IS

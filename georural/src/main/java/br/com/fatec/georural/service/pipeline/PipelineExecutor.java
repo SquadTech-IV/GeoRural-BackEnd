@@ -59,7 +59,7 @@ public class PipelineExecutor {
         }
     }
 
-    /** Etapas 1 a 5, em ordem. Para na primeira que falhar. */
+    /** Etapas 1 a 5, em ordem. Para na primeira que falhar ou que nao aprovar nada. */
     public List<ExecucaoPipeline> executarAutomatico(ContextoExecucao ctx) {
         List<ExecucaoPipeline> feitas = new ArrayList<>();
         for (Etapa etapa : Etapa.values()) {
@@ -71,9 +71,34 @@ public class PipelineExecutor {
                         ctx.getDagRunId(), etapa);
                 break;
             }
-            feitas.add(executarEtapa(etapa, ctx));
+
+            ExecucaoPipeline execucao = executarEtapa(etapa, ctx);
+            feitas.add(execucao);
+
+            // A etapa recebeu feicao e nao aprovou nenhuma: nao sobrou nada para as
+            // proximas. Antes o pipeline seguia e o CALCULO estourava com "Rode o
+            // TRATAMENTO antes", que e enganoso -- o tratamento rodou, so nao aprovou
+            // nada, entao nao criou versao. Encerra aqui, sem erro.
+            if (nadaAprovado(execucao)) {
+                log.info("[{}] etapa {} nao aprovou nenhuma das {} feicao(oes) recebida(s);"
+                                + " pipeline encerrado aqui. Confira a quarentena.",
+                        ctx.getDagRunId(), etapa, numero(execucao.getRegistrosRecebidos()));
+                break;
+            }
         }
         return feitas;
+    }
+
+    // Recebeu dado e nao aprovou nada. Zero recebido e outra coisa: a etapa nao tinha
+    // o que fazer (a malha municipal nao gera indicador, e o CALCULO dela fecha com
+    // tudo zero) e a rodada segue normalmente.
+    private static boolean nadaAprovado(ExecucaoPipeline execucao) {
+        return numero(execucao.getRegistrosRecebidos()) > 0
+                && numero(execucao.getRegistrosAprovados()) == 0;
+    }
+
+    private static long numero(Long valor) {
+        return valor == null ? 0L : valor;
     }
 
     public static class EtapaNaoImplementadaException extends RuntimeException {

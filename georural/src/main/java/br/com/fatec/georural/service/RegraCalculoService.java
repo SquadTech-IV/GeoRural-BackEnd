@@ -11,6 +11,12 @@ import br.com.fatec.georural.exception.RecursoNaoEncontradoException;
 import br.com.fatec.georural.exception.RequisicaoInvalidaException;
 import br.com.fatec.georural.repository.ParametroRegraCalculoRepository;
 import br.com.fatec.georural.repository.RegraCalculoRepository;
+
+import br.com.fatec.georural.service.auditoria.SessaoOracle;
+import br.com.fatec.georural.entity.Usuario;
+import br.com.fatec.georural.repository.UsuarioRepository;
+import br.com.fatec.georural.security.UsuarioAutenticado;
+import br.com.fatec.georural.security.UsuarioAutenticadoProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,15 +34,24 @@ public class RegraCalculoService {
     private final ParametroRegraCalculoRepository parametroRegraCalculoRepository;
     private final IndicadorService indicadorService;
     private final ParametroRegraValidador parametroRegraValidador;
+    private final SessaoOracle sessaoOracle;
+    private final UsuarioAutenticadoProvider usuarioAutenticadoProvider;
+    private final UsuarioRepository usuarioRepository;
 
     public RegraCalculoService(RegraCalculoRepository regraCalculoRepository,
                                ParametroRegraCalculoRepository parametroRegraCalculoRepository,
                                IndicadorService indicadorService,
-                               ParametroRegraValidador parametroRegraValidador) {
+                               ParametroRegraValidador parametroRegraValidador,
+                               SessaoOracle sessaoOracle,
+                               UsuarioAutenticadoProvider usuarioAutenticadoProvider,
+                               UsuarioRepository usuarioRepository) {
         this.regraCalculoRepository = regraCalculoRepository;
         this.parametroRegraCalculoRepository = parametroRegraCalculoRepository;
         this.indicadorService = indicadorService;
         this.parametroRegraValidador = parametroRegraValidador;
+        this.sessaoOracle = sessaoOracle;
+        this.usuarioAutenticadoProvider = usuarioAutenticadoProvider;
+        this.usuarioRepository = usuarioRepository;
     }
 
 
@@ -73,14 +88,35 @@ public class RegraCalculoService {
     }
 
 
+    // O autor vem de quem esta logado, nunca do que o cliente mandou. Antes o nome
+    // era digitado na tela e gravado como veio, o que permitia assinar a alteracao
+    // de uma regra com o nome de outra pessoa. O campo autor do request ficou sem
+    // uso de proposito: mesmo que um cliente antigo mande, e descartado.
+    private String autorDaAlteracao() {
+        String nome = usuarioAutenticadoProvider.obterOpcional()
+                .map(UsuarioAutenticado::usuId)
+                .flatMap(usuarioRepository::findById)
+                .map(Usuario::getNome)
+                .filter(valor -> valor != null && !valor.isBlank())
+                .orElse(null);
+
+        if (nome == null) {
+            throw new RequisicaoInvalidaException(
+                    "Nao foi possivel identificar o usuario logado para registrar o autor"
+                            + " da alteracao.");
+        }
+
+        return nome.trim();
+    }
+
     @Transactional
     public RegraCalculoResponse criarNovaVersao(String sigla, CriarVersaoRegraRequest request) {
+        // diz ao Oracle quem esta logado, para o gatilho de auditoria gravar o autor
+        sessaoOracle.identificarUsuario();
+
 
         if (isBlank(request.motivo())) {
             throw new RequisicaoInvalidaException("O motivo e obrigatorio para criar uma nova versao.");
-        }
-        if (isBlank(request.autor())) {
-            throw new RequisicaoInvalidaException("O autor e obrigatorio para criar uma nova versao.");
         }
 
         parametroRegraValidador.validar(request.parametros());
@@ -118,7 +154,7 @@ public class RegraCalculoService {
         nova.setFormula(resolverFormula(request, atual));
         nova.setDescricao(request.descricao() != null ? request.descricao()
                 : (atual != null ? atual.getDescricao() : null));
-        nova.setAutor(request.autor().trim());
+        nova.setAutor(autorDaAlteracao());
         nova.setMotivo(request.motivo().trim());
         nova.setVigente("S");
         nova.setDataCriacao(LocalDateTime.now());

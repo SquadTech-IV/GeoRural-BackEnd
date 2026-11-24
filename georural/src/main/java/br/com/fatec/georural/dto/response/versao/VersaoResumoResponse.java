@@ -16,6 +16,9 @@ public record VersaoResumoResponse(
         Long execucaoId,
         LocalDateTime dataPublicacao,
         String responsavel,
+        // a fila mostrava "— · gerada em —" porque estes dois nunca saiam do back
+        LocalDateTime dataCriacao,
+        String arquivoNome,
         Long versaoVigenteAtual,
         LocalDateTime vigenteDesde
 ) {

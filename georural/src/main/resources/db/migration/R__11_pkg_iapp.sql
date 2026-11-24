@@ -355,7 +355,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_IAPP AS
                   UPDATE SET dst.apd_qtd_feicoes   = p_app_feicoes_validas,
                              dst.apd_area_total_ha = PKG_GEO.area_ha(v_app_union),
                              dst.apd_geometria     = v_app_union,
-                             dst.apd_data_geracao  = SYSTIMESTAMP
+                             dst.apd_data_geracao  = CAST(SYSTIMESTAMP AT TIME ZONE 'America/Sao_Paulo' AS TIMESTAMP)
              WHEN NOT MATCHED THEN
                   INSERT (ver_id, apd_filtro_aplicado, apd_qtd_feicoes, apd_area_total_ha, apd_geometria)
                   VALUES (p_app_ver_id, v_filtro_app, p_app_feicoes_validas, PKG_GEO.area_ha(v_app_union), v_app_union);
@@ -387,7 +387,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_IAPP AS
                   UPDATE SET dst.ved_qtd_feicoes   = p_veg_feicoes_validas,
                              dst.ved_area_total_ha = PKG_GEO.area_ha(v_veg_union),
                              dst.ved_geometria     = v_veg_union,
-                             dst.ved_data_geracao  = SYSTIMESTAMP
+                             dst.ved_data_geracao  = CAST(SYSTIMESTAMP AT TIME ZONE 'America/Sao_Paulo' AS TIMESTAMP)
              WHEN NOT MATCHED THEN
                   INSERT (ver_id, ved_filtro_aplicado, ved_qtd_feicoes, ved_area_total_ha, ved_geometria)
                   VALUES (p_veg_ver_id, v_filtro_veg, p_veg_feicoes_validas, PKG_GEO.area_ha(v_veg_union), v_veg_union);
@@ -437,7 +437,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_IAPP AS
                          dst.iap_mensagem           = p_mensagem,
                          dst.iap_app_vegetada_geom  = p_app_veg_geom,
                          dst.iap_passivo_geom       = p_passivo_geom,
-                         dst.iap_data_calculo       = SYSTIMESTAMP
+                         dst.iap_data_calculo       = CAST(SYSTIMESTAMP AT TIME ZONE 'America/Sao_Paulo' AS TIMESTAMP)
          WHEN NOT MATCHED THEN
               INSERT (imo_id, ver_id, iap_app_ver_id, iap_veg_ver_id, exe_id, rca_id,
                       iap_app_total_ha, iap_app_vegetada_ha, iap_passivo_ha, iap_iapp_pct,
@@ -448,7 +448,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_IAPP AS
                       p_app_total_ha, p_app_vegetada_ha, p_passivo_ha, p_iapp_pct,
                       p_area_imovel_ha, p_filtro_app, p_filtro_veg,
                       p_comp_app, p_comp_veg, p_status, p_mensagem,
-                      p_app_veg_geom, p_passivo_geom, 'N', SYSTIMESTAMP);
+                      p_app_veg_geom, p_passivo_geom, 'N', CAST(SYSTIMESTAMP AT TIME ZONE 'America/Sao_Paulo' AS TIMESTAMP));
     END gravar_resultado;
 
     PROCEDURE calcular_imovel(

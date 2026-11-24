@@ -44,6 +44,11 @@ public final class PoliticaZonaBruta {
     /** Código HTTP retornado pelo HEAD quando o objeto não é encontrado. */
     public static final int STATUS_NOT_FOUND = 404;
 
+    /** 403 de regra de retencao: o bucket protege um objeto que ja esta gravado. */
+    public static final int STATUS_FORBIDDEN = 403;
+
+    private static final String CODIGO_RETENCAO = "RetentionRuleViolation";
+
     private PoliticaZonaBruta() {
         // Impede instanciação de classe utilitária de política
     }
@@ -135,7 +140,21 @@ public final class PoliticaZonaBruta {
      * @return {@code true} se o objeto já existe no bucket
      */
     public static boolean ehConflitoPorObjetoJaExistente(BmcException excecao) {
-        return excecao != null && excecao.getStatusCode() == STATUS_PRECONDITION_FAILED;
+        if (excecao == null) {
+            return false;
+        }
+
+        if (excecao.getStatusCode() == STATUS_PRECONDITION_FAILED) {
+            return true;
+        }
+
+        // A zona publicada tem regra de retencao no bucket, e ela so barra o PUT quando o
+        // objeto JA existe: durante a retencao nao se sobrescreve nem se apaga. Entao este
+        // 403 diz exatamente o que o 412 do If-None-Match diz -- o artefato ja esta la.
+        // Sem este trecho, uma publicacao que falhou depois de gravar o artefato deixava a
+        // versao travada: a nova tentativa morria em 500 em vez de seguir.
+        return excecao.getStatusCode() == STATUS_FORBIDDEN
+                && CODIGO_RETENCAO.equalsIgnoreCase(excecao.getServiceCode());
     }
 
     // -------------------------------------------------------------------------

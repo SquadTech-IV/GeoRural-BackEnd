@@ -5,6 +5,7 @@ import br.com.fatec.georural.dto.response.cadastro.FonteResponse;
 import br.com.fatec.georural.entity.FonteDoDado;
 import br.com.fatec.georural.exception.ConflitoException;
 import br.com.fatec.georural.exception.RecursoNaoEncontradoException;
+import br.com.fatec.georural.service.auditoria.AuditoriaService;
 import br.com.fatec.georural.repository.ConjuntoDadosRepository;
 import br.com.fatec.georural.repository.FonteDoDadoRepository;
 
@@ -23,14 +24,17 @@ public class FonteService {
     private final FonteDoDadoRepository repository;
     private final CadastroValidacaoService validacao;
     private final ConjuntoDadosRepository conjuntos;
+    private final AuditoriaService auditoria;
 
     public FonteService(
             FonteDoDadoRepository repository,
             CadastroValidacaoService validacao,
-            ConjuntoDadosRepository conjuntos) {
+            ConjuntoDadosRepository conjuntos,
+            AuditoriaService auditoria) {
         this.repository = repository;
         this.validacao = validacao;
         this.conjuntos = conjuntos;
+        this.auditoria = auditoria;
     }
 
     public List<FonteResponse> listar() {
@@ -61,7 +65,14 @@ public class FonteService {
 
         preencher(fonte, request);
 
-        return resposta(repository.saveAndFlush(fonte));
+        FonteDoDado salva = repository.saveAndFlush(fonte);
+
+        // Cadastro de conjunto e de fonte nao entrava na trilha: nem aqui nem por
+        // gatilho -- os gatilhos de auditoria cobrem so VERSAO, REGRA_CALCULO e
+        // PARAMETRO_REGRA_CALCULO. Criar um conjunto nao aparecia no historico.
+        auditoria.registrar("INSERT", "FONTE_DO_DADO", salva.getId(), null, retrato(salva));
+
+        return resposta(salva);
     }
 
     @Transactional
@@ -70,23 +81,41 @@ public class FonteService {
             FonteRequest request) {
         FonteDoDado fonte = obter(id);
 
+        String antes = retrato(fonte);
         preencher(fonte, request);
 
-        return resposta(repository.saveAndFlush(fonte));
+        FonteDoDado salva = repository.saveAndFlush(fonte);
+
+        auditoria.registrar("UPDATE", "FONTE_DO_DADO", salva.getId(), antes, retrato(salva));
+
+        return resposta(salva);
     }
 
     @Transactional
     public void desativar(Long id) {
-        obter(id).setStatus("N");
+        FonteDoDado fonte = obter(id);
+        String antes = retrato(fonte);
+        fonte.setStatus("N");
+
+        auditoria.registrar("DESATIVACAO", "FONTE_DO_DADO", fonte.getId(), antes, retrato(fonte));
     }
 
     @Transactional
     public FonteResponse reativar(Long id) {
         FonteDoDado fonte = obter(id);
 
+        String antes = retrato(fonte);
         fonte.setStatus("S");
 
+        auditoria.registrar("REATIVACAO", "FONTE_DO_DADO", fonte.getId(), antes, retrato(fonte));
+
         return resposta(fonte);
+    }
+
+    // Retrato curto da fonte para a trilha. O escapar() trata nulo.
+    private String retrato(FonteDoDado f) {
+        return "{\"nome\":\"" + AuditoriaService.escapar(f.getNome()) + "\""
+                + ",\"ativa\":" + "S".equals(f.getStatus()) + "}";
     }
 
     private void preencher(

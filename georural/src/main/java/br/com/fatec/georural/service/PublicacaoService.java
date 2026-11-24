@@ -3,7 +3,6 @@ package br.com.fatec.georural.service;
 import br.com.fatec.georural.dto.response.qualidade.QualidadeResponse;
 import br.com.fatec.georural.dto.response.versao.VersaoResponse;
 import br.com.fatec.georural.entity.ArquivoBruto;
-import br.com.fatec.georural.entity.Auditoria;
 import br.com.fatec.georural.entity.ConjuntoDados;
 import br.com.fatec.georural.entity.ExecucaoPipeline;
 import br.com.fatec.georural.entity.MovimentacaoZona;
@@ -11,12 +10,14 @@ import br.com.fatec.georural.entity.SituacaoVersao;
 import br.com.fatec.georural.entity.Versao;
 import br.com.fatec.georural.exception.ConflitoException;
 import br.com.fatec.georural.exception.RecursoNaoEncontradoException;
-import br.com.fatec.georural.repository.AuditoriaRepository;
+import br.com.fatec.georural.service.auditoria.AuditoriaService;
 import br.com.fatec.georural.repository.ConjuntoDadosRepository;
 import br.com.fatec.georural.repository.MovimentacaoZonaRepository;
 import br.com.fatec.georural.repository.VersaoRepository;
 import br.com.fatec.georural.service.pipeline.calculo.CalculoOracle;
 import br.com.fatec.georural.service.qualidade.QualidadeService;
+
+import br.com.fatec.georural.service.auditoria.SessaoOracle;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,7 +31,8 @@ public class PublicacaoService {
 
     private final VersaoRepository versaoRepository;
     private final ConjuntoDadosRepository conjuntoDadosRepository;
-    private final AuditoriaRepository auditoriaRepository;
+    private final AuditoriaService auditoriaService;
+    private final SessaoOracle sessaoOracle;
     private final QualidadeService qualidadeService;
     private final MovimentacaoZonaRepository movimentacaoZonaRepository;
     private final PublicacaoZonaService publicacaoZonaService;
@@ -38,6 +40,9 @@ public class PublicacaoService {
 
     @Transactional
     public VersaoResponse publicar(Long versaoId, String justificativa) {
+        // diz ao Oracle quem esta logado, para o gatilho de auditoria gravar o autor
+        sessaoOracle.identificarUsuario();
+
         Versao versao = versaoRepository.findById(versaoId)
                 .orElseThrow(() -> new RecursoNaoEncontradoException("Versao nao encontrada: " + versaoId));
 
@@ -110,17 +115,16 @@ public class PublicacaoService {
 
         // registra a publicacao na auditoria quando tem justificativa
         if (comRessalva || !justificativaLimpa.isEmpty()) {
-            Auditoria registro = new Auditoria();
-            registro.setOperacao("UPDATE");
-            registro.setEntidadeAfetada("VERSAO");
-            registro.setRegistroId(versaoId);
-            registro.setDadosNovos("{\"acao\":\"PUBLICACAO\""
-                    + ",\"versao\":" + versao.getNumero()
-                    + ",\"comRessalva\":" + comRessalva
-                    + ",\"registrosEmQuarentena\":" + qualidade.registrosEmQuarentena()
-                    + ",\"justificativa\":\"" + escaparJson(justificativaLimpa) + "\"}");
-            registro.setDataHora(LocalDateTime.now());
-            auditoriaRepository.save(registro);
+            // Passa pelo AuditoriaService em vez de montar a linha na mao: so ele
+            // resolve quem esta logado. Montado aqui, o registro ia para a trilha
+            // sem usuario e sem nome, e a tela de historico mostrava "Responsavel
+            // nao informado".
+            auditoriaService.registrar("UPDATE", "VERSAO", versaoId, null,
+                    "{\"acao\":\"PUBLICACAO\""
+                            + ",\"versao\":" + versao.getNumero()
+                            + ",\"comRessalva\":" + comRessalva
+                            + ",\"registrosEmQuarentena\":" + qualidade.registrosEmQuarentena()
+                            + ",\"justificativa\":\"" + escaparJson(justificativaLimpa) + "\"}");
         }
 
         return toResponse(versao);
@@ -128,6 +132,9 @@ public class PublicacaoService {
 
     @Transactional
     public VersaoResponse reprovar(Long versaoId, String motivo) {
+        // diz ao Oracle quem esta logado, para o gatilho de auditoria gravar o autor
+        sessaoOracle.identificarUsuario();
+
         Versao versao = versaoRepository.findById(versaoId)
                 .orElseThrow(() -> new RecursoNaoEncontradoException("Versao nao encontrada: " + versaoId));
 
@@ -143,13 +150,8 @@ public class PublicacaoService {
         }
 
         // a versao permanece RASCUNHO
-        Auditoria registro = new Auditoria();
-        registro.setOperacao("UPDATE");
-        registro.setEntidadeAfetada("VERSAO");
-        registro.setRegistroId(versaoId);
-        registro.setDadosNovos("{\"acao\":\"REPROVACAO\",\"motivo\":\"" + escaparJson(motivo.trim()) + "\"}");
-        registro.setDataHora(LocalDateTime.now());
-        auditoriaRepository.save(registro);
+        auditoriaService.registrar("UPDATE", "VERSAO", versaoId, null,
+                "{\"acao\":\"REPROVACAO\",\"motivo\":\"" + escaparJson(motivo.trim()) + "\"}");
 
         return toResponse(versao);
     }

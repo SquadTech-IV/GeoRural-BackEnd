@@ -1,0 +1,28 @@
+# Keycloak para o GeoRural, em modo desenvolvimento.
+#
+# A porta 8180 nao e escolha: o application.properties aponta o issuer para
+# http://localhost:8180/realms/georural, e o Spring recusa token de outro issuer.
+#
+# Nao tem volume de dados de proposito: se voce derrubar com "docker compose down",
+# o realm e reimportado limpo na proxima subida. Fica sempre reproduzivel.
+
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    container_name: georural-keycloak
+    command:
+      - start-dev
+      - --http-port=8180
+      - --import-realm
+    environment:
+      # nomes novos (Keycloak 26) e antigos (<=25), para funcionar nas duas versoes
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "8180:8180"
+    volumes:
+      - ./georural-realm.json:/opt/keycloak/data/import/georural-realm.json:ro
+    restart: unless-stopped

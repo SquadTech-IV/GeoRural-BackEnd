@@ -1,3 +1,6 @@
+-- Reaplicado em 23/11/2026: o PKG_GEO do banco estava sem a area_equivalente_ha,
+-- que o PKG_CALCULO usa no IDA. Este comentario muda o checksum e faz o Flyway
+-- recriar o pacote; o codigo abaixo nao foi alterado.
 -- PKG_GEO (repetivel): operacoes geoespaciais no banco
 create or replace package pkg_geo as
    c_tol constant number := 0.05;

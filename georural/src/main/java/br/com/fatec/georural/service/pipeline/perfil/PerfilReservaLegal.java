@@ -21,8 +21,10 @@ public class PerfilReservaLegal implements PerfilCamada {
     @Override
     public List<CampoCamada> campos() {
         return List.of(
+                // 'recibo' e o nome do campo no pacote por imovel do SICAR; sem ele
+                // uma camada de Reserva Legal vinda de lá perde o campo obrigatorio
                 CampoCamada.obrigatorio("codigo_car", TipoCampo.TEXTO,
-                        "cod_imovel", "codigo", "cod_car", "car"),
+                        "recibo", "cod_imovel", "codigo", "cod_car", "car"),
                 CampoCamada.opcional("area_declarada", TipoCampo.DECIMAL,
                         "num_area", "area", "area_ha", "num_area_h"),
                 CampoCamada.opcional("tipo", TipoCampo.TEXTO,

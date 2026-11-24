@@ -90,7 +90,8 @@ public class SecurityConfig {
 
                         // 2. Rotas restritas exclusivamente a ADMIN
                         .requestMatchers("/api/usuarios/**").hasRole("ADMIN")
-                        .requestMatchers("/api/teste/**").hasRole("ADMIN")
+                        // expoe rotas, mensagens de erro e IP de origem: so ADMIN
+                        .requestMatchers(HttpMethod.GET, "/api/monitoramento/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/pipeline/limite-territorial/recarregar").hasRole("ADMIN")
 
                         // 3. Gestao e administracao (ADMIN, GESTOR)
@@ -124,8 +125,10 @@ public class SecurityConfig {
 
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/qualidade/**").hasAnyRole(OPERACAO_E_INGESTAO)
 
-                        // US#20 - Historico de auditoria: somente AUDITOR
-                        .requestMatchers(HttpMethod.GET, "/api/v1/auditoria/**").hasRole("AUDITOR")
+                        // US#20 - Historico de auditoria. Era hasRole(AUDITOR), o que deixava o
+                        // ADMIN de fora e divergia do front, que ja tratava a rota como
+                        // QUALIDADE_E_LINHAGEM. Alinhado aqui para o ADMIN ver todas as telas.
+                        .requestMatchers(HttpMethod.GET, "/api/v1/auditoria/**").hasAnyRole(QUALIDADE_E_LINHAGEM)
 
                         // 5. Linhagem e qualidade (ADMIN, GESTOR, OPERADOR, AUDITOR - bloqueia ANALISTA)
                         .requestMatchers(HttpMethod.GET, "/api/v1/linhagem/**").hasAnyRole(QUALIDADE_E_LINHAGEM)

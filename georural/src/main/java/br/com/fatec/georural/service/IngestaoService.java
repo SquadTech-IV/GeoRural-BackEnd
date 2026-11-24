@@ -9,6 +9,8 @@ import br.com.fatec.georural.exception.ConflitoException;
 import br.com.fatec.georural.exception.FormatoInvalidoException;
 import br.com.fatec.georural.exception.RecursoNaoEncontradoException;
 import br.com.fatec.georural.exception.RequisicaoInvalidaException;
+import br.com.fatec.georural.service.IdentificadorFormatoService;
+import br.com.fatec.georural.service.OrigemArquivoService;
 import br.com.fatec.georural.service.ingestao.SituacaoEnvio;
 import br.com.fatec.georural.service.pipeline.ResolvedorCompetencia;
 import br.com.fatec.georural.service.storage.RecebimentoArquivoService;
@@ -54,25 +56,6 @@ public class IngestaoService {
         this.origemService = origemService;
         this.recebimentoService = recebimentoService;
         this.resolvedorCompetencia = resolvedorCompetencia;
-    }
-
-    // versao antiga, de dois argumentos
-    public List<ArquivoValidacaoResponse> ingerir(List<MultipartFile> arquivos, Long conjuntoId) {
-        return ingerir(arquivos, conjuntoId, null, null);
-    }
-
-    // competencia vale para todos os arquivos da chamada; nula, cada um deduz do nome.
-    // usuId nulo usa o responsavel do conjunto.
-    public List<ArquivoValidacaoResponse> ingerir(List<MultipartFile> arquivos, Long conjuntoId,
-                                                  String competencia, Long usuId) {
-        Preparo preparo = preparar(arquivos, conjuntoId, competencia, usuId);
-
-        List<ArquivoValidacaoResponse> resultados = new ArrayList<>();
-        for (MultipartFile arquivo : arquivos) {
-            resultados.add(receberUm(arquivo, conjuntoId, preparo.usuarioId(), preparo.fonteId(),
-                    preparo.conjuntoRespostaId(), preparo.competencia()));
-        }
-        return resultados;
     }
 
     // mesmo envio da ingerir, com totais e um id de correlacao para a tela e para o log

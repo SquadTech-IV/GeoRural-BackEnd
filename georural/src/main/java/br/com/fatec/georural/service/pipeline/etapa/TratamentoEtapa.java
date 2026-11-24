@@ -2,6 +2,7 @@ package br.com.fatec.georural.service.pipeline.etapa;
 
 import br.com.fatec.georural.entity.ExecucaoPipeline;
 import br.com.fatec.georural.repository.ExecucaoPipelineRepository;
+import br.com.fatec.georural.service.pipeline.CargaLimiteTerritorialService;
 import br.com.fatec.georural.service.pipeline.ContextoExecucao;
 import br.com.fatec.georural.service.pipeline.Etapa;
 import br.com.fatec.georural.service.pipeline.EtapaPipeline;
@@ -48,6 +49,7 @@ public class TratamentoEtapa implements EtapaPipeline {
     private final RegistroTransformacaoService transformacoes;
     private final ExportacaoZonaTratadaService exportacao;
     private final JdbcTemplate jdbc;
+    private final CargaLimiteTerritorialService cargaLimite;
 
     @Override
     public Etapa etapa() {
@@ -62,9 +64,6 @@ public class TratamentoEtapa implements EtapaPipeline {
         Long arquivoId = exigir(ctx.getArquivoBrutoId(), "arquivoBrutoId");
         Long conjuntoId = ctx.getConjuntoId() != null
                 ? ctx.getConjuntoId() : alvosService.conjuntoId(arquivoId);
-
-        // tem que ser a primeira instrucao da transacao
-        oracle.prepararSessao();
 
         Long stagingId = execucaoDaStaging(ctx);
         long recebidas = oracle.restantes(stagingId);
@@ -145,6 +144,22 @@ public class TratamentoEtapa implements EtapaPipeline {
         long dispensadas = 0;
         long recortadas = 0;
         boolean algumRecortou = false;
+
+        // O limite do PR e derivado da malha municipal ja ingerida, mas isso so roda
+        // no boot (CargaLimiteTerritorialRunner). Se a malha entrou depois do ultimo
+        // boot, o LIMITE_TERRITORIAL esta vazio e o recorte abaixo quebraria com
+        // ORA-20020. Carrega aqui, antes de precisar. Sem a malha o metodo apenas
+        // registra e devolve false, e aí o proprio recortarUf diz o que ingerir.
+        boolean algumPrecisaDeRecorte = false;
+        for (Camada camada : camadas) {
+            if (camada.perfil().exigeDentroDoParana()) {
+                algumPrecisaDeRecorte = true;
+                break;
+            }
+        }
+        if (algumPrecisaDeRecorte) {
+            cargaLimite.carregarSeNecessario();
+        }
 
         for (Camada camada : camadas) {
             if (!camada.perfil().exigeDentroDoParana()) {
@@ -252,6 +267,13 @@ public class TratamentoEtapa implements EtapaPipeline {
                             + ": carga em RESERVA_LEGAL ligada ao imovel pelo CAR, "
                             + gravadas + " registro(s).", "FEICAO_STAGING", "RESERVA_LEGAL");
                 }
+                case "APP" -> {
+                    long gravadas = oracle.carregarApp(stagingId, versaoId, arq);
+                    resumo.add(gravadas + " APP");
+                    trilha.passo("PADRONIZACAO", camada.nome()
+                            + ": carga em APP ligada ao imovel pelo CAR, "
+                            + gravadas + " registro(s).", "FEICAO_STAGING", "APP");
+                }
                 case "EMBARGO" -> {
                     long gravadas = oracle.carregarEmbargo(stagingId, versaoId, arq);
                     resumo.add(gravadas + " embargo(s)");
@@ -273,6 +295,22 @@ public class TratamentoEtapa implements EtapaPipeline {
                                         + " posicao, e nao foram repetidos para nao contar duas vezes.",
                                 "FEICAO_STAGING", "-");
                     }
+                }
+                case "DESMATAMENTO" -> {
+                    long gravadas = oracle.carregarDesmatamento(stagingId, versaoId, arq);
+                    resumo.add(gravadas + " poligono(s) de desmatamento");
+                    trilha.passo("PADRONIZACAO", camada.nome()
+                            + ": carga em DESMATAMENTO, " + gravadas
+                            + " registro(s).", "FEICAO_STAGING", "DESMATAMENTO");
+                }
+                case "AREA_PROTEGIDA" -> {
+                    long gravadas = oracle.carregarAreaProtegida(stagingId, versaoId, arq);
+                    resumo.add(gravadas + " area(s) protegida(s)");
+                    trilha.passo("PADRONIZACAO", camada.nome()
+                                    + ": carga em AREA_PROTEGIDA com a categoria normalizada"
+                                    + " (UC, terra indigena, quilombola, floresta publica), "
+                                    + gravadas + " registro(s).",
+                            "FEICAO_STAGING", "AREA_PROTEGIDA");
                 }
                 case "MALHA_MUNICIPAL" -> {
                     long gravadas = oracle.carregarMunicipio(stagingId, arq);
@@ -323,13 +361,35 @@ public class TratamentoEtapa implements EtapaPipeline {
                 registroPerfis.buscar(alvosService.tipoConjunto(arquivoId));
 
         List<Camada> camadas = new ArrayList<>();
+        List<String> semPerfil = new ArrayList<>();
+
         for (Object[] linha : linhas) {
             String nome = (String) linha[1];
-            PerfilCamada perfil = registroPerfis.porNomeDeCamada(nome)
-                    .or(() -> doConjunto)
-                    .orElseThrow(() -> new RegistroPerfis.PerfilNaoDefinidoException(
-                            alvosService.tipoConjunto(arquivoId)));
-            camadas.add(new Camada((Long) linha[0], nome, perfil));
+            Optional<PerfilCamada> peloNome = registroPerfis.porNomeDeCamada(nome);
+
+            // o perfil do conjunto so serve quando ha uma camada so. Com varias, herdar
+            // o tipo do conjunto joga uma camada na tabela de outra: no pacote do CAR,
+            // Area_de_Preservacao_Permanente e Servidao_Administrativa viravam IMOVEL e
+            // sobrescreviam o perimetro do imovel no MERGE por codigo do CAR.
+            Optional<PerfilCamada> perfil = peloNome.isPresent() || linhas.size() == 1
+                    ? peloNome.or(() -> doConjunto)
+                    : Optional.empty();
+
+            if (perfil.isEmpty()) {
+                semPerfil.add(nome);
+                continue;
+            }
+            camadas.add(new Camada((Long) linha[0], nome, perfil.get()));
+        }
+
+        if (camadas.isEmpty()) {
+            throw new RegistroPerfis.PerfilNaoDefinidoException(
+                    alvosService.tipoConjunto(arquivoId));
+        }
+
+        if (!semPerfil.isEmpty()) {
+            log.warn("Camada(s) sem perfil proprio, deixada(s) fora do tratamento: {}."
+                    + " Os dados delas nao foram carregados em nenhuma tabela.", semPerfil);
         }
 
         camadas.sort(Comparator.comparingInt(c -> c.perfil().ordemNoTratamento()));

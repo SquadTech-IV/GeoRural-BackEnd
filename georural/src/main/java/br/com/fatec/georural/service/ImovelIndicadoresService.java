@@ -3,20 +3,13 @@ package br.com.fatec.georural.service;
 import br.com.fatec.georural.dto.response.imovel.ImovelIndicadoresResponse;
 import br.com.fatec.georural.dto.response.imovel.IndicadorVigenteResponse;
 import br.com.fatec.georural.entity.ImovelRural;
-import br.com.fatec.georural.entity.Indicador;
 import br.com.fatec.georural.entity.ResultadoIndicador;
-import br.com.fatec.georural.entity.ResultadoIsapResumo;
 import br.com.fatec.georural.exception.RecursoNaoEncontradoException;
 import br.com.fatec.georural.repository.ImovelRuralRepository;
-import br.com.fatec.georural.repository.IndicadorRepository;
 import br.com.fatec.georural.repository.ResultadoIndicadorRepository;
-import br.com.fatec.georural.repository.ResultadoIsapResumoRepository;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.sql.Clob;
-import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -24,26 +17,10 @@ public class ImovelIndicadoresService {
 
     private final ImovelRuralRepository imovelRepository;
     private final ResultadoIndicadorRepository resultadoRepository;
-    private final ResultadoIsapResumoRepository isapResumoRepository;
-    private final IndicadorRepository indicadorRepository;
-    private final JdbcTemplate jdbcTemplate;
-
     public ImovelIndicadoresService(ImovelRuralRepository imovelRepository,
                                     ResultadoIndicadorRepository resultadoRepository) {
-        this(imovelRepository, resultadoRepository, null, null, null);
-    }
-
-    @Autowired
-    public ImovelIndicadoresService(ImovelRuralRepository imovelRepository,
-                                    ResultadoIndicadorRepository resultadoRepository,
-                                    ResultadoIsapResumoRepository isapResumoRepository,
-                                    IndicadorRepository indicadorRepository,
-                                    JdbcTemplate jdbcTemplate) {
         this.imovelRepository = imovelRepository;
         this.resultadoRepository = resultadoRepository;
-        this.isapResumoRepository = isapResumoRepository;
-        this.indicadorRepository = indicadorRepository;
-        this.jdbcTemplate = jdbcTemplate;
     }
 
     public ImovelIndicadoresResponse detalharPorCar(String codigoCar) {
@@ -75,22 +52,15 @@ public class ImovelIndicadoresService {
         return montar(imovel, geometria, indicadores);
     }
 
-    private List<IndicadorVigenteResponse> listarIndicadoresVigentes(Long imovelId, boolean comFeatures) {
-        List<IndicadorVigenteResponse> lista = new ArrayList<>(
-                resultadoRepository.buscarVigentesDoImovel(imovelId).stream()
-                        .map(r -> toIndicador(r, comFeatures))
-                        .toList());
-
-        if (isapResumoRepository != null) {
-            isapResumoRepository.findVigentesPorImovelId(imovelId)
-                    .stream()
-                    .filter(r -> "TOTAL".equalsIgnoreCase(r.getCategoria()))
-                    .findFirst()
-                    .ifPresent(isap -> lista.add(toIndicadorIsap(isap)));
-        }
-        adicionarIappVigente(imovelId, lista);
-
-        return lista;
+    // So os indicadores que este imovel de fato tem -- nunca os sete com vazio.
+    // ISAP e IAPP saem daqui tambem: o PKG_PROJECAO copia os dois para a
+    // RESULTADO_INDICADOR no fim do CALCULO, entao nao ha o que somar das
+    // tabelas proprias deles (era de onde vinha a duplicata).
+    private List<IndicadorVigenteResponse> listarIndicadoresVigentes(Long imovelId,
+                                                                     boolean comFeatures) {
+        return resultadoRepository.buscarVigentesDoImovel(imovelId).stream()
+                .map(r -> toIndicador(r, imovelId, comFeatures))
+                .toList();
     }
 
     private ImovelIndicadoresResponse montar(ImovelRural imovel, String geometria,
@@ -104,7 +74,8 @@ public class ImovelIndicadoresService {
                 indicadores);
     }
 
-    private IndicadorVigenteResponse toIndicador(ResultadoIndicador r, boolean comFeatures) {
+    private IndicadorVigenteResponse toIndicador(ResultadoIndicador r, Long imovelId,
+                                                 boolean comFeatures) {
         var indicador = r.getIndicador();
         String versaoRegra = r.getRegraCalculo() != null ? r.getRegraCalculo().getVersao() : null;
         return new IndicadorVigenteResponse(
@@ -116,28 +87,41 @@ public class ImovelIndicadoresService {
                 r.getValorHectares(),
                 r.getValorAbsoluto(),
                 versaoRegra,
-                comFeatures ? r.getFeatures() : null);
+                comFeatures ? geometriaDoIndicador(r, imovelId) : null,
+                r.getDetalhes());
     }
 
-    private IndicadorVigenteResponse toIndicadorIsap(ResultadoIsapResumo r) {
-        Indicador ind = indicadorRepository != null
-                ? indicadorRepository.findBySigla("ISAP").orElse(null)
-                : null;
+    // Geometria do indicador para desenhar no mapa (US#05).
+    //
+    // Antes isto lia r.getFeatures(), que e a coluna rin_features -- declarada no
+    // schema e no DTO, e nunca escrita por lugar nenhum do sistema. O resultado era
+    // que so o IAPP aparecia no mapa, porque ele tem endpoint proprio: os outros
+    // seis chegavam com geometria nula e o front descartava a camada em silencio.
+    //
+    // A geometria vem da camada que originou o indicador, e NAO e filtrada pela
+    // versao do resultado: a versao do resultado e a do calculo, a das linhas da
+    // camada e a do tratamento, e as duas so coincidem por acaso. O escopo de cada
+    // consulta esta explicado no ImovelRuralRepository.
+    //
+    // So e chamado quando comFeatures e true, ou seja no detalhe de um imovel. A
+    // listagem do mapa (listarMapa) continua sem geometria de indicador: seriam sete
+    // consultas espaciais por imovel, para desenhar camada que ninguem pediu ainda.
+    private String geometriaDoIndicador(ResultadoIndicador r, Long imovelId) {
+        String sigla = r.getIndicador().getSigla();
+        sigla = sigla == null ? "" : sigla.trim().toUpperCase();
 
-        String nome = ind != null ? ind.getNome() : "Índice de Sobreposição a Áreas Protegidas";
-        String unidade = ind != null ? ind.getUnidade() : "%";
-        String versaoRegra = r.getRegraCalculo() != null ? r.getRegraCalculo().getVersao() : null;
+        Object geometria = switch (sigla) {
+            case "IRL" -> imovelRepository.geometriaReservaLegalGeoJson(imovelId);
+            case "IAPP" -> imovelRepository.geometriaAppGeoJson(imovelId);
+            case "ICV" -> imovelRepository.geometriaVegetacaoGeoJson(imovelId);
+            case "IAE" -> imovelRepository.geometriaEmbargoGeoJson(imovelId);
+            case "ISAP" -> imovelRepository.geometriaAreaProtegidaGeoJson(imovelId);
+            case "IDESMAT" -> imovelRepository.geometriaDesmatamentoGeoJson(imovelId);
+            case "IFC" -> imovelRepository.geometriaFocoCalorGeoJson(imovelId, r.getId());
+            default -> null;
+        };
 
-        return new IndicadorVigenteResponse(
-                "ISAP",
-                nome,
-                unidade,
-                r.getStatus(),
-                r.getPctSobreposicao(),
-                r.getAreaSobrepostaHa(),
-                r.getAreaSobrepostaHa(),
-                versaoRegra,
-                null);
+        return clobParaString(geometria);
     }
 
     // converte o CLOB do TO_GEOJSON em texto
@@ -158,35 +142,4 @@ public class ImovelIndicadoresService {
         return valor.toString();
     }
 
-    private void adicionarIappVigente(Long imovelId, List<IndicadorVigenteResponse> lista) {
-        if (jdbcTemplate == null) {
-            return;
-        }
-
-        Indicador ind = indicadorRepository != null
-                ? indicadorRepository.findBySigla("IAPP").orElse(null)
-                : null;
-        String nome = ind != null ? ind.getNome() : "Índice de APP Preservada";
-        String unidade = ind != null ? ind.getUnidade() : "%";
-
-        jdbcTemplate.query(
-                "SELECT r.iap_status, r.iap_iapp_pct, r.iap_app_vegetada_ha, r.iap_passivo_ha, rc.rca_versao "
-                        + "  FROM RESULTADO_IAPP r "
-                        + "  LEFT JOIN REGRA_CALCULO rc ON rc.rca_id = r.rca_id "
-                        + " WHERE r.imo_id = ? AND r.iap_vigente = 'S' "
-                        + " ORDER BY r.iap_data_calculo DESC, r.iap_id DESC FETCH FIRST 1 ROWS ONLY",
-                rs -> {
-                    lista.add(new IndicadorVigenteResponse(
-                            "IAPP",
-                            nome,
-                            unidade,
-                            rs.getString("iap_status"),
-                            rs.getBigDecimal("iap_iapp_pct"),
-                            rs.getBigDecimal("iap_app_vegetada_ha"),
-                            rs.getBigDecimal("iap_passivo_ha"),
-                            rs.getString("rca_versao"),
-                            null));
-                },
-                imovelId);
-    }
 }

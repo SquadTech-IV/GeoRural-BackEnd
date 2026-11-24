@@ -1,18 +1,19 @@
 package br.com.fatec.georural.service;
 
 import br.com.fatec.georural.dto.response.versao.VersaoResponse;
-import br.com.fatec.georural.entity.Auditoria;
 import br.com.fatec.georural.entity.ConjuntoDados;
 import br.com.fatec.georural.entity.MovimentacaoZona;
 import br.com.fatec.georural.entity.SituacaoVersao;
 import br.com.fatec.georural.entity.Versao;
 import br.com.fatec.georural.exception.ConflitoException;
 import br.com.fatec.georural.exception.RecursoNaoEncontradoException;
-import br.com.fatec.georural.repository.AuditoriaRepository;
+import br.com.fatec.georural.service.auditoria.AuditoriaService;
 import br.com.fatec.georural.repository.ConjuntoDadosRepository;
 import br.com.fatec.georural.repository.MovimentacaoZonaRepository;
 import br.com.fatec.georural.repository.VersaoRepository;
 import br.com.fatec.georural.service.pipeline.calculo.CalculoOracle;
+
+import br.com.fatec.georural.service.auditoria.SessaoOracle;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,13 +28,17 @@ public class ReversaoPublicacaoService {
 
     private final VersaoRepository versaoRepository;
     private final ConjuntoDadosRepository conjuntoDadosRepository;
-    private final AuditoriaRepository auditoriaRepository;
+    private final AuditoriaService auditoriaService;
+    private final SessaoOracle sessaoOracle;
     private final MovimentacaoZonaRepository movimentacaoZonaRepository;
     private final CalculoOracle calculoOracle;
 
     // devolve a vigencia para a versao anterior do mesmo conjunto
     @Transactional
     public VersaoResponse reverter(Long versaoId, String motivo) {
+        // diz ao Oracle quem esta logado, para o gatilho de auditoria gravar o autor
+        sessaoOracle.identificarUsuario();
+
         if (motivo == null || motivo.isBlank()) {
             throw new ConflitoException("Informe o motivo da reversao da versao " + versaoId + ".");
         }
@@ -94,17 +99,13 @@ public class ReversaoPublicacaoService {
     }
 
     private void registrarAuditoria(Versao saiu, Versao entrou, String motivo) {
-        Auditoria registro = new Auditoria();
-        registro.setOperacao("UPDATE");
-        registro.setEntidadeAfetada("VERSAO");
-        registro.setRegistroId(saiu.getId());
-        registro.setDadosAntigos("{\"situacao\":\"VIGENTE\",\"versao\":" + saiu.getNumero() + "}");
-        registro.setDadosNovos("{\"acao\":\"REVERSAO\""
-                + ",\"versao\":" + saiu.getNumero()
-                + ",\"voltouPara\":" + entrou.getNumero()
-                + ",\"motivo\":\"" + escaparJson(motivo) + "\"}");
-        registro.setDataHora(LocalDateTime.now());
-        auditoriaRepository.save(registro);
+        // Pelo AuditoriaService, para a trilha guardar quem reverteu.
+        auditoriaService.registrar("UPDATE", "VERSAO", saiu.getId(),
+                "{\"situacao\":\"VIGENTE\",\"versao\":" + saiu.getNumero() + "}",
+                "{\"acao\":\"REVERSAO\""
+                        + ",\"versao\":" + saiu.getNumero()
+                        + ",\"voltouPara\":" + entrou.getNumero()
+                        + ",\"motivo\":\"" + escaparJson(motivo) + "\"}");
     }
 
     private VersaoResponse toResponse(Versao v) {

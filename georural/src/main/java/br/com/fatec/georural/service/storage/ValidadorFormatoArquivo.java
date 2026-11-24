@@ -5,34 +5,23 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Enumeration;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipException;
 import java.util.zip.ZipFile;
+import java.util.zip.ZipInputStream;
 
 import org.springframework.stereotype.Component;
 
 import br.com.fatec.georural.exception.FormatoInvalidoException;
 import br.com.fatec.georural.exception.RequisicaoInvalidaException;
 
-/**
- * Valida a extensão e a assinatura de conteúdo dos arquivos enviados.
- *
- * <p>Formatos suportados e seus valores gravados em {@code arq_formato}:
- * <ul>
- *   <li>{@code .zip} -> SHP (Shapefile; deve conter .shp, .shx e .dbf com o mesmo nome base)</li>
- *   <li>{@code .geojson} -> GEOJSON (primeiro caractere não branco '{', tolerando BOM UTF-8)</li>
- *   <li>{@code .gpkg} -> GPKG (assinatura 'SQLite format 3\0')</li>
- *   <li>{@code .csv} -> CSV (sem byte nulo nos primeiros 8 KB)</li>
- *   <li>{@code .tif}, {@code .tiff} -> TIF (assinaturas clássica ou BigTIFF, little ou big-endian)</li>
- * </ul>
- *
- * <p>Arquivos com extensão {@code .json} não são aceitos.
- */
 @Component
 public class ValidadorFormatoArquivo {
 
@@ -43,6 +32,9 @@ public class ValidadorFormatoArquivo {
     public static final String FORMATO_TIF = "TIF";
 
     private static final byte[] ZIP_MAGIC = { 0x50, 0x4B, 0x03, 0x04 };
+
+    // zip interno maior que isso nao e aberto aqui; mesmo limite do inventario
+    private static final long LIMITE_ZIP_INTERNO_BYTES = 4L * 1024 * 1024 * 1024;
 
     private static final byte[] GPKG_MAGIC = {
             'S', 'Q', 'L', 'i', 't', 'e', ' ', 'f', 'o', 'r', 'm', 'a', 't', ' ', '3', 0x00
@@ -125,47 +117,103 @@ public class ValidadorFormatoArquivo {
         }
 
         try (ZipFile zipFile = new ZipFile(arquivo.toFile())) {
-            Set<String> shpBases = new HashSet<>();
-            Set<String> shxBases = new HashSet<>();
-            Set<String> dbfBases = new HashSet<>();
-
-            Enumeration<? extends ZipEntry> entries = zipFile.entries();
-            while (entries.hasMoreElements()) {
-                ZipEntry entry = entries.nextElement();
-                if (entry.isDirectory()) {
-                    continue;
-                }
-                String name = entry.getName().replace('\\', '/');
-                if (name.startsWith("__MACOSX/") || name.contains("/__MACOSX/")) {
-                    continue;
-                }
-                String lower = name.toLowerCase(Locale.ROOT);
-                if (lower.endsWith(".shp")) {
-                    shpBases.add(lower.substring(0, lower.length() - 4));
-                } else if (lower.endsWith(".shx")) {
-                    shxBases.add(lower.substring(0, lower.length() - 4));
-                } else if (lower.endsWith(".dbf")) {
-                    dbfBases.add(lower.substring(0, lower.length() - 4));
-                }
+            if (temShapefileCompleto(nomesDoZip(zipFile))) {
+                return;
             }
 
-            boolean completo = false;
-            for (String base : shpBases) {
-                if (shxBases.contains(base) && dbfBases.contains(base)) {
-                    completo = true;
-                    break;
-                }
+            // pacote por imovel do SICAR: zip de zips, um shapefile em cada zip interno
+            if (temShapefileEmZipInterno(zipFile)) {
+                return;
             }
 
-            if (!completo) {
-                throw new FormatoInvalidoException(
-                        "O arquivo .zip deve ser um shapefile contendo ao menos os arquivos .shp, .shx e .dbf com o mesmo nome base.");
-            }
+            throw new FormatoInvalidoException(
+                    "O arquivo .zip deve conter um shapefile com .shp, .shx e .dbf de mesmo nome base,"
+                            + " soltos no zip ou dentro de um zip interno, como no pacote por imovel do SICAR.");
         } catch (ZipException e) {
             throw new FormatoInvalidoException("Arquivo .zip corrompido ou inválido: " + e.getMessage());
         } catch (IOException e) {
             throw new FormatoInvalidoException("Falha ao inspecionar o arquivo .zip: " + e.getMessage());
         }
+    }
+
+    // nomes das entradas de arquivo do zip, sem as pastas
+    private List<String> nomesDoZip(ZipFile zipFile) {
+        List<String> nomes = new ArrayList<>();
+        Enumeration<? extends ZipEntry> entries = zipFile.entries();
+        while (entries.hasMoreElements()) {
+            ZipEntry entry = entries.nextElement();
+            if (!entry.isDirectory()) {
+                nomes.add(entry.getName());
+            }
+        }
+        return nomes;
+    }
+
+    // trio .shp, .shx e .dbf com o mesmo nome base
+    private boolean temShapefileCompleto(List<String> nomes) {
+        Set<String> shpBases = new HashSet<>();
+        Set<String> shxBases = new HashSet<>();
+        Set<String> dbfBases = new HashSet<>();
+
+        for (String bruto : nomes) {
+            String name = bruto.replace('\\', '/');
+            if (name.startsWith("__MACOSX/") || name.contains("/__MACOSX/")) {
+                continue;
+            }
+            String lower = name.toLowerCase(Locale.ROOT);
+            if (lower.endsWith(".shp")) {
+                shpBases.add(lower.substring(0, lower.length() - 4));
+            } else if (lower.endsWith(".shx")) {
+                shxBases.add(lower.substring(0, lower.length() - 4));
+            } else if (lower.endsWith(".dbf")) {
+                dbfBases.add(lower.substring(0, lower.length() - 4));
+            }
+        }
+
+        for (String base : shpBases) {
+            if (shxBases.contains(base) && dbfBases.contains(base)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // um nivel para dentro; o inventario e que percorre o pacote inteiro depois
+    private boolean temShapefileEmZipInterno(ZipFile zipFile) throws IOException {
+        Enumeration<? extends ZipEntry> entries = zipFile.entries();
+        while (entries.hasMoreElements()) {
+            ZipEntry entry = entries.nextElement();
+            if (entry.isDirectory()
+                    || !entry.getName().toLowerCase(Locale.ROOT).endsWith(".zip")) {
+                continue;
+            }
+            if (entry.getSize() > LIMITE_ZIP_INTERNO_BYTES) {
+                continue;
+            }
+            try (InputStream interno = zipFile.getInputStream(entry)) {
+                if (temShapefileCompleto(nomesDoFluxoZip(interno))) {
+                    return true;
+                }
+            } catch (ZipException e) {
+                // zip interno ilegivel nao invalida o pacote: outro pode servir
+                continue;
+            }
+        }
+        return false;
+    }
+
+    // le so os nomes das entradas, sem descompactar o conteudo
+    private List<String> nomesDoFluxoZip(InputStream entrada) throws IOException {
+        List<String> nomes = new ArrayList<>();
+        try (ZipInputStream zis = new ZipInputStream(entrada)) {
+            ZipEntry interna;
+            while ((interna = zis.getNextEntry()) != null) {
+                if (!interna.isDirectory()) {
+                    nomes.add(interna.getName());
+                }
+            }
+        }
+        return nomes;
     }
 
     private void validarGeoPackage(Path arquivo) {
