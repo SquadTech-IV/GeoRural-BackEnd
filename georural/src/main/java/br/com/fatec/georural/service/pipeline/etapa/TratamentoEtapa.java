@@ -2,6 +2,7 @@ package br.com.fatec.georural.service.pipeline.etapa;
 
 import br.com.fatec.georural.entity.ExecucaoPipeline;
 import br.com.fatec.georural.repository.ExecucaoPipelineRepository;
+import br.com.fatec.georural.service.pipeline.CargaLimiteTerritorialService;
 import br.com.fatec.georural.service.pipeline.ContextoExecucao;
 import br.com.fatec.georural.service.pipeline.Etapa;
 import br.com.fatec.georural.service.pipeline.EtapaPipeline;
@@ -48,6 +49,7 @@ public class TratamentoEtapa implements EtapaPipeline {
     private final RegistroTransformacaoService transformacoes;
     private final ExportacaoZonaTratadaService exportacao;
     private final JdbcTemplate jdbc;
+    private final CargaLimiteTerritorialService cargaLimite;
 
     @Override
     public Etapa etapa() {
@@ -142,6 +144,22 @@ public class TratamentoEtapa implements EtapaPipeline {
         long dispensadas = 0;
         long recortadas = 0;
         boolean algumRecortou = false;
+
+        // O limite do PR e derivado da malha municipal ja ingerida, mas isso so roda
+        // no boot (CargaLimiteTerritorialRunner). Se a malha entrou depois do ultimo
+        // boot, o LIMITE_TERRITORIAL esta vazio e o recorte abaixo quebraria com
+        // ORA-20020. Carrega aqui, antes de precisar. Sem a malha o metodo apenas
+        // registra e devolve false, e aí o proprio recortarUf diz o que ingerir.
+        boolean algumPrecisaDeRecorte = false;
+        for (Camada camada : camadas) {
+            if (camada.perfil().exigeDentroDoParana()) {
+                algumPrecisaDeRecorte = true;
+                break;
+            }
+        }
+        if (algumPrecisaDeRecorte) {
+            cargaLimite.carregarSeNecessario();
+        }
 
         for (Camada camada : camadas) {
             if (!camada.perfil().exigeDentroDoParana()) {
@@ -289,9 +307,9 @@ public class TratamentoEtapa implements EtapaPipeline {
                     long gravadas = oracle.carregarAreaProtegida(stagingId, versaoId, arq);
                     resumo.add(gravadas + " area(s) protegida(s)");
                     trilha.passo("PADRONIZACAO", camada.nome()
-                            + ": carga em AREA_PROTEGIDA com a categoria normalizada"
-                            + " (UC, terra indigena, quilombola, floresta publica), "
-                            + gravadas + " registro(s).",
+                                    + ": carga em AREA_PROTEGIDA com a categoria normalizada"
+                                    + " (UC, terra indigena, quilombola, floresta publica), "
+                                    + gravadas + " registro(s).",
                             "FEICAO_STAGING", "AREA_PROTEGIDA");
                 }
                 case "MALHA_MUNICIPAL" -> {

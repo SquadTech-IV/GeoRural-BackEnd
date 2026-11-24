@@ -6,6 +6,7 @@ import br.com.fatec.georural.entity.ConjuntoDados;
 import br.com.fatec.georural.entity.FonteDoDado;
 import br.com.fatec.georural.entity.TipoConjunto;
 import br.com.fatec.georural.exception.ConflitoException;
+import br.com.fatec.georural.service.auditoria.AuditoriaService;
 import br.com.fatec.georural.exception.RecursoNaoEncontradoException;
 import br.com.fatec.georural.exception.RequisicaoInvalidaException;
 import br.com.fatec.georural.repository.ConjuntoDadosRepository;
@@ -23,15 +24,17 @@ public class ConjuntoService {
     private final CadastroValidacaoService validacao;
     private final CatalogoConjuntoService catalogo;
     private final AutenticacaoApiService autenticacaoApi;
+    private final AuditoriaService auditoria;
 
     public ConjuntoService(ConjuntoDadosRepository repository, FonteService fonteService,
-            CadastroValidacaoService validacao, CatalogoConjuntoService catalogo,
-            AutenticacaoApiService autenticacaoApi) {
+                           CadastroValidacaoService validacao, CatalogoConjuntoService catalogo,
+                           AutenticacaoApiService autenticacaoApi, AuditoriaService auditoria) {
         this.repository = repository;
         this.fonteService = fonteService;
         this.validacao = validacao;
         this.catalogo = catalogo;
         this.autenticacaoApi = autenticacaoApi;
+        this.auditoria = auditoria;
     }
 
     public List<ConjuntoResponse> listar(Long fonteId) {
@@ -51,26 +54,43 @@ public class ConjuntoService {
     private ConjuntoDados obter(Long id) {
         CadastroCampos.validarId(id, "o conjunto");
         return repository.findById(id).orElseThrow(() ->
-            new RecursoNaoEncontradoException("Conjunto não encontrado: " + id));
+                new RecursoNaoEncontradoException("Conjunto não encontrado: " + id));
     }
 
     @Transactional
     public ConjuntoResponse criar(ConjuntoRequest request) {
         ConjuntoDados conjunto = new ConjuntoDados();
         preencher(conjunto, request);
-        return resposta(repository.saveAndFlush(conjunto));
+        ConjuntoDados salvo = repository.saveAndFlush(conjunto);
+
+        // Cadastro de conjunto e de fonte nao entrava na trilha: nem aqui nem por
+        // gatilho -- os gatilhos de auditoria cobrem so VERSAO, REGRA_CALCULO e
+        // PARAMETRO_REGRA_CALCULO. Criar um conjunto nao aparecia no historico.
+        auditoria.registrar("INSERT", "CONJUNTO_DADOS", salvo.getId(), null, retrato(salvo));
+
+        return resposta(salvo);
     }
 
     @Transactional
     public ConjuntoResponse atualizar(Long id, ConjuntoRequest request) {
         ConjuntoDados conjunto = obter(id);
+        String antes = retrato(conjunto);
         preencher(conjunto, request);
-        return resposta(repository.saveAndFlush(conjunto));
+        ConjuntoDados salvo = repository.saveAndFlush(conjunto);
+
+        auditoria.registrar("UPDATE", "CONJUNTO_DADOS", salvo.getId(), antes, retrato(salvo));
+
+        return resposta(salvo);
     }
 
     @Transactional
     public void desativar(Long id) {
-        obter(id).setSituacao("ARQUIVADO");
+        ConjuntoDados conjunto = obter(id);
+        String antes = retrato(conjunto);
+        conjunto.setSituacao("ARQUIVADO");
+
+        auditoria.registrar("DESATIVACAO", "CONJUNTO_DADOS", conjunto.getId(), antes,
+                retrato(conjunto));
     }
 
     @Transactional
@@ -79,8 +99,22 @@ public class ConjuntoService {
         if (!"S".equals(conjunto.getFonte().getStatus())) {
             throw new ConflitoException("Reative a fonte antes de reativar o conjunto.");
         }
+        String antes = retrato(conjunto);
         if ("ARQUIVADO".equals(conjunto.getSituacao())) conjunto.setSituacao("RASCUNHO");
+
+        auditoria.registrar("REATIVACAO", "CONJUNTO_DADOS", conjunto.getId(), antes,
+                retrato(conjunto));
+
         return resposta(conjunto);
+    }
+
+    // Retrato curto do conjunto para a trilha. O escapar() trata nulo.
+    private String retrato(ConjuntoDados c) {
+        return "{\"nome\":\"" + AuditoriaService.escapar(c.getNome()) + "\""
+                + ",\"tipo\":\"" + AuditoriaService.escapar(c.getTipoCamada()) + "\""
+                + ",\"fonte\":\"" + AuditoriaService.escapar(
+                c.getFonte() != null ? c.getFonte().getNome() : null) + "\""
+                + ",\"situacao\":\"" + AuditoriaService.escapar(c.getSituacao()) + "\"}";
     }
 
     private void preencher(ConjuntoDados conjunto, ConjuntoRequest request) {
@@ -94,9 +128,9 @@ public class ConjuntoService {
             throw new RequisicaoInvalidaException("A competência pertence à versão e deve ser informada no fluxo de versionamento.");
         }
         ConjuntoRequest normalizado = new ConjuntoRequest(
-            request.fonteId(), request.nome(), tipo.getCodigo(), request.descricao(), tipo.getEsquema(),
-            request.srs(), conjunto.getCompetencia(), request.cobertura(), request.periodicidade(),
-            upload, api, endpoint, formato, request.autenticacao());
+                request.fonteId(), request.nome(), tipo.getCodigo(), request.descricao(), tipo.getEsquema(),
+                request.srs(), conjunto.getCompetencia(), request.cobertura(), request.periodicidade(),
+                upload, api, endpoint, formato, request.autenticacao());
         validacao.validarConjunto(normalizado);
         validacao.validarEntradaConjunto(normalizado);
 
@@ -109,12 +143,12 @@ public class ConjuntoService {
             throw new ConflitoException("A fonte e o tipo não podem ser alterados. Cadastre outro conjunto para preservar a origem.");
         }
         repository.findByFonteIdAndTipoConjuntoId(fonte.getId(), tipo.getId())
-            .filter(existente -> !Objects.equals(existente.getId(), conjunto.getId()))
-            .ifPresent(existente -> { throw new ConflitoException("Essa fonte já possui um conjunto desse tipo."); });
+                .filter(existente -> !Objects.equals(existente.getId(), conjunto.getId()))
+                .ifPresent(existente -> { throw new ConflitoException("Essa fonte já possui um conjunto desse tipo."); });
         String nome = request.nome().trim();
         repository.findByFonteIdAndNomeIgnoreCase(fonte.getId(), nome)
-            .filter(existente -> !Objects.equals(existente.getId(), conjunto.getId()))
-            .ifPresent(existente -> { throw new ConflitoException("Já existe um conjunto com esse nome nessa fonte."); });
+                .filter(existente -> !Objects.equals(existente.getId(), conjunto.getId()))
+                .ifPresent(existente -> { throw new ConflitoException("Já existe um conjunto com esse nome nessa fonte."); });
 
         conjunto.setFonte(fonte);
         conjunto.setTipoConjunto(tipo);
@@ -136,10 +170,10 @@ public class ConjuntoService {
         FonteDoDado fonte = conjunto.getFonte();
         boolean ativo = !"ARQUIVADO".equals(conjunto.getSituacao()) && "S".equals(fonte.getStatus());
         return new ConjuntoResponse(
-            conjunto.getId(), fonte.getId(), fonte.getNome(), conjunto.getNome(), conjunto.getTipoCamada(),
-            conjunto.getDescricao(), conjunto.getEsquemaTecnico(), conjunto.getSrs(), conjunto.getCompetencia(),
-            conjunto.getCobertura(), conjunto.getPeriodicidade(), conjunto.getSituacao(), ativo,
-            conjunto.getDataCadastro(), conjunto.permiteUpload(), conjunto.permiteApi(),
-            conjunto.getEndpoint(), conjunto.getFormatoApi(), conjunto.getAutenticacao() != null);
+                conjunto.getId(), fonte.getId(), fonte.getNome(), conjunto.getNome(), conjunto.getTipoCamada(),
+                conjunto.getDescricao(), conjunto.getEsquemaTecnico(), conjunto.getSrs(), conjunto.getCompetencia(),
+                conjunto.getCobertura(), conjunto.getPeriodicidade(), conjunto.getSituacao(), ativo,
+                conjunto.getDataCadastro(), conjunto.permiteUpload(), conjunto.permiteApi(),
+                conjunto.getEndpoint(), conjunto.getFormatoApi(), conjunto.getAutenticacao() != null);
     }
 }

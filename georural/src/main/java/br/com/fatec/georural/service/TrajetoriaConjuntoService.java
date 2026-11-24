@@ -97,6 +97,19 @@ public class TrajetoriaConjuntoService {
             }
         }
 
+        // As zonas sao um caminho em ordem: publicar so acontece depois de calcular, e
+        // calcular so depois de tratar. Logo, alcancar uma zona significa ter passado
+        // por todas as anteriores.
+        //
+        // Sem isto a tela mostrava trajetoria impossivel -- PUBLICADA concluida com
+        // TRATADA pendente -- porque cada zona era decidida por uma fonte diferente:
+        // TRATADA exigia linha em MOVIMENTACAO_ZONA, enquanto PUBLICADA era deduzida da
+        // propria versao. Quando o tratamento rodou mas nao gravou a movimentacao, a
+        // zona anterior aparecia pendente e a seguinte, concluida.
+        for (int i = 0; i < indiceMaisAvancado; i++) {
+            alcancou.put(ORDEM_ZONAS.get(i), true);
+        }
+
         boolean houveQuarentena = temRegistrosEmQuarentena(validacao);
 
         List<PassagemZonaResponse> passagens = new ArrayList<>();

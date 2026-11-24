@@ -386,12 +386,23 @@ CREATE OR REPLACE PACKAGE BODY PKG_TRATAMENTO AS
         DELETE FROM VEGETACAO_NATIVA v
          WHERE (p_arq_id IS NOT NULL AND v.arq_bruto_id = p_arq_id)
             OR (p_arq_id IS NULL AND v.ver_id = p_ver_id);
-        INSERT INTO VEGETACAO_NATIVA (arq_bruto_id, ver_id, veg_area_ha, veg_geometria)
+        -- A veg_classe entra aqui porque o V13__modelo_iapp criou a coluna e o
+        -- PKG_IAPP filtra por ela (item_permitido(v.veg_classe, ...)), mas este INSERT
+        -- nunca gravou: ficava nula em todas as feicoes, e ai qualquer valor de filtro
+        -- diferente de '*' zerava a vegetacao de todos os imoveis.
+        --
+        -- Grava o texto ORIGINAL do atributo, com acento, nao a versao normalizada que
+        -- a subconsulta usa para filtrar: o item_permitido do PKG_IAPP so faz UPPER e
+        -- TRIM no filtro, sem tirar acento, entao os dois lados tem de ter o mesmo texto.
+        -- Para isso o stg_atributos precisa sair da subconsulta.
+        INSERT INTO VEGETACAO_NATIVA (arq_bruto_id, ver_id, veg_classe, veg_area_ha, veg_geometria)
         SELECT NVL(s.stg_arq_bruto_id, e.arq_bruto_id),
                p_ver_id,
+               SUBSTR(JSON_VALUE(s.stg_atributos, '$.classe'), 1, 100),
                s.stg_area_ha,
                s.stg_geometria
           FROM (SELECT f.exe_id, f.stg_arq_bruto_id, f.stg_area_ha, f.stg_geometria,
+                       f.stg_atributos,
                        UPPER(TRANSLATE(JSON_VALUE(f.stg_atributos, '$.classe'),
                                        'áàâãçéêíóôõúüÁÀÂÃÇÉÊÍÓÔÕÚÜ',
                                        'aaaaceeiooouuAAAACEEIOOOUU')) AS classe
@@ -450,10 +461,16 @@ CREATE OR REPLACE PACKAGE BODY PKG_TRATAMENTO AS
                              WHERE s.exe_id = p_exe_id
                                AND (p_arq_id IS NULL OR s.stg_arq_bruto_id = p_arq_id));
 
-        INSERT INTO APP (imo_id, arq_bruto_id, ver_id, app_area_ha, app_geometria)
+        -- O app_tipo entra aqui porque o V13__modelo_iapp criou a coluna e o
+        -- PKG_IAPP filtra por ela (item_permitido(a.app_tipo, ...)), mas este INSERT
+        -- nunca gravou: ficava nulo em todas as feicoes. O tema do SICAR e o que
+        -- distingue APP de curso d agua, de nascente e de topo de morro -- o curso
+        -- d agua e o corpo hidrico, nao APP.
+        INSERT INTO APP (imo_id, arq_bruto_id, ver_id, app_tipo, app_area_ha, app_geometria)
         SELECT i.imo_id,
                NVL(s.stg_arq_bruto_id, e.arq_bruto_id),
                p_ver_id,
+               SUBSTR(JSON_VALUE(s.stg_atributos, '$.tipo'), 1, 100),
                s.stg_area_ha,
                s.stg_geometria
           FROM FEICAO_STAGING s

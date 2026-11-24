@@ -5,6 +5,8 @@ import br.com.fatec.georural.entity.ExecucaoPipeline;
 import br.com.fatec.georural.entity.Usuario;
 import br.com.fatec.georural.entity.Versao;
 import br.com.fatec.georural.repository.VersaoRepository;
+
+import br.com.fatec.georural.service.auditoria.SessaoOracle;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +24,7 @@ import java.util.Optional;
 public class VersaoTratamentoService {
 
     private final VersaoRepository versaoRepository;
+    private final SessaoOracle sessaoOracle;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -29,6 +32,9 @@ public class VersaoTratamentoService {
     @Transactional
     public VersaoResolvida resolver(Long conjuntoId, Long execucaoId, Long usuarioId,
                                     String competencia, String impressao) {
+        // quem enviou o arquivo, para o gatilho de auditoria da VERSAO gravar o autor
+        sessaoOracle.identificarUsuario(usuarioId);
+
         Optional<Versao> igual =
                 versaoRepository.findFirstByConjunto_IdAndHashOrderByNumeroDesc(conjuntoId, impressao);
 

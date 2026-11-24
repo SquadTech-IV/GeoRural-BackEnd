@@ -13,5 +13,6 @@ public record IndicadorVigenteResponse(
         BigDecimal valorHectares,
         BigDecimal valorAbsoluto,
         String versaoRegra,
-        @JsonRawValue String features
+        @JsonRawValue String features,
+        @JsonRawValue String detalhes
 ) {}

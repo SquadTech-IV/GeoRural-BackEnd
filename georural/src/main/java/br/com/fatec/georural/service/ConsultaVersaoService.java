@@ -82,9 +82,19 @@ public class ConsultaVersaoService {
                     v.getExecucao() != null ? v.getExecucao().getId() : null,
                     v.getDataPublicacao(),
                     v.getUsuario() != null ? v.getUsuario().getNome() : null,
+                    v.getDataCriacao(),
+                    nomeDoArquivo(v),
                     vigenteNumeroPorConjunto.get(conjuntoId),
                     vigenteDesdePorConjunto.get(conjuntoId)));
         }
         return resumo;
+    }
+
+    // O arquivo que gerou a versao vem pela execucao do pipeline.
+    private static String nomeDoArquivo(Versao v) {
+        if (v.getExecucao() == null || v.getExecucao().getArquivoBruto() == null) {
+            return null;
+        }
+        return v.getExecucao().getArquivoBruto().getNome();
     }
 }

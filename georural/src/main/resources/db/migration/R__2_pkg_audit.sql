@@ -75,12 +75,21 @@ CREATE OR REPLACE PACKAGE BODY PKG_AUDIT AS
     IS
         PRAGMA AUTONOMOUS_TRANSACTION;
     BEGIN
+        -- A data vai explicita, convertida para America/Sao_Paulo.
+        --
+        -- Antes a coluna caia no DEFAULT SYSTIMESTAMP, que e o relogio do servidor
+        -- do banco -- e o Autonomous roda em UTC. O Java grava LocalDateTime.now(),
+        -- que e o relogio da aplicacao. A AUDITORIA ficava com dois fusos
+        -- misturados: medido em 24/11, a mesma publicacao aparecia as 14:01 pela
+        -- aplicacao e as 17:02 pelo gatilho. A tela mostra as duas como hora local,
+        -- entao as do gatilho apareciam 3 horas adiantadas.
         INSERT INTO AUDITORIA (
             usu_id, aud_usuario_nome, aud_operacao, aud_entidade_afetada,
-            aud_registro_id, aud_dados_novos, aud_dados_antigos)
+            aud_registro_id, aud_dados_novos, aud_dados_antigos, aud_data_hora)
         VALUES (
             usuario_atual_id, usuario_atual_nome, p_operacao, p_entidade,
-            p_registro_id, p_dados_novos, p_dados_antigos);
+            p_registro_id, p_dados_novos, p_dados_antigos,
+            CAST(SYSTIMESTAMP AT TIME ZONE 'America/Sao_Paulo' AS TIMESTAMP));
         COMMIT;
     EXCEPTION
         WHEN OTHERS THEN

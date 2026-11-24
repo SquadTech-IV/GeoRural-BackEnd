@@ -59,7 +59,7 @@ public class ImovelIndicadoresService {
     private List<IndicadorVigenteResponse> listarIndicadoresVigentes(Long imovelId,
                                                                      boolean comFeatures) {
         return resultadoRepository.buscarVigentesDoImovel(imovelId).stream()
-                .map(r -> toIndicador(r, comFeatures))
+                .map(r -> toIndicador(r, imovelId, comFeatures))
                 .toList();
     }
 
@@ -74,7 +74,8 @@ public class ImovelIndicadoresService {
                 indicadores);
     }
 
-    private IndicadorVigenteResponse toIndicador(ResultadoIndicador r, boolean comFeatures) {
+    private IndicadorVigenteResponse toIndicador(ResultadoIndicador r, Long imovelId,
+                                                 boolean comFeatures) {
         var indicador = r.getIndicador();
         String versaoRegra = r.getRegraCalculo() != null ? r.getRegraCalculo().getVersao() : null;
         return new IndicadorVigenteResponse(
@@ -86,7 +87,41 @@ public class ImovelIndicadoresService {
                 r.getValorHectares(),
                 r.getValorAbsoluto(),
                 versaoRegra,
-                comFeatures ? r.getFeatures() : null);
+                comFeatures ? geometriaDoIndicador(r, imovelId) : null,
+                r.getDetalhes());
+    }
+
+    // Geometria do indicador para desenhar no mapa (US#05).
+    //
+    // Antes isto lia r.getFeatures(), que e a coluna rin_features -- declarada no
+    // schema e no DTO, e nunca escrita por lugar nenhum do sistema. O resultado era
+    // que so o IAPP aparecia no mapa, porque ele tem endpoint proprio: os outros
+    // seis chegavam com geometria nula e o front descartava a camada em silencio.
+    //
+    // A geometria vem da camada que originou o indicador, e NAO e filtrada pela
+    // versao do resultado: a versao do resultado e a do calculo, a das linhas da
+    // camada e a do tratamento, e as duas so coincidem por acaso. O escopo de cada
+    // consulta esta explicado no ImovelRuralRepository.
+    //
+    // So e chamado quando comFeatures e true, ou seja no detalhe de um imovel. A
+    // listagem do mapa (listarMapa) continua sem geometria de indicador: seriam sete
+    // consultas espaciais por imovel, para desenhar camada que ninguem pediu ainda.
+    private String geometriaDoIndicador(ResultadoIndicador r, Long imovelId) {
+        String sigla = r.getIndicador().getSigla();
+        sigla = sigla == null ? "" : sigla.trim().toUpperCase();
+
+        Object geometria = switch (sigla) {
+            case "IRL" -> imovelRepository.geometriaReservaLegalGeoJson(imovelId);
+            case "IAPP" -> imovelRepository.geometriaAppGeoJson(imovelId);
+            case "ICV" -> imovelRepository.geometriaVegetacaoGeoJson(imovelId);
+            case "IAE" -> imovelRepository.geometriaEmbargoGeoJson(imovelId);
+            case "ISAP" -> imovelRepository.geometriaAreaProtegidaGeoJson(imovelId);
+            case "IDESMAT" -> imovelRepository.geometriaDesmatamentoGeoJson(imovelId);
+            case "IFC" -> imovelRepository.geometriaFocoCalorGeoJson(imovelId, r.getId());
+            default -> null;
+        };
+
+        return clobParaString(geometria);
     }
 
     // converte o CLOB do TO_GEOJSON em texto

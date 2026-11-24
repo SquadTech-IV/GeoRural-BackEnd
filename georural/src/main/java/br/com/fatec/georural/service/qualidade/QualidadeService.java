@@ -27,6 +27,7 @@ public class QualidadeService {
     private static final String SITUACAO_PENDENTE = "PENDENTE";
     private static final String STATUS_APROVADO = "APROVADO";
     private static final String STATUS_REJEITADO = "REJEITADO";
+    private static final String STATUS_COM_RESSALVA = "COM_RESSALVA";
     private static final String STATUS_SEM_DADOS = "SEM_DADOS";
     private static final String REGRA_ATIVA = "S";
 
@@ -60,9 +61,30 @@ public class QualidadeService {
                 algumaRejeitada = true;
             }
         }
-        String statusValidacao = validacoes.isEmpty()
-                ? STATUS_SEM_DADOS
-                : (algumaRejeitada ? STATUS_REJEITADO : STATUS_APROVADO);
+        // O status olha a proporcao de REGISTROS, nao o status do arquivo.
+        //
+        // Antes bastava um registro rejeitado entre milhares para o arquivo inteiro
+        // virar REJEITADO, e isso reprovava a qualidade direto. O efeito era deixar sem
+        // uso as duas valvulas que o proprio sistema tem para esse caso: o limiar
+        // configuravel de quarentena (2% por padrao) e a publicacao com ressalva
+        // mediante justificativa, no PublicacaoService. Com 2000 registros de fonte
+        // publica, zero rejeicoes nao acontece -- nenhuma ingestao grande podia ser
+        // publicada nunca.
+        //
+        // Agora REJEITADO e so quando nao sobrou nada aproveitavel. Sobrando parte, fica
+        // COM_RESSALVA e nao reprova sozinho: quem decide sao as duas travas seguintes,
+        // o percentual de quarentena acima do limiar e o registro violando regra de
+        // severidade bloqueante.
+        String statusValidacao;
+        if (validacoes.isEmpty()) {
+            statusValidacao = STATUS_SEM_DADOS;
+        } else if (total > 0 && validos == 0) {
+            statusValidacao = STATUS_REJEITADO;
+        } else if (algumaRejeitada || invalidos > 0) {
+            statusValidacao = STATUS_COM_RESSALVA;
+        } else {
+            statusValidacao = STATUS_APROVADO;
+        }
 
         long emQuarentena = quarentenaRepository.contarPorExecucaoESituacao(execucaoId, SITUACAO_PENDENTE);
 
@@ -104,8 +126,9 @@ public class QualidadeService {
         List<String> motivos = new ArrayList<>();
         if (validacoes.isEmpty()) {
             motivos.add("Execucao sem dados de validacao.");
-        } else if (!STATUS_APROVADO.equals(statusValidacao)) {
-            motivos.add("Validacao reprovada (status final = " + statusValidacao + ").");
+        } else if (STATUS_REJEITADO.equals(statusValidacao)) {
+            motivos.add("Validacao reprovada: nenhum registro aproveitavel (status final = "
+                    + statusValidacao + ").");
         }
         if (total > 0 && percentualQuarentena > criterios.limiarQuarentenaPercentual()) {
             motivos.add(String.format(Locale.ROOT,

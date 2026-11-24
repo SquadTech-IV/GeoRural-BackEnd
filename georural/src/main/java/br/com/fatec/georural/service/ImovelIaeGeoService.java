@@ -81,6 +81,7 @@ public class ImovelIaeGeoService {
                 r.getValorPercentual(),
                 r.getValorHectares(),
                 r.getValorAbsoluto(),
-                r.getDataCalculo());
+                r.getDataCalculo(),
+                r.getDetalhes());
     }
 }

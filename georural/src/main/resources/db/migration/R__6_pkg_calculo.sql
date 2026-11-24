@@ -358,7 +358,7 @@ create or replace package body pkg_calculo as
           d.rin_valor_absoluto = f.saldo_ha,
           d.rin_situacao = f.situacao,
           d.rin_detalhes = f.detalhes,
-          d.rin_data_calculo = systimestamp,
+          d.rin_data_calculo = CAST(SYSTIMESTAMP AT TIME ZONE 'America/Sao_Paulo' AS TIMESTAMP),
           d.exe_id = p_exe_id,
           d.rca_id = p_rca_id
       when not matched then
@@ -386,7 +386,7 @@ create or replace package body pkg_calculo as
            f.saldo_ha,
            f.situacao,
            f.detalhes,
-           systimestamp,
+           CAST(SYSTIMESTAMP AT TIME ZONE 'America/Sao_Paulo' AS TIMESTAMP),
            'N' );
       p_calculados := sql%rowcount;
    end calcular_irl;
@@ -491,7 +491,7 @@ create or replace package body pkg_calculo as
           d.rin_valor_absoluto = f.area_embargada,
           d.rin_situacao = f.situacao,
           d.rin_detalhes = f.detalhes,
-          d.rin_data_calculo = systimestamp,
+          d.rin_data_calculo = CAST(SYSTIMESTAMP AT TIME ZONE 'America/Sao_Paulo' AS TIMESTAMP),
           d.exe_id = p_exe_id,
           d.rca_id = p_rca_id
       when not matched then
@@ -519,7 +519,7 @@ create or replace package body pkg_calculo as
            f.area_embargada,
            f.situacao,
            f.detalhes,
-           systimestamp,
+           CAST(SYSTIMESTAMP AT TIME ZONE 'America/Sao_Paulo' AS TIMESTAMP),
            'N' );
       p_calculados := sql%rowcount;
    end calcular_iae;
@@ -631,7 +631,7 @@ create or replace package body pkg_calculo as
           d.rin_valor_absoluto = f.area_vegetacao,
           d.rin_situacao = f.situacao,
           d.rin_detalhes = f.detalhes,
-          d.rin_data_calculo = systimestamp,
+          d.rin_data_calculo = CAST(SYSTIMESTAMP AT TIME ZONE 'America/Sao_Paulo' AS TIMESTAMP),
           d.exe_id = p_exe_id,
           d.rca_id = p_rca_id
       when not matched then
@@ -659,7 +659,7 @@ create or replace package body pkg_calculo as
            f.area_vegetacao,
            f.situacao,
            f.detalhes,
-           systimestamp,
+           CAST(SYSTIMESTAMP AT TIME ZONE 'America/Sao_Paulo' AS TIMESTAMP),
            'N' );
       p_calculados := sql%rowcount;
    end calcular_icv;
@@ -829,7 +829,7 @@ create or replace package body pkg_calculo as
           d.rin_valor_absoluto = f.focos,
           d.rin_situacao = f.situacao,
           d.rin_detalhes = f.detalhes,
-          d.rin_data_calculo = systimestamp,
+          d.rin_data_calculo = CAST(SYSTIMESTAMP AT TIME ZONE 'America/Sao_Paulo' AS TIMESTAMP),
           d.exe_id = p_exe_id,
           d.rca_id = p_rca_id
       when not matched then
@@ -855,7 +855,7 @@ create or replace package body pkg_calculo as
            f.focos,
            f.situacao,
            f.detalhes,
-           systimestamp,
+           CAST(SYSTIMESTAMP AT TIME ZONE 'America/Sao_Paulo' AS TIMESTAMP),
            'N' );
       p_calculados := sql%rowcount;
    end calcular_ifc;
@@ -943,7 +943,7 @@ create or replace package body pkg_calculo as
       when matched then update
       set d.rmu_valor_agregado = f.media_pct,
           d.rmu_detalhes = f.detalhes,
-          d.rmu_data_calculo = systimestamp
+          d.rmu_data_calculo = CAST(SYSTIMESTAMP AT TIME ZONE 'America/Sao_Paulo' AS TIMESTAMP)
       when not matched then
       insert (
          mun_id,
@@ -962,7 +962,7 @@ create or replace package body pkg_calculo as
            'CALCULADO',
            f.detalhes,
            'N',
-           systimestamp );
+           CAST(SYSTIMESTAMP AT TIME ZONE 'America/Sao_Paulo' AS TIMESTAMP) );
       p_agregados := sql%rowcount;
    end agregar_municipio;
 
@@ -1113,7 +1113,7 @@ create or replace package body pkg_calculo as
                       d.rin_valor_absoluto   = f.ha_2008,
                       d.rin_situacao         = f.situacao,
                       d.rin_detalhes         = f.detalhes,
-                      d.rin_data_calculo     = SYSTIMESTAMP,
+                      d.rin_data_calculo     = CAST(SYSTIMESTAMP AT TIME ZONE 'America/Sao_Paulo' AS TIMESTAMP),
                       d.exe_id               = p_exe_id,
                       d.rca_id               = p_rca_id
        WHEN NOT MATCHED THEN
@@ -1122,11 +1122,10 @@ create or replace package body pkg_calculo as
                    rin_data_calculo, rin_vigente)
            VALUES (f.imo_id, f.ind_id, p_ver_id, p_exe_id, p_rca_id, f.pct_2008,
                    f.ha_2008, f.ha_2008, f.situacao, f.detalhes,
-                   SYSTIMESTAMP, 'N');
+                   CAST(SYSTIMESTAMP AT TIME ZONE 'America/Sao_Paulo' AS TIMESTAMP), 'N');
 
        p_calculados := SQL%ROWCOUNT;
    END calcular_idesmat;
 
 end pkg_calculo;
 /
-

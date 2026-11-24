@@ -133,7 +133,7 @@ create or replace package body pkg_projecao as
              d.rin_valor_absoluto   = s.absoluto,
              d.rin_situacao         = s.situacao,
              d.rin_detalhes         = s.detalhes,
-             d.rin_data_calculo     = systimestamp
+             d.rin_data_calculo     = CAST(SYSTIMESTAMP AT TIME ZONE 'America/Sao_Paulo' AS TIMESTAMP)
       when not matched then insert (
          d.imo_id, d.ind_id, d.ver_id, d.exe_id, d.rca_id,
          d.rin_valor_percentual, d.rin_valor_hectares, d.rin_valor_absoluto,
@@ -201,7 +201,7 @@ create or replace package body pkg_projecao as
              d.rin_valor_absoluto   = s.absoluto,
              d.rin_situacao         = s.situacao,
              d.rin_detalhes         = s.detalhes,
-             d.rin_data_calculo     = systimestamp
+             d.rin_data_calculo     = CAST(SYSTIMESTAMP AT TIME ZONE 'America/Sao_Paulo' AS TIMESTAMP)
       when not matched then insert (
          d.imo_id, d.ind_id, d.ver_id, d.exe_id, d.rca_id,
          d.rin_valor_percentual, d.rin_valor_hectares, d.rin_valor_absoluto,

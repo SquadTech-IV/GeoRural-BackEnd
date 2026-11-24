@@ -226,12 +226,12 @@ CREATE OR REPLACE PACKAGE BODY PKG_ISAP AS
                       UPDATE SET dst.apd_qtd_feicoes   = v_qtd,
                                  dst.apd_area_total_ha = v_area_ha,
                                  dst.apd_geometria     = v_geom_union,
-                                 dst.apd_data_geracao  = SYSTIMESTAMP
+                                 dst.apd_data_geracao  = CAST(SYSTIMESTAMP AT TIME ZONE 'America/Sao_Paulo' AS TIMESTAMP)
                  WHEN NOT MATCHED THEN
                       INSERT (ver_id, apd_categoria, apd_filtro_aplicado,
                               apd_qtd_feicoes, apd_area_total_ha, apd_geometria, apd_data_geracao)
                       VALUES (p_ver_id, v_cat, v_filtro,
-                              v_qtd, v_area_ha, v_geom_union, SYSTIMESTAMP);
+                              v_qtd, v_area_ha, v_geom_union, CAST(SYSTIMESTAMP AT TIME ZONE 'America/Sao_Paulo' AS TIMESTAMP));
 
                 v_total := v_total + 1;
             ELSE
@@ -276,7 +276,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_ISAP AS
                          dst.isr_filtro_aplicado    = p_filtro_aplicado,
                          dst.isr_competencia_camada = p_competencia,
                          dst.isr_status             = p_status,
-                         dst.isr_data_calculo       = SYSTIMESTAMP
+                         dst.isr_data_calculo       = CAST(SYSTIMESTAMP AT TIME ZONE 'America/Sao_Paulo' AS TIMESTAMP)
          WHEN NOT MATCHED THEN
               INSERT (imo_id, ver_id, isr_camada_ver_id, exe_id, rca_id, isr_categoria,
                       isr_sobrepoe, isr_area_sobreposta_ha, isr_pct_sobreposicao,
@@ -285,7 +285,7 @@ CREATE OR REPLACE PACKAGE BODY PKG_ISAP AS
               VALUES (p_imo_id, p_ver_id, p_camada_ver_id, p_exe_id, p_rca_id, p_categoria,
                       p_sobrepoe, p_area_sobrep_ha, p_pct_sobrep,
                       p_area_imovel_ha, p_filtro_aplicado, p_competencia,
-                      p_status, 'N', SYSTIMESTAMP);
+                      p_status, 'N', CAST(SYSTIMESTAMP AT TIME ZONE 'America/Sao_Paulo' AS TIMESTAMP));
 
         SELECT isr_id INTO p_isr_id
           FROM RESULTADO_ISAP_RESUMO

@@ -16,6 +16,11 @@ import br.com.fatec.georural.exception.RequisicaoInvalidaException;
 import br.com.fatec.georural.entity.ColetaApi;
 import br.com.fatec.georural.repository.ColetaApiRepository;
 import br.com.fatec.georural.repository.ConjuntoDadosRepository;
+import br.com.fatec.georural.entity.Usuario;
+import br.com.fatec.georural.exception.ConflitoException;
+import br.com.fatec.georural.repository.UsuarioRepository;
+import br.com.fatec.georural.security.UsuarioAutenticado;
+import br.com.fatec.georural.security.UsuarioAutenticadoProvider;
 import br.com.fatec.georural.service.pipeline.ResolvedorCompetencia;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -43,6 +48,8 @@ public class ImportacaoApiService {
     private final IngestaoZonaBrutaService ingestao;
     private final ResolvedorCompetencia resolvedorCompetencia;
     private final ColetaApiRepository coletaApiRepository;
+    private final UsuarioAutenticadoProvider usuarioAutenticadoProvider;
+    private final UsuarioRepository usuarioRepository;
 
     private static final DateTimeFormatter DATA = DateTimeFormatter.ISO_LOCAL_DATE; // yyyy-MM-dd
     private static final DateTimeFormatter MES = DateTimeFormatter.ofPattern("yyyy-MM");
@@ -110,7 +117,11 @@ public class ImportacaoApiService {
         }
 
         // grava na zona bruta
-        ArquivoBruto arquivo = ingestao.registrar(c, null, nome, params.formato(), conteudo, "API", competencia);
+        // Quem fica como responsavel pelo arquivo recebido. Antes ia null fixo aqui, e
+        // ARQUIVO_BRUTO.usu_id virou NOT NULL no V7 (US#13.04): desde entao toda
+        // importacao por API morria com ORA-01400 antes de gravar qualquer coisa.
+        ArquivoBruto arquivo = ingestao.registrar(c, responsavelPelaImportacao(c), nome,
+                params.formato(), conteudo, "API", competencia);
 
         // COMO o dado foi obtido.
         registrarColeta(arquivo, params, competencia, conteudo.quantidadeRegistros());
@@ -119,6 +130,27 @@ public class ImportacaoApiService {
     }
 
     /** Guarda endpoint, filtros e competencia da chamada que originou o arquivo. */
+    // Prioriza quem disparou a importacao pela tela. Sem requisicao HTTP -- disparo
+    // pelo Airflow, por exemplo -- usa o dono do conjunto, que e quem o cadastrou.
+    private Usuario responsavelPelaImportacao(ConjuntoDados conjunto) {
+        Usuario logado = usuarioAutenticadoProvider.obterOpcional()
+                .map(UsuarioAutenticado::usuId)
+                .flatMap(usuarioRepository::findById)
+                .orElse(null);
+
+        if (logado != null) {
+            return logado;
+        }
+
+        if (conjunto.getUsuario() != null) {
+            return conjunto.getUsuario();
+        }
+
+        throw new ConflitoException(
+                "O conjunto " + conjunto.getId() + " nao tem usuario responsavel e nao ha"
+                        + " usuario autenticado: nao da para registrar o arquivo recebido.");
+    }
+
     private void registrarColeta(ArquivoBruto arquivo, ParametrosConsultaApi params,
                                  String competencia, long registros) {
         ColetaApi coleta = new ColetaApi();
@@ -141,7 +173,7 @@ public class ImportacaoApiService {
         for (Map.Entry<String, String> e : filtros.entrySet()) {
             if (!primeiro) sb.append(',');
             sb.append('"').append(escapar(e.getKey())).append("\":\"")
-              .append(escapar(e.getValue())).append('"');
+                    .append(escapar(e.getValue())).append('"');
             primeiro = false;
         }
         return sb.append('}').toString();
